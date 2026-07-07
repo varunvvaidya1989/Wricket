@@ -1,98 +1,163 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, StyleSheet, FlatList, Pressable } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { Screen } from '@/components/ui/Screen';
+import { Text } from '@/components/ui/Text';
+import { Card } from '@/components/ui/Card';
+import { colors } from '@/lib/theme/colors';
+import { spacing, radius } from '@/lib/theme/spacing';
+import { listTournaments } from '@/lib/db/repo';
+import { Tournament, FORMAT_LABEL } from '@/lib/domain/types';
 
-export default function HomeScreen() {
+export default function TournamentsScreen() {
+  const router = useRouter();
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        setLoading(true);
+        const list = await listTournaments();
+        if (!cancelled) {
+          setTournaments(list);
+          setLoading(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
+  const active = tournaments.filter(t => t.status === 'ACTIVE');
+  const completed = tournaments.filter(t => t.status === 'COMPLETED');
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <Screen padded={false}>
+      <View style={styles.header}>
+        <View>
+          <Text variant="overline" tone="muted">Wricket</Text>
+          <Text variant="h1">Tournaments</Text>
+        </View>
+        <Pressable
+          style={styles.fab}
+          onPress={() => router.push('/tournament/new')}
+        >
+          <MaterialCommunityIcons name="plus" size={24} color={colors.accentInk} />
+        </Pressable>
+      </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      {loading ? null : tournaments.length === 0 ? (
+        <EmptyState onCreate={() => router.push('/tournament/new')} />
+      ) : (
+        <FlatList
+          data={[...active, ...completed]}
+          keyExtractor={t => t.id}
+          contentContainerStyle={{
+            paddingHorizontal: spacing.lg,
+            paddingBottom: spacing.xxxl,
+          }}
+          ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
+          renderItem={({ item }) => (
+            <Card onPress={() => router.push(`/tournament/${item.id}`)}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+                <View style={styles.iconBubble}>
+                  <MaterialCommunityIcons name="trophy" size={20} color={colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text variant="h3">{item.name}</Text>
+                  <Text variant="caption" tone="muted">
+                    {FORMAT_LABEL[item.format]} ·{' '}
+                    {item.status === 'ACTIVE' ? 'Active' : 'Completed'}
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} />
+              </View>
+            </Card>
+          )}
+        />
+      )}
+    </Screen>
+  );
+}
+
+function EmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <View style={styles.empty}>
+      <View style={styles.emptyIcon}>
+        <MaterialCommunityIcons name="trophy-outline" size={36} color={colors.accent} />
+      </View>
+      <Text variant="h2" style={{ marginTop: spacing.lg }}>
+        No tournaments yet
+      </Text>
+      <Text
+        variant="body"
+        tone="muted"
+        style={{
+          textAlign: 'center',
+          marginTop: spacing.sm,
+          paddingHorizontal: spacing.xl,
+        }}
+      >
+        Start a tournament to track teams, matches, points and stats automatically.
+      </Text>
+      <Pressable style={styles.emptyCta} onPress={onCreate}>
+        <Text variant="bodyStrong" style={{ color: colors.accentInk }}>
+          Create tournament
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  fab: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.accent,
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  iconBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyCta: {
+    marginTop: spacing.xl,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.lg,
   },
 });
