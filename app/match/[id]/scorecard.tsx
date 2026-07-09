@@ -1,12 +1,11 @@
 import React, { useCallback, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { Card } from '@/components/ui/Card';
-import { colors, palette } from '@/lib/theme/colors';
+import { colors } from '@/lib/theme/colors';
 import { spacing, radius } from '@/lib/theme/spacing';
 import {
   getMatch,
@@ -14,15 +13,19 @@ import {
   listInningsForMatch,
   listBalls,
   getMatchXI,
+  listScoreAdjustments,
+  listBatterRetirements,
   MatchXIPlayer,
 } from '@/lib/db/repo';
-import { Ball, Innings, Match, Team } from '@/lib/domain/types';
+import { Ball, BatterRetirement, Innings, Match, ScoreAdjustment, Team } from '@/lib/domain/types';
 import { batsmanLineFor, bowlerLineFor } from '@/lib/domain/stats';
 import { formatOver } from '@/lib/domain/scoring';
 
 interface InningsView {
   innings: Innings;
   balls: Ball[];
+  adjustments: ScoreAdjustment[];
+  retirements: BatterRetirement[];
   batters: MatchXIPlayer[];
   bowlers: MatchXIPlayer[];
   battingTeam: Team;
@@ -31,7 +34,6 @@ interface InningsView {
 
 export default function ScorecardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const [match, setMatch] = useState<Match | null>(null);
   const [views, setViews] = useState<InningsView[]>([]);
   const [tab, setTab] = useState(0);
@@ -52,11 +54,15 @@ export default function ScorecardScreen() {
         const viewList: InningsView[] = await Promise.all(
           innList.map(async inn => {
             const balls = await listBalls(inn.id);
+            const adjustments = await listScoreAdjustments(inn.id);
+            const retirements = await listBatterRetirements(inn.id);
             const batters = await getMatchXI(m.id, inn.battingTeamId);
             const bowlers = await getMatchXI(m.id, inn.bowlingTeamId);
             return {
               innings: inn,
               balls,
+              adjustments,
+              retirements,
               batters,
               bowlers,
               battingTeam: inn.battingTeamId === a.id ? a : b,
@@ -124,12 +130,16 @@ export default function ScorecardScreen() {
 }
 
 function InningsSection({ view }: { view: InningsView }) {
-  const { innings, balls, batters, bowlers, battingTeam } = view;
+  const { innings, balls, adjustments, retirements, batters, bowlers, battingTeam } = view;
   const batterMap = new Map(batters.map(b => [b.userId, b.name]));
   const bowlerMap = new Map(bowlers.map(b => [b.userId, b.name]));
+  const retirementMap = new Map(retirements.map(r => [r.playerId, r]));
 
   // Compute per-batter lines (only those who batted)
-  const batterIds = Array.from(new Set(balls.flatMap(b => [b.strikerId, b.nonStrikerId])));
+  const batterIds = Array.from(new Set([
+    ...balls.flatMap(b => [b.strikerId, b.nonStrikerId]),
+    ...retirements.map(r => r.playerId),
+  ]));
   const battedIds = batters
     .filter(b => batterIds.includes(b.userId))
     .sort((x, y) => x.battingOrder - y.battingOrder)
@@ -158,15 +168,22 @@ function InningsSection({ view }: { view: InningsView }) {
         </View>
         {battedIds.map(id => {
           const line = batsmanLineFor(id, balls);
+          const retirement = retirementMap.get(id);
+          const dismissalText = retirement
+            ? retirement.kind === 'RETIRED_OUT'
+              ? 'retired out'
+              : 'retired hurt'
+            : line.dismissalText;
+          const isOut = line.isOut || retirement?.kind === 'RETIRED_OUT';
           return (
             <View key={id} style={styles.tableRow}>
               <View style={{ flex: 2 }}>
                 <Text variant="bodyStrong">
                   {batterMap.get(id) ?? '—'}
-                  {!line.isOut && ' *'}
+                  {!isOut && ' *'}
                 </Text>
-                {line.dismissalText && (
-                  <Text variant="caption" tone="muted">{line.dismissalText}</Text>
+                {dismissalText && (
+                  <Text variant="caption" tone="muted">{dismissalText}</Text>
                 )}
               </View>
               <Text variant="body" style={styles.colNum}>{line.runs}</Text>
@@ -178,6 +195,20 @@ function InningsSection({ view }: { view: InningsView }) {
           );
         })}
       </Card>
+
+      {adjustments.length > 0 && (
+        <Card>
+          <Text variant="overline" tone="muted" style={{ marginBottom: spacing.sm }}>ADJUSTMENTS</Text>
+          {adjustments.map(item => (
+            <View key={item.id} style={styles.tableRow}>
+              <Text variant="bodyStrong" style={{ flex: 1 }}>
+                {item.kind === 'PENALTY' ? 'Penalty runs' : 'Bonus runs'}
+              </Text>
+              <Text variant="bodyStrong">+{item.runs}</Text>
+            </View>
+          ))}
+        </Card>
+      )}
 
       <Card>
         <Text variant="overline" tone="muted" style={{ marginBottom: spacing.sm }}>BOWLING</Text>

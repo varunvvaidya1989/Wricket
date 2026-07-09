@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
+import { AnimatedSplashScreen } from '@/components/AnimatedSplashScreen';
 import { colors } from '@/lib/theme/colors';
 
 export const unstable_settings = {
@@ -63,6 +64,7 @@ export default function RootLayout() {
             />
           </Stack>
           <StatusBar style="light" />
+          <AnimatedSplashScreen />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

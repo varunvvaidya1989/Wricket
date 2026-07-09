@@ -1,6 +1,7 @@
 import { getDb, newId } from './client';
 import {
   Ball,
+  BatterRetirement,
   DEFAULT_RULES,
   ExtraKind,
   FormatRules,
@@ -15,6 +16,9 @@ import {
   User,
   TossChoice,
   DismissalKind,
+  RetirementKind,
+  ScoreAdjustment,
+  ScoreAdjustmentKind,
 } from '../domain/types';
 
 // ---------- Users ----------
@@ -629,6 +633,106 @@ function rowToBall(row: any): Ball {
           fielderId: row.fielder_id ?? undefined,
         }
       : undefined,
+    createdAt: row.created_at,
+  };
+}
+
+// ---------- Score adjustments ----------
+
+export async function insertScoreAdjustment(input: {
+  inningsId: string;
+  kind: ScoreAdjustmentKind;
+  runs: number;
+  note?: string;
+}): Promise<ScoreAdjustment> {
+  const db = await getDb();
+  const adjustment: ScoreAdjustment = {
+    id: newId(),
+    inningsId: input.inningsId,
+    kind: input.kind,
+    runs: input.runs,
+    note: input.note,
+    createdAt: Date.now(),
+  };
+  await db.runAsync(
+    `INSERT INTO score_adjustments (id, innings_id, kind, runs, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    adjustment.id,
+    adjustment.inningsId,
+    adjustment.kind,
+    adjustment.runs,
+    adjustment.note ?? null,
+    adjustment.createdAt,
+  );
+  return adjustment;
+}
+
+export async function listScoreAdjustments(
+  inningsId: string,
+): Promise<ScoreAdjustment[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM score_adjustments WHERE innings_id = ? ORDER BY created_at ASC',
+    inningsId,
+  );
+  return rows.map(rowToScoreAdjustment);
+}
+
+function rowToScoreAdjustment(row: any): ScoreAdjustment {
+  return {
+    id: row.id,
+    inningsId: row.innings_id,
+    kind: row.kind,
+    runs: row.runs,
+    note: row.note ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+// ---------- Batter retirements ----------
+
+export async function insertBatterRetirement(input: {
+  inningsId: string;
+  playerId: string;
+  kind: RetirementKind;
+}): Promise<BatterRetirement> {
+  const db = await getDb();
+  const retirement: BatterRetirement = {
+    id: newId(),
+    inningsId: input.inningsId,
+    playerId: input.playerId,
+    kind: input.kind,
+    createdAt: Date.now(),
+  };
+  await db.runAsync(
+    `INSERT INTO batter_retirements (id, innings_id, player_id, kind, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    retirement.id,
+    retirement.inningsId,
+    retirement.playerId,
+    retirement.kind,
+    retirement.createdAt,
+  );
+  return retirement;
+}
+
+export async function listBatterRetirements(
+  inningsId: string,
+): Promise<BatterRetirement[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM batter_retirements WHERE innings_id = ? ORDER BY created_at ASC',
+    inningsId,
+  );
+  return rows.map(rowToBatterRetirement);
+}
+
+function rowToBatterRetirement(row: any): BatterRetirement {
+  return {
+    id: row.id,
+    inningsId: row.innings_id,
+    playerId: row.player_id,
+    kind: row.kind,
     createdAt: row.created_at,
   };
 }

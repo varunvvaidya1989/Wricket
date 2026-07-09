@@ -7,9 +7,11 @@ export type DismissalKind =
   | 'RUN_OUT'
   | 'STUMPED'
   | 'HIT_WICKET'
-  | 'RETIRED';
+  | 'RETIRED_OUT';
 
 export type ExtraKind = 'WIDE' | 'NO_BALL' | 'BYE' | 'LEG_BYE' | null;
+export type ScoreAdjustmentKind = 'PENALTY' | 'BONUS';
+export type RetirementKind = 'RETIRED_HURT' | 'RETIRED_OUT';
 
 export type MatchStatus =
   | 'SETUP'
@@ -138,6 +140,23 @@ export interface Ball {
     outPlayerId: string;
     fielderId?: string;
   };
+  createdAt: number;
+}
+
+export interface ScoreAdjustment {
+  id: string;
+  inningsId: string;
+  kind: ScoreAdjustmentKind;
+  runs: number;
+  note?: string;
+  createdAt: number;
+}
+
+export interface BatterRetirement {
+  id: string;
+  inningsId: string;
+  playerId: string;
+  kind: RetirementKind;
   createdAt: number;
 }
 

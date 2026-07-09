@@ -14,7 +14,6 @@ import {
   listTeams,
   createTeam,
   listMatches,
-  getTeam,
 } from '@/lib/db/repo';
 import { Tournament, Team, Match, FORMAT_LABEL } from '@/lib/domain/types';
 import { computePointsTable, PointsRow } from '@/lib/domain/points';

@@ -115,8 +115,8 @@ export function describeDismissal(b: Ball): string {
       return `st ${shortId(b.dismissal.fielderId ?? '')} b ${shortId(b.bowlerId)}`;
     case 'HIT_WICKET':
       return `hit wicket b ${shortId(b.bowlerId)}`;
-    case 'RETIRED':
-      return 'retired';
+    case 'RETIRED_OUT':
+      return 'retired out';
   }
 }
 

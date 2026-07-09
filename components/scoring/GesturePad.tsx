@@ -123,17 +123,27 @@ export function GesturePad({ onAction, disabled }: GesturePadProps) {
   return (
     <GestureDetector gesture={composed}>
       <Animated.View style={[styles.pad, animStyle]}>
+        <View pointerEvents="none" style={styles.fieldLayer}>
+          <View style={styles.boundaryOuter} />
+          <View style={styles.boundaryInner} />
+          <View style={styles.grassBandWide} />
+          <View style={styles.grassBandTall} />
+          <View style={styles.pitch} />
+          <View style={styles.creaseTop} />
+          <View style={styles.creaseBottom} />
+        </View>
+
         <View style={styles.hintGrid}>
-          <Text variant="caption" tone="dim" style={styles.hintTopLeft}>1 ↑</Text>
-          <Text variant="caption" tone="dim" style={styles.hintTopRight}>2 ↗</Text>
-          <Text variant="caption" tone="dim" style={styles.hintLeft}>← ext</Text>
-          <Text variant="caption" tone="dim" style={styles.hintRight}>3 →</Text>
-          <Text variant="caption" tone="dim" style={styles.hintBottom}>↓ wkt</Text>
+          <Text variant="caption" style={[styles.hintText, styles.hintTopLeft]}>1 ↑</Text>
+          <Text variant="caption" style={[styles.hintText, styles.hintTopRight]}>2 ↗</Text>
+          <Text variant="caption" style={[styles.hintText, styles.hintLeft]}>← ext</Text>
+          <Text variant="caption" style={[styles.hintText, styles.hintRight]}>3 →</Text>
+          <Text variant="caption" style={[styles.hintText, styles.hintBottom]}>↓ wkt</Text>
         </View>
 
         <View style={styles.center}>
-          <Text variant="overline" tone="dim">TAP DOT · 2× FOUR · HOLD SIX</Text>
-          <Text variant="scoreLg" style={{ marginTop: spacing.sm }}>
+          <Text variant="overline" style={styles.centerHint}>TAP DOT · 2× FOUR · HOLD SIX</Text>
+          <Text variant="scoreLg" style={styles.centerTitle}>
             Score
           </Text>
         </View>
@@ -149,16 +159,82 @@ export function GesturePad({ onAction, disabled }: GesturePadProps) {
 const styles = StyleSheet.create({
   pad: {
     aspectRatio: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: '#165C2F',
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#4AB96A',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  fieldLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#1F7A3C',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  boundaryOuter: {
+    position: 'absolute',
+    width: '92%',
+    height: '92%',
+    borderRadius: 999,
+    borderWidth: 3,
+    borderColor: 'rgba(235, 255, 220, 0.72)',
+  },
+  boundaryInner: {
+    position: 'absolute',
+    width: '72%',
+    height: '72%',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(235, 255, 220, 0.28)',
+  },
+  grassBandWide: {
+    position: 'absolute',
+    width: '120%',
+    height: '26%',
+    backgroundColor: 'rgba(42, 142, 65, 0.52)',
+    transform: [{ rotate: '-18deg' }],
+  },
+  grassBandTall: {
+    position: 'absolute',
+    width: '24%',
+    height: '120%',
+    backgroundColor: 'rgba(22, 92, 47, 0.42)',
+    transform: [{ rotate: '22deg' }],
+  },
+  pitch: {
+    position: 'absolute',
+    width: '22%',
+    height: '54%',
+    borderRadius: radius.md,
+    backgroundColor: palette.willow,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  creaseTop: {
+    position: 'absolute',
+    top: '31%',
+    width: '30%',
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
+  creaseBottom: {
+    position: 'absolute',
+    bottom: '31%',
+    width: '30%',
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
   hintGrid: {
     ...StyleSheet.absoluteFillObject,
+  },
+  hintText: {
+    color: 'rgba(255,255,255,0.82)',
+    fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   hintTopLeft: { position: 'absolute', top: spacing.md, left: spacing.md },
   hintTopRight: { position: 'absolute', top: spacing.md, right: spacing.md },
@@ -168,6 +244,20 @@ const styles = StyleSheet.create({
   center: {
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(10, 10, 11, 0.42)',
+    borderColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  centerHint: {
+    color: 'rgba(255,255,255,0.78)',
+    fontWeight: '800',
+  },
+  centerTitle: {
+    color: palette.white,
+    marginTop: spacing.sm,
   },
   flash: {
     ...StyleSheet.absoluteFillObject,

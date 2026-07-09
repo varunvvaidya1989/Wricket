@@ -23,6 +23,8 @@ export async function resetDb(): Promise<void> {
   const db = await getDb();
   await db.execAsync(`
     DROP TABLE IF EXISTS balls;
+    DROP TABLE IF EXISTS score_adjustments;
+    DROP TABLE IF EXISTS batter_retirements;
     DROP TABLE IF EXISTS innings;
     DROP TABLE IF EXISTS match_xis;
     DROP TABLE IF EXISTS matches;

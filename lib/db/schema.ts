@@ -116,7 +116,29 @@ CREATE TABLE IF NOT EXISTS balls (
   FOREIGN KEY (innings_id) REFERENCES innings(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS score_adjustments (
+  id TEXT PRIMARY KEY,
+  innings_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  runs INTEGER NOT NULL,
+  note TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (innings_id) REFERENCES innings(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS batter_retirements (
+  id TEXT PRIMARY KEY,
+  innings_id TEXT NOT NULL,
+  player_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (innings_id) REFERENCES innings(id) ON DELETE CASCADE,
+  FOREIGN KEY (player_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_balls_innings ON balls(innings_id);
+CREATE INDEX IF NOT EXISTS idx_score_adjustments_innings ON score_adjustments(innings_id);
+CREATE INDEX IF NOT EXISTS idx_batter_retirements_innings ON batter_retirements(innings_id);
 CREATE INDEX IF NOT EXISTS idx_innings_match ON innings(match_id);
 CREATE INDEX IF NOT EXISTS idx_matches_tournament ON matches(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_teams_tournament ON teams(tournament_id);

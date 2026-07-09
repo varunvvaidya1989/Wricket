@@ -12,13 +12,11 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Animated, {
   FadeIn,
-  FadeOut,
   ZoomIn,
   useSharedValue,
   useAnimatedStyle,
   withSequence,
   withTiming,
-  runOnJS,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
@@ -38,15 +36,22 @@ import {
   listBalls,
   updateInningsTotals,
   deleteLastBall,
+  insertScoreAdjustment,
+  listScoreAdjustments,
+  insertBatterRetirement,
+  listBatterRetirements,
   MatchXIPlayer,
 } from '@/lib/db/repo';
 import { closeAndAdvance, startNextInnings } from '@/lib/domain/innings-flow';
 import {
   Ball,
+  BatterRetirement,
   DismissalKind,
   ExtraKind,
   Innings,
   Match,
+  ScoreAdjustment,
+  ScoreAdjustmentKind,
   Team,
 } from '@/lib/domain/types';
 import { applyBall, formatOver, isInningsOver, runRate } from '@/lib/domain/scoring';
@@ -63,10 +68,14 @@ interface LiveState {
   bowlerId: string | null;
 }
 
-function deriveStateFromBalls(ballList: Ball[]): LiveState {
+function deriveStateFromBalls(
+  ballList: Ball[],
+  adjustmentRuns = 0,
+  retiredOuts = 0,
+): LiveState {
   if (ballList.length === 0) {
     return {
-      totalRuns: 0, totalWickets: 0, legalBalls: 0,
+      totalRuns: adjustmentRuns, totalWickets: retiredOuts, legalBalls: 0,
       overNo: 0, legalBallInOver: 0,
       strikerId: null, nonStrikerId: null, bowlerId: null,
     };
@@ -108,7 +117,7 @@ function deriveStateFromBalls(ballList: Ball[]): LiveState {
     }
   }
 
-  return { totalRuns, totalWickets, legalBalls, overNo, legalBallInOver, strikerId, nonStrikerId, bowlerId };
+  return { totalRuns: totalRuns + adjustmentRuns, totalWickets: totalWickets + retiredOuts, legalBalls, overNo, legalBallInOver, strikerId, nonStrikerId, bowlerId };
 }
 
 export default function ScoreScreen() {
@@ -120,6 +129,8 @@ export default function ScoreScreen() {
   const [teamB, setTeamB] = useState<Team | null>(null);
   const [innings, setInnings] = useState<Innings | null>(null);
   const [balls, setBalls] = useState<Ball[]>([]);
+  const [adjustments, setAdjustments] = useState<ScoreAdjustment[]>([]);
+  const [retirements, setRetirements] = useState<BatterRetirement[]>([]);
   const [xiBatting, setXiBatting] = useState<MatchXIPlayer[]>([]);
   const [xiBowling, setXiBowling] = useState<MatchXIPlayer[]>([]);
   const [live, setLive] = useState<LiveState | null>(null);
@@ -129,6 +140,8 @@ export default function ScoreScreen() {
   const [bowlerOpen, setBowlerOpen] = useState(false);
   const [wicketOpen, setWicketOpen] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
+  const [adjustmentOpen, setAdjustmentOpen] = useState(false);
+  const [retirementOpen, setRetirementOpen] = useState(false);
   const [pickBatterOpen, setPickBatterOpen] = useState(false);
   const [pendingNewBatterSlot, setPendingNewBatterSlot] = useState<'striker' | 'nonStriker' | null>(null);
 
@@ -167,15 +180,25 @@ export default function ScoreScreen() {
     }
     setInnings(open);
 
-    const ballList = await listBalls(open.id);
+    const [ballList, adjustmentList, retirementList] = await Promise.all([
+      listBalls(open.id),
+      listScoreAdjustments(open.id),
+      listBatterRetirements(open.id),
+    ]);
     setBalls(ballList);
+    setAdjustments(adjustmentList);
+    setRetirements(retirementList);
 
     const xiBatList = await getMatchXI(m.id, open.battingTeamId);
     const xiBowlList = await getMatchXI(m.id, open.bowlingTeamId);
     setXiBatting(xiBatList);
     setXiBowling(xiBowlList);
 
-    const state = deriveStateFromBalls(ballList);
+    const state = deriveStateFromBalls(
+      ballList,
+      totalAdjustmentRuns(adjustmentList),
+      totalRetiredOuts(retirementList),
+    );
     setLive(state);
 
     if (ballList.length === 0) {
@@ -360,6 +383,89 @@ export default function ScoreScreen() {
     [innings, live, match, loadFromDb, router, triggerFlash],
   );
 
+  const recordScoreAdjustment = useCallback(
+    async (kind: ScoreAdjustmentKind, runs: number) => {
+      if (!innings || !live || runs <= 0) return;
+      const adjustment = await insertScoreAdjustment({
+        inningsId: innings.id,
+        kind,
+        runs,
+      });
+      const nextLive = { ...live, totalRuns: live.totalRuns + runs };
+      await updateInningsTotals(innings.id, {
+        runs: nextLive.totalRuns,
+        wickets: nextLive.totalWickets,
+        balls: nextLive.legalBalls,
+      });
+      setAdjustments(prev => [...prev, adjustment]);
+      setLive(nextLive);
+      triggerFlash(kind === 'PENALTY' ? colors.extra : colors.boundary);
+
+      const ended = isInningsOver(
+        {
+          totalRuns: nextLive.totalRuns,
+          totalWickets: nextLive.totalWickets,
+          legalBalls: nextLive.legalBalls,
+          overNo: nextLive.overNo,
+          legalBallInOver: nextLive.legalBallInOver,
+          strikerId: nextLive.strikerId ?? '',
+          nonStrikerId: nextLive.nonStrikerId ?? '',
+          bowlerId: nextLive.bowlerId ?? '',
+        },
+        match!.rules.oversPerInnings,
+        match!.rules.playersPerSide,
+        innings.target,
+      );
+      if (ended) {
+        const step = await closeAndAdvance(match!.id, innings.id);
+        if (step.kind === 'COMPLETED') router.replace(`/match/${match!.id}/scorecard`);
+        else if (step.kind === 'NEXT_INNINGS' && step.next) {
+          await startNextInnings(match!.id, step.next);
+          loadFromDb();
+        }
+      }
+    },
+    [innings, live, loadFromDb, match, router, triggerFlash],
+  );
+
+  const recordRetirement = useCallback(
+    async (kind: 'RETIRED_HURT' | 'RETIRED_OUT', outIsStriker: boolean) => {
+      if (!innings || !live?.strikerId || !live.nonStrikerId) return;
+      const playerId = outIsStriker ? live.strikerId : live.nonStrikerId;
+      const retirement = await insertBatterRetirement({
+        inningsId: innings.id,
+        playerId,
+        kind,
+      });
+      const nextLive = {
+        ...live,
+        totalWickets: live.totalWickets + (kind === 'RETIRED_OUT' ? 1 : 0),
+        strikerId: outIsStriker ? null : live.strikerId,
+        nonStrikerId: outIsStriker ? live.nonStrikerId : null,
+      };
+      await updateInningsTotals(innings.id, {
+        runs: nextLive.totalRuns,
+        wickets: nextLive.totalWickets,
+        balls: nextLive.legalBalls,
+      });
+      setRetirements(prev => [...prev, retirement]);
+      setLive(nextLive);
+      setPendingNewBatterSlot(outIsStriker ? 'striker' : 'nonStriker');
+      setPickBatterOpen(true);
+
+      const ended = kind === 'RETIRED_OUT' && nextLive.totalWickets >= match!.rules.playersPerSide - 1;
+      if (ended) {
+        const step = await closeAndAdvance(match!.id, innings.id);
+        if (step.kind === 'COMPLETED') router.replace(`/match/${match!.id}/scorecard`);
+        else if (step.kind === 'NEXT_INNINGS' && step.next) {
+          await startNextInnings(match!.id, step.next);
+          loadFromDb();
+        }
+      }
+    },
+    [innings, live, loadFromDb, match, router],
+  );
+
   const onPadAction = useCallback(
     async (a: PadAction) => {
       if (!live?.strikerId || !live?.nonStrikerId || !live?.bowlerId) {
@@ -386,13 +492,21 @@ export default function ScoreScreen() {
             onPress: async () => {
               await deleteLastBall(innings.id);
               const ballList = await listBalls(innings.id);
-              const state = deriveStateFromBalls(ballList);
+              const adjustmentList = await listScoreAdjustments(innings.id);
+              const retirementList = await listBatterRetirements(innings.id);
+              const state = deriveStateFromBalls(
+                ballList,
+                totalAdjustmentRuns(adjustmentList),
+                totalRetiredOuts(retirementList),
+              );
               await updateInningsTotals(innings.id, {
                 runs: state.totalRuns,
                 wickets: state.totalWickets,
                 balls: state.legalBalls,
               });
               setBalls(ballList);
+              setAdjustments(adjustmentList);
+              setRetirements(retirementList);
               setLive(state);
               if (!state.bowlerId) setBowlerOpen(true);
             },
@@ -498,6 +612,8 @@ export default function ScoreScreen() {
           onPress={() =>
             Alert.alert('Match options', undefined, [
               { text: 'End innings', onPress: endInningsEarly },
+              { text: 'Penalty / bonus runs', onPress: () => setAdjustmentOpen(true) },
+              { text: 'Retired hurt / out', onPress: () => setRetirementOpen(true) },
               { text: 'Abandon match', style: 'destructive', onPress: abandonMatch },
               { text: 'View scorecard', onPress: () => router.push(`/match/${match.id}/scorecard`) },
               { text: 'Cancel', style: 'cancel' },
@@ -571,11 +687,22 @@ export default function ScoreScreen() {
 
           <GesturePad onAction={onPadAction} />
 
+          {adjustments.length > 0 && (
+            <Text variant="caption" tone="dim" style={{ textAlign: 'center' }}>
+              Adjustments +{totalAdjustmentRuns(adjustments)}
+            </Text>
+          )}
+
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
             <Button title="Wide" variant="secondary" size="sm" onPress={() => recordBall({ runs: 0, extra: 'WIDE', isWicket: false })} style={{ flex: 1 }} />
             <Button title="No ball" variant="secondary" size="sm" onPress={() => recordBall({ runs: 0, extra: 'NO_BALL', isWicket: false })} style={{ flex: 1 }} />
             <Button title="Bye" variant="secondary" size="sm" onPress={() => setExtraOpen(true)} style={{ flex: 1 }} />
             <Button title="Undo" variant="ghost" size="sm" onPress={() => onPadAction({ kind: 'UNDO' })} style={{ flex: 1 }} />
+          </View>
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <Button title="Penalty" variant="secondary" size="sm" onPress={() => setAdjustmentOpen(true)} style={{ flex: 1 }} />
+            <Button title="Retire" variant="secondary" size="sm" onPress={() => setRetirementOpen(true)} style={{ flex: 1 }} />
+            <Button title="End innings" variant="danger" size="sm" onPress={endInningsEarly} style={{ flex: 1 }} />
           </View>
         </View>
       </ScrollView>
@@ -614,7 +741,8 @@ export default function ScoreScreen() {
           p =>
             p.userId !== live.strikerId &&
             p.userId !== live.nonStrikerId &&
-            !balls.some(b => b.isWicket && b.dismissal?.outPlayerId === p.userId),
+            !balls.some(b => b.isWicket && b.dismissal?.outPlayerId === p.userId) &&
+            !retirements.some(r => r.playerId === p.userId),
         )}
         currentIds={[]}
         slots={['Batter']}
@@ -643,6 +771,26 @@ export default function ScoreScreen() {
         }}
       />
 
+      <ScoreAdjustmentSheet
+        visible={adjustmentOpen}
+        onClose={() => setAdjustmentOpen(false)}
+        onConfirm={async ({ kind, runs }) => {
+          setAdjustmentOpen(false);
+          await recordScoreAdjustment(kind, runs);
+        }}
+      />
+
+      <RetirementSheet
+        visible={retirementOpen}
+        onClose={() => setRetirementOpen(false)}
+        striker={striker?.name ?? '?'}
+        nonStriker={nonStriker?.name ?? '?'}
+        onConfirm={async ({ kind, outIsStriker }) => {
+          setRetirementOpen(false);
+          await recordRetirement(kind, outIsStriker);
+        }}
+      />
+
       <ExtrasSheet
         visible={extraOpen}
         onClose={() => setExtraOpen(false)}
@@ -653,6 +801,14 @@ export default function ScoreScreen() {
       />
     </Screen>
   );
+}
+
+function totalAdjustmentRuns(items: ScoreAdjustment[]): number {
+  return items.reduce((sum, item) => sum + item.runs, 0);
+}
+
+function totalRetiredOuts(items: BatterRetirement[]): number {
+  return items.filter(item => item.kind === 'RETIRED_OUT').length;
 }
 
 function PlayerLine({
@@ -797,7 +953,7 @@ function WicketSheet({
 
           <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>HOW OUT?</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg }}>
-            {(['BOWLED', 'CAUGHT', 'LBW', 'RUN_OUT', 'STUMPED'] as DismissalKind[]).map(k => (
+            {(['BOWLED', 'CAUGHT', 'LBW', 'RUN_OUT', 'STUMPED', 'HIT_WICKET', 'RETIRED_OUT'] as DismissalKind[]).map(k => (
               <Pressable key={k} onPress={() => setKind(k)} style={[styles.chip, kind === k && styles.chipActive]}>
                 <Text variant="bodyStrong" style={kind === k ? { color: colors.accentInk } : undefined}>
                   {labelFor(k)}
@@ -828,7 +984,101 @@ function WicketSheet({
 }
 
 function labelFor(k: DismissalKind) {
-  return { BOWLED: 'Bowled', CAUGHT: 'Caught', LBW: 'LBW', RUN_OUT: 'Run out', STUMPED: 'Stumped', HIT_WICKET: 'Hit wicket', RETIRED: 'Retired' }[k];
+  return { BOWLED: 'Bowled', CAUGHT: 'Caught', LBW: 'LBW', RUN_OUT: 'Run out', STUMPED: 'Stumped', HIT_WICKET: 'Hit wicket', RETIRED_OUT: 'Retired out' }[k];
+}
+
+function ScoreAdjustmentSheet({
+  visible, onClose, onConfirm,
+}: {
+  visible: boolean; onClose: () => void;
+  onConfirm: (e: { kind: ScoreAdjustmentKind; runs: number }) => void;
+}) {
+  const [kind, setKind] = useState<ScoreAdjustmentKind>('PENALTY');
+  const [runs, setRuns] = useState(5);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalSheet}>
+          <View style={styles.sheetHeader}>
+            <Text variant="h2">Penalty / bonus</Text>
+            <Pressable onPress={onClose}>
+              <MaterialCommunityIcons name="close" size={24} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>TYPE</Text>
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
+            {(['PENALTY', 'BONUS'] as const).map(k => (
+              <Pressable key={k} onPress={() => setKind(k)} style={[styles.chip, kind === k && styles.chipActive]}>
+                <Text variant="bodyStrong" style={kind === k ? { color: colors.accentInk } : undefined}>
+                  {k === 'PENALTY' ? 'Penalty' : 'Bonus'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>RUNS</Text>
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
+            {[1, 2, 3, 4, 5, 6].map(r => (
+              <Pressable key={r} onPress={() => setRuns(r)} style={[styles.runChip, runs === r && styles.runChipActive]}>
+                <Text variant="bodyStrong" style={runs === r ? { color: colors.accentInk } : undefined}>{r}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Button title="Add runs" onPress={() => onConfirm({ kind, runs })} fullWidth size="lg" />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function RetirementSheet({
+  visible, onClose, striker, nonStriker, onConfirm,
+}: {
+  visible: boolean; onClose: () => void; striker: string; nonStriker: string;
+  onConfirm: (e: { kind: 'RETIRED_HURT' | 'RETIRED_OUT'; outIsStriker: boolean }) => void;
+}) {
+  const [kind, setKind] = useState<'RETIRED_HURT' | 'RETIRED_OUT'>('RETIRED_HURT');
+  const [outIsStriker, setOutIsStriker] = useState(true);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalSheet}>
+          <View style={styles.sheetHeader}>
+            <Text variant="h2">Retire batter</Text>
+            <Pressable onPress={onClose}>
+              <MaterialCommunityIcons name="close" size={24} color={colors.text} />
+            </Pressable>
+          </View>
+
+          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>TYPE</Text>
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
+            <Pressable onPress={() => setKind('RETIRED_HURT')} style={[styles.chip, { flex: 1 }, kind === 'RETIRED_HURT' && styles.chipActive]}>
+              <Text variant="bodyStrong" style={kind === 'RETIRED_HURT' ? { color: colors.accentInk } : undefined}>Retired hurt</Text>
+            </Pressable>
+            <Pressable onPress={() => setKind('RETIRED_OUT')} style={[styles.chip, { flex: 1 }, kind === 'RETIRED_OUT' && styles.chipActive]}>
+              <Text variant="bodyStrong" style={kind === 'RETIRED_OUT' ? { color: colors.accentInk } : undefined}>Retired out</Text>
+            </Pressable>
+          </View>
+
+          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>WHO?</Text>
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
+            <Pressable onPress={() => setOutIsStriker(true)} style={[styles.chip, { flex: 1 }, outIsStriker && styles.chipActive]}>
+              <Text variant="bodyStrong" style={outIsStriker ? { color: colors.accentInk } : undefined}>{striker}</Text>
+            </Pressable>
+            <Pressable onPress={() => setOutIsStriker(false)} style={[styles.chip, { flex: 1 }, !outIsStriker && styles.chipActive]}>
+              <Text variant="bodyStrong" style={!outIsStriker ? { color: colors.accentInk } : undefined}>{nonStriker}</Text>
+            </Pressable>
+          </View>
+
+          <Button title="Confirm retirement" onPress={() => onConfirm({ kind, outIsStriker })} fullWidth size="lg" />
+        </View>
+      </View>
+    </Modal>
+  );
 }
 
 function ExtrasSheet({
