@@ -1,0 +1,31 @@
+{
+  "cli": {
+    "version": ">= 20.5.1",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "development"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "preview"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "env": {
+        "APP_ENV": "production"
+      }
+    }
+  }
+}

@@ -42,7 +42,7 @@ import {
   listBatterRetirements,
   MatchXIPlayer,
 } from '@/lib/db/repo';
-import { closeAndAdvance, startNextInnings } from '@/lib/domain/innings-flow';
+import { closeAndAdvance, startNextInnings } from '@/lib/app/innings-flow';
 import {
   Ball,
   BatterRetirement,

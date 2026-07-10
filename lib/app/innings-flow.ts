@@ -6,7 +6,7 @@ import {
   setMatchResult,
   setMatchStatus,
 } from '../db/repo';
-import { FormatRules, Innings, Match, MatchResult } from './types';
+import { FormatRules, Innings, Match, MatchResult } from '../domain/types';
 
 /**
  * Determine what should happen next once an innings is closed.

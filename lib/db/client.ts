@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
+import { runMigrations } from './schema';
 
 const DB_NAME = 'wricket.db';
 
@@ -9,12 +9,7 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (_db) return _db;
   const db = await SQLite.openDatabaseAsync(DB_NAME);
   await db.execAsync('PRAGMA foreign_keys = ON;');
-  await db.execAsync(SCHEMA_SQL);
-  await db.runAsync(
-    'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)',
-    'schema_version',
-    String(SCHEMA_VERSION),
-  );
+  await runMigrations(db);
   _db = db;
   return db;
 }
@@ -32,9 +27,10 @@ export async function resetDb(): Promise<void> {
     DROP TABLE IF EXISTS teams;
     DROP TABLE IF EXISTS tournaments;
     DROP TABLE IF EXISTS users;
+    DROP TABLE IF EXISTS schema_migrations;
     DROP TABLE IF EXISTS meta;
   `);
-  await db.execAsync(SCHEMA_SQL);
+  await runMigrations(db);
 }
 
 export function newId(): string {

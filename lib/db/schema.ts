@@ -1,9 +1,19 @@
-export const SCHEMA_VERSION = 1;
+export interface SqlMigration {
+  version: number;
+  name: string;
+  sql: string;
+}
 
-export const SCHEMA_SQL = `
+const INITIAL_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  applied_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -143,3 +153,55 @@ CREATE INDEX IF NOT EXISTS idx_innings_match ON innings(match_id);
 CREATE INDEX IF NOT EXISTS idx_matches_tournament ON matches(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_teams_tournament ON teams(tournament_id);
 `;
+
+export const MIGRATIONS: SqlMigration[] = [
+  {
+    version: 1,
+    name: 'initial_local_schema',
+    sql: INITIAL_SCHEMA_SQL,
+  },
+];
+
+export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
+export const SCHEMA_SQL = MIGRATIONS.map((migration) => migration.sql).join('\n');
+
+export function getPendingMigrations(appliedVersion: number): SqlMigration[] {
+  return MIGRATIONS.filter((migration) => migration.version > appliedVersion);
+}
+
+export interface MigrationDatabase {
+  execAsync(sql: string): Promise<void>;
+  runAsync(sql: string, ...params: unknown[]): Promise<unknown>;
+  getFirstAsync<T>(sql: string, ...params: unknown[]): Promise<T | null>;
+}
+
+export async function runMigrations(db: MigrationDatabase): Promise<void> {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at INTEGER NOT NULL
+    );
+  `);
+
+  const row = await db.getFirstAsync<{ version: number | null }>(
+    'SELECT MAX(version) AS version FROM schema_migrations',
+  );
+  const appliedVersion = row?.version ?? 0;
+
+  for (const migration of getPendingMigrations(appliedVersion)) {
+    await db.execAsync(migration.sql);
+    await db.runAsync(
+      'INSERT OR REPLACE INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)',
+      migration.version,
+      migration.name,
+      Date.now(),
+    );
+  }
+
+  await db.runAsync(
+    'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)',
+    'schema_version',
+    String(SCHEMA_VERSION),
+  );
+}

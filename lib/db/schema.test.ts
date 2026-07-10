@@ -1,0 +1,20 @@
+import { describe, expect, it } from 'vitest';
+
+import { getPendingMigrations, MIGRATIONS, SCHEMA_SQL, SCHEMA_VERSION } from './schema';
+
+describe('schema migrations', () => {
+  it('keeps schema version aligned with the latest migration', () => {
+    expect(SCHEMA_VERSION).toBe(MIGRATIONS[MIGRATIONS.length - 1].version);
+  });
+
+  it('returns migrations after the applied version', () => {
+    expect(getPendingMigrations(0).map((migration) => migration.version)).toEqual([1]);
+    expect(getPendingMigrations(SCHEMA_VERSION)).toEqual([]);
+  });
+
+  it('contains migration tracking and core scoring tables', () => {
+    expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS schema_migrations');
+    expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS balls');
+    expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS innings');
+  });
+});

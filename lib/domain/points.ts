@@ -1,8 +1,4 @@
-import {
-  getTournament,
-  listMatches,
-  listInningsForMatch,
-} from '../db/repo';
+import { Innings, Match, Tournament } from './types';
 
 export interface PointsRow {
   teamId: string;
@@ -19,16 +15,11 @@ export interface PointsRow {
   nrr: number;
 }
 
-/**
- * Computes the points table for a tournament.
- * NRR = (runsFor / oversFor) - (runsAgainst / oversAgainst).
- * Note: for Turf Test (2 innings/team), we sum both innings totals.
- */
-export async function computePointsTable(tournamentId: string): Promise<PointsRow[]> {
-  const tournament = await getTournament(tournamentId);
-  if (!tournament) return [];
-
-  const matches = await listMatches(tournamentId);
+export function computePointsTableFromData(
+  tournament: Tournament,
+  matches: Match[],
+  inningsByMatch: Map<string, Innings[]>,
+): PointsRow[] {
   const rows = new Map<string, PointsRow>();
 
   const ensure = (teamId: string): PointsRow => {
@@ -61,7 +52,7 @@ export async function computePointsTable(tournamentId: string): Promise<PointsRo
     b.played += 1;
 
     // Track runs/overs for NRR
-    const innings = await listInningsForMatch(m.id);
+    const innings = inningsByMatch.get(m.id) ?? [];
     for (const inn of innings) {
       const overs = inn.totalBalls / 6;
       const forTeam = ensure(inn.battingTeamId);

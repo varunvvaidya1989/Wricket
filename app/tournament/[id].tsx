@@ -16,7 +16,7 @@ import {
   listMatches,
 } from '@/lib/db/repo';
 import { Tournament, Team, Match, FORMAT_LABEL } from '@/lib/domain/types';
-import { computePointsTable, PointsRow } from '@/lib/domain/points';
+import { computePointsTable, PointsRow } from '@/lib/app/points';
 
 type Tab = 'fixtures' | 'table' | 'teams';
 
