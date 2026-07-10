@@ -9,6 +9,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "supabase": "supabase",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -51,6 +52,7 @@
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "supabase": "^2.109.1",
     "typescript": "~5.9.2",
     "vitest": "^4.1.10"
   },
