@@ -2,10 +2,13 @@ const fs = require('fs');
 const path = require('path');
 
 const root = process.cwd();
-const domainRoot = path.join(root, 'lib', 'domain');
+const domainRoots = [
+  path.join(root, 'lib', 'wricket', 'domain'),
+].filter((dir) => fs.existsSync(dir));
 const forbiddenPatterns = [
   /from\s+['"]\.\.\/db\//,
-  /from\s+['"]@\/lib\/db\//,
+  /from\s+['"]@\/lib\/(?:[^/]+\/)?db\//,
+  /from\s+['"]@\/lib\/[^/]+\/db\//,
   /from\s+['"]expo(?:-|['"])/,
   /from\s+['"]react(?:\/|['"])/,
   /from\s+['"]react-native(?:\/|['"])/,
@@ -21,12 +24,19 @@ function walk(dir) {
 }
 
 const violations = [];
-for (const file of walk(domainRoot)) {
-  const source = fs.readFileSync(file, 'utf8');
-  for (const pattern of forbiddenPatterns) {
-    if (pattern.test(source)) {
-      violations.push(path.relative(root, file));
-      break;
+if (domainRoots.length === 0) {
+  console.error('No domain roots found for architecture check.');
+  process.exit(1);
+}
+
+for (const domainRoot of domainRoots) {
+  for (const file of walk(domainRoot)) {
+    const source = fs.readFileSync(file, 'utf8');
+    for (const pattern of forbiddenPatterns) {
+      if (pattern.test(source)) {
+        violations.push(path.relative(root, file));
+        break;
+      }
     }
   }
 }

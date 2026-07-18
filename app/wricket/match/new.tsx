@@ -26,8 +26,8 @@ import {
   addPlayerToTeam,
   createInnings,
   setMatchStatus,
-} from '@/lib/db/repo';
-import { Team, User, MatchFormat, FORMAT_LABEL, DEFAULT_RULES, TossChoice } from '@/lib/domain/types';
+} from '@/lib/wricket/db/repo';
+import { Team, User, MatchFormat, FORMAT_LABEL, DEFAULT_RULES, TossChoice } from '@/lib/wricket/domain/types';
 
 type Step = 'teams' | 'players' | 'toss' | 'review';
 
@@ -75,7 +75,7 @@ export default function NewMatchScreen() {
 
   const canProceedTeams = teamAId && teamBId && teamAId !== teamBId;
   const canProceedPlayers =
-    playersA.length >= 2 && playersB.length >= 2; // pragmatic minimum for testing
+    playersA.length >= rules.playersPerSide && playersB.length >= rules.playersPerSide;
   const canProceedToss = !!tossWinnerId;
 
   const onStart = async () => {
@@ -126,7 +126,10 @@ export default function NewMatchScreen() {
       });
       await setMatchStatus(match.id, 'IN_PROGRESS');
 
-      router.replace(`/match/${match.id}/score`);
+      router.replace({
+        pathname: '/wricket/match/[id]/score',
+        params: { id: match.id },
+      });
     } catch (e: any) {
       Alert.alert('Could not start match', String(e?.message ?? e));
     } finally {
@@ -206,7 +209,10 @@ export default function NewMatchScreen() {
                   return;
                 }
                 if (step === 'players' && !canProceedPlayers) {
-                  Alert.alert('Add players', 'Each team needs at least 2 players to start.');
+                  Alert.alert(
+                    'Add players',
+                    `Each team needs ${rules.playersPerSide} players for ${FORMAT_LABEL[format]}.`,
+                  );
                   return;
                 }
                 if (step === 'toss' && !canProceedToss) {

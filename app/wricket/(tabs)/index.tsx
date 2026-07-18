@@ -8,8 +8,8 @@ import { Text } from '@/components/ui/Text';
 import { Card } from '@/components/ui/Card';
 import { colors } from '@/lib/theme/colors';
 import { spacing, radius } from '@/lib/theme/spacing';
-import { listTournaments } from '@/lib/db/repo';
-import { Tournament, FORMAT_LABEL } from '@/lib/domain/types';
+import { listTournaments } from '@/lib/wricket/db/repo';
+import { Tournament, FORMAT_LABEL } from '@/lib/wricket/domain/types';
 
 export default function TournamentsScreen() {
   const router = useRouter();
@@ -45,14 +45,14 @@ export default function TournamentsScreen() {
         </View>
         <Pressable
           style={styles.fab}
-          onPress={() => router.push('/tournament/new')}
+          onPress={() => router.push('/wricket/tournament/new')}
         >
           <MaterialCommunityIcons name="plus" size={24} color={colors.accentInk} />
         </Pressable>
       </View>
 
       {loading ? null : tournaments.length === 0 ? (
-        <EmptyState onCreate={() => router.push('/tournament/new')} />
+        <EmptyState onCreate={() => router.push('/wricket/tournament/new')} />
       ) : (
         <FlatList
           data={[...active, ...completed]}
@@ -63,7 +63,14 @@ export default function TournamentsScreen() {
           }}
           ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
           renderItem={({ item }) => (
-            <Card onPress={() => router.push(`/tournament/${item.id}`)}>
+            <Card
+              onPress={() =>
+                router.push({
+                  pathname: '/wricket/tournament/[id]',
+                  params: { id: item.id },
+                })
+              }
+            >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
                 <View style={styles.iconBubble}>
                   <MaterialCommunityIcons name="trophy" size={20} color={colors.accent} />

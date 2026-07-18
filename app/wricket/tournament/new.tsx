@@ -7,8 +7,8 @@ import { Text } from '@/components/ui/Text';
 import { Button } from '@/components/ui/Button';
 import { colors } from '@/lib/theme/colors';
 import { spacing, radius } from '@/lib/theme/spacing';
-import { createTournament } from '@/lib/db/repo';
-import { MatchFormat, FORMAT_LABEL } from '@/lib/domain/types';
+import { createTournament } from '@/lib/wricket/db/repo';
+import { MatchFormat, FORMAT_LABEL } from '@/lib/wricket/domain/types';
 
 const FORMATS: MatchFormat[] = ['BOX', 'TURF', 'TURF_TEST'];
 
@@ -30,7 +30,10 @@ export default function NewTournamentScreen() {
         format,
         startDate: Date.now(),
       });
-      router.replace(`/tournament/${t.id}`);
+      router.replace({
+        pathname: '/wricket/tournament/[id]',
+        params: { id: t.id },
+      });
     } finally {
       setSaving(false);
     }

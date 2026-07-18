@@ -16,10 +16,10 @@ import {
   listScoreAdjustments,
   listBatterRetirements,
   MatchXIPlayer,
-} from '@/lib/db/repo';
-import { Ball, BatterRetirement, Innings, Match, ScoreAdjustment, Team } from '@/lib/domain/types';
-import { batsmanLineFor, bowlerLineFor } from '@/lib/domain/stats';
-import { formatOver } from '@/lib/domain/scoring';
+} from '@/lib/wricket/db/repo';
+import { Ball, BatterRetirement, Innings, Match, ScoreAdjustment, Team } from '@/lib/wricket/domain/types';
+import { batsmanLineFor, bowlerLineFor } from '@/lib/wricket/domain/stats';
+import { formatOver } from '@/lib/wricket/domain/scoring';
 
 interface InningsView {
   innings: Innings;

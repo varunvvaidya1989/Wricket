@@ -5,14 +5,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
-import { AnimatedSplashScreen } from '@/components/AnimatedSplashScreen';
 import { colors } from '@/lib/theme/colors';
 
 export const unstable_settings = {
-  anchor: '(tabs)',
+  anchor: 'index',
 };
 
-const wricketTheme = {
+const sportStageTheme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
@@ -28,7 +27,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider>
-        <ThemeProvider value={wricketTheme}>
+        <ThemeProvider value={sportStageTheme}>
           <Stack
             screenOptions={{
               contentStyle: { backgroundColor: colors.bg },
@@ -37,34 +36,10 @@ export default function RootLayout() {
               headerTitleStyle: { fontWeight: '700' },
             }}
           >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="tournament/new"
-              options={{ presentation: 'modal', title: 'New Tournament' }}
-            />
-            <Stack.Screen
-              name="tournament/[id]"
-              options={{ title: '' }}
-            />
-            <Stack.Screen
-              name="match/new"
-              options={{ presentation: 'modal', title: 'New Match' }}
-            />
-            <Stack.Screen
-              name="match/[id]/score"
-              options={{ headerShown: false, gestureEnabled: false }}
-            />
-            <Stack.Screen
-              name="match/[id]/scorecard"
-              options={{ title: 'Scorecard' }}
-            />
-            <Stack.Screen
-              name="player/[id]"
-              options={{ title: '' }}
-            />
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="wricket" options={{ headerShown: false }} />
           </Stack>
           <StatusBar style="light" />
-          <AnimatedSplashScreen />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

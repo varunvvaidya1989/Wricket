@@ -14,9 +14,9 @@ import {
   listTeams,
   createTeam,
   listMatches,
-} from '@/lib/db/repo';
-import { Tournament, Team, Match, FORMAT_LABEL } from '@/lib/domain/types';
-import { computePointsTable, PointsRow } from '@/lib/app/points';
+} from '@/lib/wricket/db/repo';
+import { Tournament, Team, Match, FORMAT_LABEL } from '@/lib/wricket/domain/types';
+import { computePointsTable, PointsRow } from '@/lib/wricket/app/points';
 
 type Tab = 'fixtures' | 'table' | 'teams';
 
@@ -77,7 +77,7 @@ export default function TournamentDetailScreen() {
             matches={matches}
             teams={teams}
             tournament={tournament}
-            onNew={() => router.push({ pathname: '/match/new', params: { tournamentId: tournament.id } })}
+            onNew={() => router.push({ pathname: '/wricket/match/new', params: { tournamentId: tournament.id } })}
           />
         )}
         {tab === 'table' && <PointsTableView rows={points} teams={teams} />}
@@ -154,9 +154,12 @@ function FixturesView({
         return (
           <Card
             onPress={() =>
-              router.push(
-                isCompleted ? `/match/${item.id}/scorecard` : `/match/${item.id}/score`,
-              )
+              router.push({
+                pathname: isCompleted
+                  ? '/wricket/match/[id]/scorecard'
+                  : '/wricket/match/[id]/score',
+                params: { id: item.id },
+              })
             }
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>

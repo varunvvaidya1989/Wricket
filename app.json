@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Wricket",
-    "slug": "wricket",
+    "name": "SportStage",
+    "slug": "sportstage",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "wricket",
+    "scheme": "sportstage",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
@@ -30,7 +30,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/sportstage-splash.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#0E1014",

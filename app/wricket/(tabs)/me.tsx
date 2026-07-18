@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { Screen } from '@/components/ui/Screen';
@@ -9,6 +10,8 @@ import { colors } from '@/lib/theme/colors';
 import { spacing } from '@/lib/theme/spacing';
 
 export default function MeScreen() {
+  const router = useRouter();
+
   return (
     <Screen padded={false}>
       <View style={styles.header}>
@@ -36,6 +39,16 @@ export default function MeScreen() {
               <MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} />
             </View>
             <Text variant="bodyStrong" style={{ flex: 1 }}>Settings</Text>
+            <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} />
+          </View>
+        </Card>
+
+        <Card onPress={() => router.push('/')}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+            <View style={styles.iconBubble}>
+              <MaterialCommunityIcons name="apps" size={22} color={colors.accent} />
+            </View>
+            <Text variant="bodyStrong" style={{ flex: 1 }}>SportStage apps</Text>
             <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} />
           </View>
         </Card>

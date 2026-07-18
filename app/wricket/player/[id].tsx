@@ -8,8 +8,8 @@ import { Text } from '@/components/ui/Text';
 import { Card } from '@/components/ui/Card';
 import { colors } from '@/lib/theme/colors';
 import { spacing } from '@/lib/theme/spacing';
-import { getUser } from '@/lib/db/repo';
-import { User } from '@/lib/domain/types';
+import { getUser } from '@/lib/wricket/db/repo';
+import { User } from '@/lib/wricket/domain/types';
 
 export default function PlayerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

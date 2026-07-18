@@ -24,7 +24,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { GesturePad, PadAction } from '@/components/scoring/GesturePad';
+import { GesturePad, PadAction } from '@/components/wricket/scoring/GesturePad';
 import { colors, palette } from '@/lib/theme/colors';
 import { spacing, radius } from '@/lib/theme/spacing';
 import {
@@ -41,8 +41,8 @@ import {
   insertBatterRetirement,
   listBatterRetirements,
   MatchXIPlayer,
-} from '@/lib/db/repo';
-import { closeAndAdvance, startNextInnings } from '@/lib/app/innings-flow';
+} from '@/lib/wricket/db/repo';
+import { closeAndAdvance, startNextInnings } from '@/lib/wricket/app/innings-flow';
 import {
   Ball,
   BatterRetirement,
@@ -53,9 +53,9 @@ import {
   ScoreAdjustment,
   ScoreAdjustmentKind,
   Team,
-} from '@/lib/domain/types';
-import { applyBall, formatOver, isInningsOver, runRate } from '@/lib/domain/scoring';
-import { ballSymbol, batsmanLineFor, bowlerLineFor } from '@/lib/domain/stats';
+} from '@/lib/wricket/domain/types';
+import { applyBall, formatOver, isInningsOver, runRate } from '@/lib/wricket/domain/scoring';
+import { ballSymbol, batsmanLineFor, bowlerLineFor } from '@/lib/wricket/domain/stats';
 
 interface LiveState {
   totalRuns: number;
@@ -175,7 +175,10 @@ export default function ScoreScreen() {
     const innList = await listInningsForMatch(m.id);
     const open = innList.find(i => !i.isClosed);
     if (!open) {
-      router.replace(`/match/${m.id}/scorecard`);
+      router.replace({
+        pathname: '/wricket/match/[id]/scorecard',
+        params: { id: m.id },
+      });
       return;
     }
     setInnings(open);
@@ -313,7 +316,10 @@ export default function ScoreScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         const step = await closeAndAdvance(match!.id, innings.id);
         if (step.kind === 'COMPLETED') {
-          router.replace(`/match/${match!.id}/scorecard`);
+          router.replace({
+            pathname: '/wricket/match/[id]/scorecard',
+            params: { id: match!.id },
+          });
           return;
         }
         if (step.kind === 'FOLLOW_ON_DECISION') {
@@ -355,9 +361,19 @@ export default function ScoreScreen() {
       }
 
       // Wicket → pick next batter
+      const overJustEnded = result.next.overNo > live.overNo;
       if (event.isWicket) {
         const outId = event.outPlayerId ?? live.strikerId;
-        if (outId === live.strikerId) {
+        if (overJustEnded) {
+          nextLive.bowlerId = null;
+        }
+        if (outId === nextLive.strikerId) {
+          setPendingNewBatterSlot('striker');
+          nextLive.strikerId = null;
+        } else if (outId === nextLive.nonStrikerId) {
+          setPendingNewBatterSlot('nonStriker');
+          nextLive.nonStrikerId = null;
+        } else if (outId === live.strikerId) {
           setPendingNewBatterSlot('striker');
           nextLive.strikerId = null;
         } else {
@@ -369,8 +385,7 @@ export default function ScoreScreen() {
         return;
       }
 
-      // End of over → prompt new bowler (bowlerId already null from applyBall)
-      const overJustEnded = result.next.overNo > live.overNo;
+      // End of over -> prompt new bowler.
       if (overJustEnded) {
         nextLive.bowlerId = null;
         setLive(nextLive);
@@ -418,7 +433,12 @@ export default function ScoreScreen() {
       );
       if (ended) {
         const step = await closeAndAdvance(match!.id, innings.id);
-        if (step.kind === 'COMPLETED') router.replace(`/match/${match!.id}/scorecard`);
+        if (step.kind === 'COMPLETED') {
+          router.replace({
+            pathname: '/wricket/match/[id]/scorecard',
+            params: { id: match!.id },
+          });
+        }
         else if (step.kind === 'NEXT_INNINGS' && step.next) {
           await startNextInnings(match!.id, step.next);
           loadFromDb();
@@ -456,7 +476,12 @@ export default function ScoreScreen() {
       const ended = kind === 'RETIRED_OUT' && nextLive.totalWickets >= match!.rules.playersPerSide - 1;
       if (ended) {
         const step = await closeAndAdvance(match!.id, innings.id);
-        if (step.kind === 'COMPLETED') router.replace(`/match/${match!.id}/scorecard`);
+        if (step.kind === 'COMPLETED') {
+          router.replace({
+            pathname: '/wricket/match/[id]/scorecard',
+            params: { id: match!.id },
+          });
+        }
         else if (step.kind === 'NEXT_INNINGS' && step.next) {
           await startNextInnings(match!.id, step.next);
           loadFromDb();
@@ -528,7 +553,10 @@ export default function ScoreScreen() {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           const step = await closeAndAdvance(match.id, innings.id);
           if (step.kind === 'COMPLETED') {
-            router.replace(`/match/${match.id}/scorecard`);
+            router.replace({
+              pathname: '/wricket/match/[id]/scorecard',
+              params: { id: match.id },
+            });
           } else if (step.kind === 'FOLLOW_ON_DECISION') {
             Alert.alert('Follow-on', 'Trail exceeds threshold. Enforce follow-on?', [
               {
@@ -575,9 +603,12 @@ export default function ScoreScreen() {
         text: 'Abandon',
         style: 'destructive',
         onPress: async () => {
-          const { setMatchResult } = await import('@/lib/db/repo');
+          const { setMatchResult } = await import('@/lib/wricket/db/repo');
           await setMatchResult(match.id, { kind: 'NO_RESULT' });
-          router.replace(`/match/${match.id}/scorecard`);
+          router.replace({
+            pathname: '/wricket/match/[id]/scorecard',
+            params: { id: match.id },
+          });
         },
       },
     ]);
@@ -615,7 +646,14 @@ export default function ScoreScreen() {
               { text: 'Penalty / bonus runs', onPress: () => setAdjustmentOpen(true) },
               { text: 'Retired hurt / out', onPress: () => setRetirementOpen(true) },
               { text: 'Abandon match', style: 'destructive', onPress: abandonMatch },
-              { text: 'View scorecard', onPress: () => router.push(`/match/${match.id}/scorecard`) },
+              {
+                text: 'View scorecard',
+                onPress: () =>
+                  router.push({
+                    pathname: '/wricket/match/[id]/scorecard',
+                    params: { id: match.id },
+                  }),
+              },
               { text: 'Cancel', style: 'cancel' },
             ])
           }
@@ -756,6 +794,7 @@ export default function ScoreScreen() {
             return prev;
           });
           setPendingNewBatterSlot(null);
+          if (!live.bowlerId) setTimeout(() => setBowlerOpen(true), 350);
         }}
       />
 

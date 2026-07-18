@@ -9,8 +9,8 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { colors, palette } from '@/lib/theme/colors';
 import { spacing, radius } from '@/lib/theme/spacing';
-import { listLiveMatches, getTeam } from '@/lib/db/repo';
-import { Match, FORMAT_LABEL } from '@/lib/domain/types';
+import { listLiveMatches, getTeam } from '@/lib/wricket/db/repo';
+import { Match, FORMAT_LABEL } from '@/lib/wricket/domain/types';
 
 interface LiveMatchView {
   match: Match;
@@ -60,7 +60,7 @@ export default function LiveScreen() {
       </View>
 
       <View style={styles.content}>
-        <Pressable style={styles.bigCta} onPress={() => router.push('/match/new')}>
+        <Pressable style={styles.bigCta} onPress={() => router.push('/wricket/match/new')}>
           <View style={styles.bigCtaIcon}>
             <MaterialCommunityIcons name="plus" size={28} color={colors.accentInk} />
           </View>
@@ -82,7 +82,14 @@ export default function LiveScreen() {
               keyExtractor={m => m.match.id}
               ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
               renderItem={({ item }) => (
-                <Card onPress={() => router.push(`/match/${item.match.id}/score`)}>
+                <Card
+                  onPress={() =>
+                    router.push({
+                      pathname: '/wricket/match/[id]/score',
+                      params: { id: item.match.id },
+                    })
+                  }
+                >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
                     <View style={styles.liveDot} />
                     <View style={{ flex: 1 }}>
@@ -93,7 +100,16 @@ export default function LiveScreen() {
                         {FORMAT_LABEL[item.match.format]}
                       </Text>
                     </View>
-                    <Button title="Score" size="sm" onPress={() => router.push(`/match/${item.match.id}/score`)} />
+                    <Button
+                      title="Score"
+                      size="sm"
+                      onPress={() =>
+                        router.push({
+                          pathname: '/wricket/match/[id]/score',
+                          params: { id: item.match.id },
+                        })
+                      }
+                    />
                   </View>
                 </Card>
               )}
