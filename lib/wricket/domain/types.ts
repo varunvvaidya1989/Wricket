@@ -160,6 +160,21 @@ export interface BatterRetirement {
   createdAt: number;
 }
 
+export type PendingScoringPrompt = 'NEXT_BATTER' | 'NEXT_BOWLER' | 'INNINGS_BREAK' | null;
+
+export interface ScoringSession {
+  matchId: string;
+  inningsId: string;
+  strikerId?: string;
+  nonStrikerId?: string;
+  bowlerId?: string;
+  pendingPrompt: PendingScoringPrompt;
+  pendingPlayerId?: string;
+  completedOver?: number;
+  lastCommittedEventSequence: number;
+  updatedAt: number;
+}
+
 export const DEFAULT_RULES: Record<MatchFormat, FormatRules> = {
   BOX: {
     oversPerInnings: 5,

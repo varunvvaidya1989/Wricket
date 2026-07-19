@@ -154,11 +154,35 @@ CREATE INDEX IF NOT EXISTS idx_matches_tournament ON matches(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_teams_tournament ON teams(tournament_id);
 `;
 
+const SCORING_SESSIONS_SQL = `
+CREATE TABLE IF NOT EXISTS scoring_sessions (
+  match_id TEXT PRIMARY KEY,
+  innings_id TEXT NOT NULL,
+  striker_id TEXT,
+  non_striker_id TEXT,
+  bowler_id TEXT,
+  pending_prompt TEXT,
+  pending_player_id TEXT,
+  completed_over INTEGER,
+  last_committed_event_sequence INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+  FOREIGN KEY (innings_id) REFERENCES innings(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_scoring_sessions_innings ON scoring_sessions(innings_id);
+`;
+
 export const MIGRATIONS: SqlMigration[] = [
   {
     version: 1,
     name: 'initial_local_schema',
     sql: INITIAL_SCHEMA_SQL,
+  },
+  {
+    version: 2,
+    name: 'scoring_sessions',
+    sql: SCORING_SESSIONS_SQL,
   },
 ];
 

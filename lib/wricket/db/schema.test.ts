@@ -8,7 +8,8 @@ describe('schema migrations', () => {
   });
 
   it('returns migrations after the applied version', () => {
-    expect(getPendingMigrations(0).map((migration) => migration.version)).toEqual([1]);
+    expect(getPendingMigrations(0).map((migration) => migration.version)).toEqual([1, 2]);
+    expect(getPendingMigrations(1).map((migration) => migration.version)).toEqual([2]);
     expect(getPendingMigrations(SCHEMA_VERSION)).toEqual([]);
   });
 
@@ -16,5 +17,7 @@ describe('schema migrations', () => {
     expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS schema_migrations');
     expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS balls');
     expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS innings');
+    expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS scoring_sessions');
+    expect(SCHEMA_SQL).toContain('last_committed_event_sequence INTEGER NOT NULL DEFAULT 0');
   });
 });
