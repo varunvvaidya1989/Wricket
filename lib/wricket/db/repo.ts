@@ -1,5 +1,10 @@
 import { getDb, newId } from './client';
 import {
+  clearScoringSessionInDb,
+  getScoringSessionFromDb,
+  saveScoringSessionInDb,
+} from './scoringSessionRepo';
+import {
   Ball,
   BatterRetirement,
   DEFAULT_RULES,
@@ -19,7 +24,16 @@ import {
   RetirementKind,
   ScoreAdjustment,
   ScoreAdjustmentKind,
+  ScoringSession,
 } from '../domain/types';
+
+export {
+  clearScoringSessionInDb,
+  getScoringSessionFromDb,
+  rowToScoringSession,
+  saveScoringSessionInDb,
+  type ScoringSessionDatabase,
+} from './scoringSessionRepo';
 
 // ---------- Users ----------
 
@@ -735,4 +749,23 @@ function rowToBatterRetirement(row: any): BatterRetirement {
     kind: row.kind,
     createdAt: row.created_at,
   };
+}
+
+// ---------- Scoring sessions ----------
+
+export async function saveScoringSession(
+  input: Omit<ScoringSession, 'updatedAt'> & { updatedAt?: number },
+): Promise<ScoringSession> {
+  const db = await getDb();
+  return saveScoringSessionInDb(db, input);
+}
+
+export async function getScoringSession(matchId: string): Promise<ScoringSession | null> {
+  const db = await getDb();
+  return getScoringSessionFromDb(db, matchId);
+}
+
+export async function clearScoringSession(matchId: string): Promise<void> {
+  const db = await getDb();
+  await clearScoringSessionInDb(db, matchId);
 }
