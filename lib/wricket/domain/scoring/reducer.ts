@@ -3,7 +3,6 @@ import type {
   DeliveryEvent,
   DomainEffect,
   DomainResult,
-  InningsClosureReason,
   InningsState,
   ManualCloseEvent,
   RetirementEvent,
@@ -11,6 +10,7 @@ import type {
   ScoringRules,
 } from './events';
 import { isLegalDelivery } from './events';
+import { completionReasonFor, overProgressFor } from './completion';
 import { validateEvent } from './validation';
 
 export interface AppliedScoringEvent {
@@ -55,7 +55,8 @@ export function applyDeliveryEvent(
     [strikerId, nonStrikerId] = [nonStrikerId, strikerId];
   }
 
-  const overComplete = legal && legalBalls % rules.ballsPerOver === 0;
+  const overProgress = overProgressFor(legalBalls, rules.ballsPerOver);
+  const overComplete = legal && overProgress.isComplete;
   if (overComplete) {
     [strikerId, nonStrikerId] = [nonStrikerId, strikerId];
   }
@@ -70,7 +71,7 @@ export function applyDeliveryEvent(
     effects.push({ type: 'SELECT_NEXT_BATTER', replacingPlayerId: event.wicket.outPlayerId });
   }
   if (overComplete && !closureReason) {
-    effects.push({ type: 'SELECT_NEXT_BOWLER', completedOver: legalBalls / rules.ballsPerOver });
+    effects.push({ type: 'SELECT_NEXT_BOWLER', completedOver: overProgress.completedOver! });
   }
   if (closureReason) {
     effects.push({ type: 'INNINGS_CLOSED', reason: closureReason });
@@ -167,13 +168,16 @@ function completionReason(
   totalWickets: number,
   legalBalls: number,
   rules: ScoringRules,
-): InningsClosureReason | undefined {
-  if (totalWickets >= rules.wicketsAvailable) return 'ALL_OUT';
-  if (rules.targetRuns !== undefined && totalRuns >= rules.targetRuns) return 'TARGET_REACHED';
-  if (rules.oversLimit !== undefined && legalBalls >= rules.oversLimit * rules.ballsPerOver) {
-    return 'OVERS_COMPLETE';
-  }
-  return undefined;
+): ReturnType<typeof completionReasonFor> {
+  return completionReasonFor(
+    {
+      totalRuns,
+      totalWickets,
+      legalBalls,
+      isClosed: false,
+    },
+    rules,
+  );
 }
 
 function ok(value: AppliedScoringEvent): DomainResult<AppliedScoringEvent> {
