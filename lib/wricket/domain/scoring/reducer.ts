@@ -49,8 +49,8 @@ export function applyDeliveryEvent(
   const totalWickets = state.totalWickets + (event.wicket ? 1 : 0);
   const physicalRuns = physicalRunsFor(event);
 
-  let strikerId = state.strikerId;
-  let nonStrikerId = state.nonStrikerId;
+  let strikerId: string | undefined = event.strikerId;
+  let nonStrikerId: string | undefined = event.nonStrikerId;
   if (physicalRuns % 2 === 1) {
     [strikerId, nonStrikerId] = [nonStrikerId, strikerId];
   }
@@ -65,6 +65,8 @@ export function applyDeliveryEvent(
   const closureReason = completionReason(totalRuns, totalWickets, legalBalls, rules);
 
   if (event.wicket && !closureReason) {
+    if (event.wicket.outPlayerId === strikerId) strikerId = undefined;
+    if (event.wicket.outPlayerId === nonStrikerId) nonStrikerId = undefined;
     effects.push({ type: 'SELECT_NEXT_BATTER', replacingPlayerId: event.wicket.outPlayerId });
   }
   if (overComplete && !closureReason) {
@@ -82,6 +84,7 @@ export function applyDeliveryEvent(
       legalBalls,
       strikerId,
       nonStrikerId,
+      bowlerId: overComplete && !closureReason ? undefined : event.bowlerId,
       outPlayerIds,
       isClosed: !!closureReason,
       closureReason,

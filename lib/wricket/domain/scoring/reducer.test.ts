@@ -87,6 +87,7 @@ describe('delivery validation and reducer', () => {
       legalBalls: 6,
       strikerId: 'batter-2',
       nonStrikerId: 'batter-1',
+      bowlerId: undefined,
     });
     expect(result.value.effects).toEqual([{ type: 'SELECT_NEXT_BOWLER', completedOver: 1 }]);
   });
@@ -112,6 +113,7 @@ describe('delivery validation and reducer', () => {
       totalWickets: 1,
       legalBalls: 1,
       strikerId: 'batter-2',
+      nonStrikerId: undefined,
       outPlayerIds: ['batter-1'],
     });
     expect(result.value.effects).toEqual([{ type: 'SELECT_NEXT_BATTER', replacingPlayerId: 'batter-1' }]);

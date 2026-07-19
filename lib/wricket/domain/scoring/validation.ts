@@ -54,18 +54,33 @@ function validateDeliveryEvent(
   event: DeliveryEvent,
   rules: ScoringRules,
 ): DomainError | undefined {
-  if (!state.strikerId || !state.nonStrikerId || !state.bowlerId) {
-    return { code: 'INVALID_PLAYER' };
-  }
   if (
-    event.strikerId !== state.strikerId ||
-    event.nonStrikerId !== state.nonStrikerId ||
-    event.bowlerId !== state.bowlerId
+    (state.strikerId && event.strikerId !== state.strikerId) ||
+    (state.nonStrikerId && event.nonStrikerId !== state.nonStrikerId) ||
+    (state.bowlerId && event.bowlerId !== state.bowlerId)
   ) {
     return { code: 'INVALID_PLAYER' };
   }
+  if (event.strikerId === event.nonStrikerId) {
+    return { code: 'INVALID_PLAYER', field: 'nonStrikerId' };
+  }
+  if (event.bowlerId === event.strikerId || event.bowlerId === event.nonStrikerId) {
+    return { code: 'INVALID_PLAYER', field: 'bowlerId' };
+  }
+  if (!state.strikerId && state.nonStrikerId === event.strikerId) {
+    return { code: 'INVALID_PLAYER', field: 'strikerId' };
+  }
+  if (!state.nonStrikerId && state.strikerId === event.nonStrikerId) {
+    return { code: 'INVALID_PLAYER', field: 'nonStrikerId' };
+  }
+  if (!state.bowlerId && (state.strikerId === event.bowlerId || state.nonStrikerId === event.bowlerId)) {
+    return { code: 'INVALID_PLAYER', field: 'bowlerId' };
+  }
   if (state.outPlayerIds.includes(event.strikerId) || state.outPlayerIds.includes(event.nonStrikerId)) {
     return { code: 'BATTER_ALREADY_OUT' };
+  }
+  if (state.retiredPlayerIds.includes(event.strikerId) || state.retiredPlayerIds.includes(event.nonStrikerId)) {
+    return { code: 'INVALID_PLAYER' };
   }
   if (state.totalWickets >= rules.wicketsAvailable) {
     return { code: 'INNINGS_CLOSED' };
@@ -97,6 +112,9 @@ function validateAdjustmentEvent(event: AdjustmentEvent): DomainError | undefine
 function validateRetirementEvent(state: InningsState, event: RetirementEvent): DomainError | undefined {
   if (state.outPlayerIds.includes(event.playerId)) {
     return { code: 'BATTER_ALREADY_OUT', field: 'playerId' };
+  }
+  if (state.retiredPlayerIds.includes(event.playerId)) {
+    return { code: 'INVALID_PLAYER', field: 'playerId' };
   }
   if (event.playerId !== state.strikerId && event.playerId !== state.nonStrikerId) {
     return { code: 'INVALID_PLAYER', field: 'playerId' };
