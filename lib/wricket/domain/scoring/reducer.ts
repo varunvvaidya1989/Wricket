@@ -125,8 +125,12 @@ function applyRetirementEvent(
   const retiredPlayerIds = [...state.retiredPlayerIds, event.playerId];
   const closureReason = completionReason(state.totalRuns, totalWickets, state.legalBalls, rules);
   const effects: DomainEffect[] = [];
+  let strikerId = state.strikerId;
+  let nonStrikerId = state.nonStrikerId;
 
   if (!closureReason) {
+    if (event.playerId === strikerId) strikerId = undefined;
+    if (event.playerId === nonStrikerId) nonStrikerId = undefined;
     effects.push({ type: 'SELECT_NEXT_BATTER', replacingPlayerId: event.playerId });
   } else {
     effects.push({ type: 'INNINGS_CLOSED', reason: closureReason });
@@ -136,6 +140,8 @@ function applyRetirementEvent(
     state: freezeState({
       ...state,
       totalWickets,
+      strikerId,
+      nonStrikerId,
       outPlayerIds,
       retiredPlayerIds,
       isClosed: !!closureReason,
