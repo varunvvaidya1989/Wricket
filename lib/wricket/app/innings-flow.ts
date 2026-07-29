@@ -6,7 +6,13 @@ import {
   setMatchResult,
   setMatchStatus,
 } from '../db/repo';
-import { FormatRules, Innings, Match, MatchResult } from '../domain/types';
+import { newId, newUuid } from '../db/client';
+import { Innings, Match, MatchResult } from '../domain/types';
+import { queueCloudScoringEvent } from '@/lib/supabase/cloudScoringApi';
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
 /**
  * Determine what should happen next once an innings is closed.
@@ -31,8 +37,6 @@ export async function planNextStep(matchId: string): Promise<NextStep> {
   const rules = match.rules;
 
   const inningsPerTeam = rules.inningsPerTeam;
-  const totalInnings = inningsPerTeam * 2;
-
   if (innings.length === 0) return { kind: 'NEXT_INNINGS' };
 
   const last = innings[innings.length - 1];
@@ -162,7 +166,6 @@ function computeTwoInningsResult(match: Match, innings: Innings[]): MatchResult 
   if (tx === ty) return { kind: 'TIE' };
 
   const winner = tx > ty ? teamX : teamY;
-  const loser = tx > ty ? teamY : teamX;
   const margin = Math.abs(tx - ty);
 
   // Win by innings: winner used only 1 innings (loser batted both & still less)
@@ -198,9 +201,29 @@ export async function closeAndAdvance(
   matchId: string,
   inningsId: string,
 ): Promise<NextStep> {
+  const openInnings = (await listInningsForMatch(matchId)).find(item => item.id === inningsId);
+  if (!openInnings) throw new Error('Innings not found');
+  if (isUuid(matchId) && isUuid(inningsId)) {
+    await queueCloudScoringEvent({
+      clientEventId: `close-${inningsId}`,
+      matchId,
+      inningsId,
+      kind: 'INNINGS_CLOSED',
+      payload: { innings_id: inningsId },
+    });
+  }
   await closeInnings(inningsId);
   const step = await planNextStep(matchId);
   if (step.kind === 'COMPLETED' && step.result) {
+    if (isUuid(matchId)) {
+      await queueCloudScoringEvent({
+        clientEventId: `complete-${matchId}`,
+        matchId,
+        inningsId,
+        kind: 'MATCH_COMPLETED',
+        payload: { innings_id: inningsId, result: step.result },
+      });
+    }
     await setMatchResult(matchId, step.result);
   } else if (step.kind === 'FOLLOW_ON_DECISION') {
     await setMatchStatus(matchId, 'FOLLOW_ON_DECISION');
@@ -214,7 +237,13 @@ export async function startNextInnings(
   matchId: string,
   step: NonNullable<NextStep['next']>,
 ): Promise<void> {
-  await createInnings({
+  const requestedInningsId = isUuid(matchId) ? newUuid() : newId();
+  // Create the local parent before its outbox event. scoring_event_outbox.innings_id
+  // references innings.id, so queuing first fails when SQLite finalizes the statement.
+  // createInnings is sequence-idempotent and may return an innings created by a
+  // concurrent automatic/manual completion attempt; always use the returned ID.
+  const innings = await createInnings({
+    id: requestedInningsId,
     matchId,
     sequence: step.sequence,
     battingTeamId: step.battingTeamId,
@@ -222,5 +251,34 @@ export async function startNextInnings(
     target: step.target,
     isFollowOn: step.isFollowOn,
   });
+  if (isUuid(matchId)) {
+    await queueCloudScoringEvent({
+      clientEventId: `start-innings-${innings.id}`,
+      matchId,
+      inningsId: innings.id,
+      kind: 'INNINGS_STARTED',
+      payload: {
+        innings_id: innings.id,
+        sequence: step.sequence,
+        batting_team_id: step.battingTeamId,
+        bowling_team_id: step.bowlingTeamId,
+        target: step.target,
+        is_follow_on: step.isFollowOn ?? false,
+      },
+    });
+  }
   await setMatchStatus(matchId, 'IN_PROGRESS');
+}
+
+export async function abandonMatchLifecycle(matchId: string, inningsId: string): Promise<void> {
+  if (isUuid(matchId) && isUuid(inningsId)) {
+    await queueCloudScoringEvent({
+      clientEventId: `abandon-${matchId}`,
+      matchId,
+      inningsId,
+      kind: 'MATCH_ABANDONED',
+      payload: { innings_id: inningsId, reason: 'ORGANISER_ABANDONED' },
+    });
+  }
+  await setMatchStatus(matchId, 'ABANDONED');
 }

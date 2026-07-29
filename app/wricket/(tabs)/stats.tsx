@@ -1,360 +1,210 @@
-import React, { useCallback, useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
+import { useAuth } from '@/components/providers/AuthProvider';
+import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
-import { Card } from '@/components/ui/Card';
+import { PersonalStats, personalStatsApi } from '@/lib/supabase/personalStatsApi';
 import { colors } from '@/lib/theme/colors';
-import { spacing, radius } from '@/lib/theme/spacing';
-import { listBalls, listInningsForMatch, listMatches, listUsers } from '@/lib/wricket/db/repo';
-import { Ball, Match, User } from '@/lib/wricket/domain/types';
+import { radius, spacing } from '@/lib/theme/spacing';
 
-interface PlayerStats {
-  userId: string;
-  name: string;
-  runs: number;
-  ballsFaced: number;
-  fours: number;
-  sixes: number;
-  wickets: number;
-  legalBalls: number;
-  runsConceded: number;
-}
-
-interface StatsSnapshot {
-  matches: Match[];
-  balls: Ball[];
-  players: PlayerStats[];
-}
+type Section = 'overview' | 'batting' | 'bowling';
 
 export default function StatsScreen() {
+  const auth = useAuth();
   const router = useRouter();
-  const [snapshot, setSnapshot] = useState<StatsSnapshot>({
-    matches: [],
-    balls: [],
-    players: [],
-  });
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<PersonalStats>();
+  const [section, setSection] = useState<Section>('overview');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
 
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      (async () => {
-        setLoading(true);
-        const [matches, users] = await Promise.all([listMatches(), listUsers()]);
-        const inningsGroups = await Promise.all(matches.map(match => listInningsForMatch(match.id)));
-        const innings = inningsGroups.flat();
-        const ballGroups = await Promise.all(innings.map(item => listBalls(item.id)));
-        const balls = ballGroups.flat();
-        const players = buildPlayerStats(users, balls);
-        if (!cancelled) {
-          setSnapshot({ matches, balls, players });
-          setLoading(false);
-        }
-      })();
+  const load = useCallback(async () => {
+    if (!auth.session) {
+      setStats(undefined);
+      return;
+    }
+    setLoading(true);
+    try {
+      setStats(await personalStatsApi.get(auth.session.user.id, auth.profile?.displayName));
+      setError(undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load your stats');
+    } finally {
+      setLoading(false);
+    }
+  }, [auth.profile?.displayName, auth.session]);
 
-      return () => {
-        cancelled = true;
-      };
-    }, []),
-  );
+  useFocusEffect(useCallback(() => {
+    void load();
+    return undefined;
+  }, [load]));
 
-  const topRuns = snapshot.players
-    .filter(player => player.runs > 0)
-    .sort((a, b) => b.runs - a.runs || b.sixes - a.sixes)
-    .slice(0, 5);
-  const topWickets = snapshot.players
-    .filter(player => player.wickets > 0)
-    .sort((a, b) => b.wickets - a.wickets || a.runsConceded - b.runsConceded)
-    .slice(0, 5);
-  const topSixes = snapshot.players
-    .filter(player => player.sixes > 0)
-    .sort((a, b) => b.sixes - a.sixes || b.runs - a.runs)
-    .slice(0, 5);
-  const bestEconomy = snapshot.players
-    .filter(player => player.legalBalls >= 6)
-    .sort((a, b) => economy(a) - economy(b) || b.wickets - a.wickets)
-    .slice(0, 5);
+  if (!auth.session) {
+    return <Screen padded={false}>
+      <Header />
+      <View style={styles.empty}>
+        <View style={styles.emptyIcon}>
+          <MaterialCommunityIcons name="chart-box-outline" size={38} color={colors.accent} />
+        </View>
+        <Text variant="h2">Your cricket record</Text>
+        <Text variant="body" tone="muted" style={styles.emptyText}>
+          Sign in to see stats belonging only to your player profile.
+        </Text>
+        <Pressable style={styles.primaryButton} onPress={() => router.push('/wricket/me')}>
+          <Text variant="bodyStrong" style={{ color: colors.accentInk }}>Sign in</Text>
+        </Pressable>
+      </View>
+    </Screen>;
+  }
 
-  const totalRuns = snapshot.balls.reduce((sum, ball) => sum + ball.runsBat + ball.runsExtra, 0);
-  const totalWickets = snapshot.balls.filter(ball => ball.isWicket).length;
-  const completedMatches = snapshot.matches.filter(match => match.status === 'COMPLETED').length;
-
+  const name = auth.profile?.displayName ?? auth.session.user.email?.split('@')[0] ?? 'Player';
+  const noLinkedPlayer = stats && stats.playerIds.length === 0;
   return (
     <Screen padded={false}>
-      <View style={styles.header}>
-        <Text variant="overline" tone="muted">Insights</Text>
-        <Text variant="h1">Stats</Text>
-      </View>
-
-      {loading ? null : snapshot.balls.length === 0 ? (
-        <View style={styles.empty}>
-          <View style={styles.emptyIcon}>
-            <MaterialCommunityIcons name="chart-line" size={36} color={colors.accent} />
+      <Header />
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+        contentContainerStyle={styles.content}
+      >
+        <View style={styles.profile}>
+          <View style={styles.avatar}><Text variant="h2" style={{ color: colors.accentInk }}>{initials(name)}</Text></View>
+          <View style={{ flex: 1 }}>
+            <Text variant="h2">{name}</Text>
+            <Text variant="caption" tone="muted">Personal career statistics</Text>
           </View>
-          <Text variant="h2" style={{ marginTop: spacing.lg }}>Play a few matches</Text>
-          <Text variant="body" tone="muted" style={{ textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.xl }}>
-            Personal insights, top scorers and bowling leaderboards appear here once you have some match data.
-          </Text>
+          <MaterialCommunityIcons name="check-decagram" size={22} color={colors.accent} />
         </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={{
-            paddingHorizontal: spacing.lg,
-            paddingBottom: spacing.xxxl,
-            gap: spacing.md,
-          }}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.summaryGrid}>
-            <SummaryTile label="MATCHES" value={String(snapshot.matches.length)} sub={`${completedMatches} completed`} />
-            <SummaryTile label="RUNS" value={String(totalRuns)} sub={`${snapshot.balls.length} balls`} />
-            <SummaryTile label="WICKETS" value={String(totalWickets)} sub="All innings" />
-          </View>
 
-          <Leaderboard
-            title="Top run scorers"
-            icon="cricket"
-            rows={topRuns}
-            valueFor={player => String(player.runs)}
-            metaFor={player => `${player.ballsFaced} balls | SR ${strikeRate(player).toFixed(0)}`}
-            onPlayerPress={id =>
-              router.push({ pathname: '/wricket/player/[id]', params: { id } })
-            }
-          />
-          <Leaderboard
-            title="Top wicket takers"
-            icon="bullseye-arrow"
-            rows={topWickets}
-            valueFor={player => String(player.wickets)}
-            metaFor={player => `${formatOvers(player.legalBalls)} ov | Econ ${economy(player).toFixed(1)}`}
-            onPlayerPress={id =>
-              router.push({ pathname: '/wricket/player/[id]', params: { id } })
-            }
-          />
-          <Leaderboard
-            title="Six hitters"
-            icon="numeric-6-circle-outline"
-            rows={topSixes}
-            valueFor={player => String(player.sixes)}
-            metaFor={player => `${player.runs} runs | ${player.fours} fours`}
-            onPlayerPress={id =>
-              router.push({ pathname: '/wricket/player/[id]', params: { id } })
-            }
-          />
-          <Leaderboard
-            title="Best economy"
-            icon="speedometer-slow"
-            rows={bestEconomy}
-            valueFor={player => economy(player).toFixed(1)}
-            metaFor={player => `${formatOvers(player.legalBalls)} ov | ${player.wickets} wickets`}
-            onPlayerPress={id =>
-              router.push({ pathname: '/wricket/player/[id]', params: { id } })
-            }
-          />
-        </ScrollView>
-      )}
+        {error && <Pressable onPress={() => void load()}><Card style={styles.errorCard}>
+          <Text variant="caption">{error} Tap to retry.</Text>
+        </Card></Pressable>}
+
+        {noLinkedPlayer ? (
+          <Card style={styles.linkCard}>
+            <MaterialCommunityIcons name="account-alert-outline" size={32} color={colors.accent} />
+            <Text variant="h3">Player profile not linked</Text>
+            <Text variant="body" tone="muted" style={{ textAlign: 'center' }}>
+              Ask the tournament organiser to add you using the same display name, or link this account to an existing player.
+            </Text>
+          </Card>
+        ) : stats ? (
+          <>
+            <View style={styles.careerStrip}>
+              <CareerValue label="MATCHES" value={stats.matches} />
+              <CareerValue label="RUNS" value={stats.runs} />
+              <CareerValue label="WICKETS" value={stats.wickets} />
+            </View>
+            <View style={styles.tabs}>
+              {(['overview', 'batting', 'bowling'] as const).map(item => (
+                <Pressable key={item} onPress={() => setSection(item)} style={[styles.tab, section === item && styles.tabActive]}>
+                  <Text variant="caption" tone={section === item ? 'accent' : 'muted'}>{item.toUpperCase()}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {section === 'overview' && <Overview stats={stats} />}
+            {section === 'batting' && <Batting stats={stats} />}
+            {section === 'bowling' && <Bowling stats={stats} />}
+          </>
+        ) : null}
+      </ScrollView>
     </Screen>
   );
 }
 
-function SummaryTile({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <View style={styles.summaryTile}>
-      <Text variant="caption" tone="dim">{label}</Text>
-      <Text variant="h2" style={{ marginTop: spacing.xs }}>{value}</Text>
-      <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>{sub}</Text>
+function Header() {
+  return <View style={styles.header}>
+    <Text variant="overline" tone="muted">PLAYER PROFILE</Text>
+    <Text variant="h1">My Stats</Text>
+  </View>;
+}
+
+function Overview({ stats }: { stats: PersonalStats }) {
+  return <View style={styles.sections}>
+    <Text variant="overline" tone="muted">CAREER AT A GLANCE</Text>
+    <View style={styles.grid}>
+      <Metric icon="cricket" label="Batting average" value={average(stats)} />
+      <Metric icon="speedometer" label="Strike rate" value={strikeRate(stats)} />
+      <Metric icon="bullseye-arrow" label="Bowling average" value={bowlingAverage(stats)} />
+      <Metric icon="chart-timeline-variant" label="Economy" value={economy(stats)} />
+      <Metric icon="hand-back-right-outline" label="Catches" value={String(stats.catches)} />
+      <Metric icon="numeric-6-circle-outline" label="Sixes" value={String(stats.sixes)} />
     </View>
-  );
+  </View>;
 }
 
-function Leaderboard({
-  title,
-  icon,
-  rows,
-  valueFor,
-  metaFor,
-  onPlayerPress,
-}: {
-  title: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  rows: PlayerStats[];
-  valueFor: (player: PlayerStats) => string;
-  metaFor: (player: PlayerStats) => string;
-  onPlayerPress: (id: string) => void;
-}) {
-  return (
-    <Card>
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionIcon}>
-          <MaterialCommunityIcons name={icon} size={20} color={colors.accent} />
-        </View>
-        <Text variant="h3" style={{ flex: 1 }}>{title}</Text>
-      </View>
-      {rows.length === 0 ? (
-        <Text variant="caption" tone="dim" style={{ marginTop: spacing.md }}>
-          Not enough data yet.
-        </Text>
-      ) : (
-        <View style={{ marginTop: spacing.sm }}>
-          {rows.map((player, index) => (
-            <Pressable
-              key={player.userId}
-              onPress={() => onPlayerPress(player.userId)}
-              style={({ pressed }) => [
-                styles.playerRow,
-                pressed && { opacity: 0.75 },
-              ]}
-            >
-              <Text variant="caption" tone="dim" style={styles.rank}>{index + 1}</Text>
-              <View style={{ flex: 1 }}>
-                <Text variant="bodyStrong" numberOfLines={1}>{player.name}</Text>
-                <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>
-                  {metaFor(player)}
-                </Text>
-              </View>
-              <Text variant="h3" tone="accent">{valueFor(player)}</Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
+function Batting({ stats }: { stats: PersonalStats }) {
+  return <View style={styles.sections}>
+    <Card><Text variant="h3">Batting</Text>
+      <StatLine label="Innings" value={stats.innings} />
+      <StatLine label="Runs" value={stats.runs} />
+      <StatLine label="Highest score" value={stats.highScore} />
+      <StatLine label="Average" value={average(stats)} />
+      <StatLine label="Strike rate" value={strikeRate(stats)} />
+      <StatLine label="Fours / Sixes" value={`${stats.fours} / ${stats.sixes}`} />
+      <StatLine label="Balls faced" value={stats.ballsFaced} />
     </Card>
-  );
+  </View>;
 }
 
-function buildPlayerStats(users: User[], balls: Ball[]): PlayerStats[] {
-  const byUser = new Map<string, PlayerStats>();
-  for (const user of users) {
-    byUser.set(user.id, {
-      userId: user.id,
-      name: user.name,
-      runs: 0,
-      ballsFaced: 0,
-      fours: 0,
-      sixes: 0,
-      wickets: 0,
-      legalBalls: 0,
-      runsConceded: 0,
-    });
-  }
-
-  const ensurePlayer = (userId: string) => {
-    const existing = byUser.get(userId);
-    if (existing) return existing;
-    const fallback: PlayerStats = {
-      userId,
-      name: 'Unknown player',
-      runs: 0,
-      ballsFaced: 0,
-      fours: 0,
-      sixes: 0,
-      wickets: 0,
-      legalBalls: 0,
-      runsConceded: 0,
-    };
-    byUser.set(userId, fallback);
-    return fallback;
-  };
-
-  for (const ball of balls) {
-    const batter = ensurePlayer(ball.strikerId);
-    batter.runs += ball.runsBat;
-    if (ball.extraKind !== 'WIDE') batter.ballsFaced += 1;
-    if (ball.runsBat === 4) batter.fours += 1;
-    if (ball.runsBat === 6) batter.sixes += 1;
-
-    const bowler = ensurePlayer(ball.bowlerId);
-    if (ball.isLegal) bowler.legalBalls += 1;
-    bowler.runsConceded += bowlerRunsConceded(ball);
-    if (
-      ball.isWicket &&
-      ball.dismissal &&
-      ['BOWLED', 'CAUGHT', 'LBW', 'STUMPED', 'HIT_WICKET'].includes(ball.dismissal.kind)
-    ) {
-      bowler.wickets += 1;
-    }
-  }
-
-  return Array.from(byUser.values());
+function Bowling({ stats }: { stats: PersonalStats }) {
+  return <View style={styles.sections}>
+    <Card><Text variant="h3">Bowling</Text>
+      <StatLine label="Wickets" value={stats.wickets} />
+      <StatLine label="Best in a match" value={`${stats.bestWickets} wickets`} />
+      <StatLine label="Overs" value={formatOvers(stats.bowlingBalls)} />
+      <StatLine label="Runs conceded" value={stats.runsConceded} />
+      <StatLine label="Average" value={bowlingAverage(stats)} />
+      <StatLine label="Economy" value={economy(stats)} />
+    </Card>
+  </View>;
 }
 
-function bowlerRunsConceded(ball: Ball): number {
-  if (ball.extraKind === 'BYE' || ball.extraKind === 'LEG_BYE') {
-    return ball.runsBat;
-  }
-  return ball.runsBat + ball.runsExtra;
+function CareerValue({ label, value }: { label: string; value: number }) {
+  return <View style={{ flex: 1, alignItems: 'center' }}><Text variant="h2">{value}</Text><Text variant="caption" tone="dim">{label}</Text></View>;
 }
-
-function strikeRate(player: PlayerStats): number {
-  return player.ballsFaced === 0 ? 0 : (player.runs / player.ballsFaced) * 100;
+function Metric({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }) {
+  return <Card style={styles.metric}><MaterialCommunityIcons name={icon} size={21} color={colors.accent} />
+    <Text variant="h2" style={{ marginTop: spacing.md }}>{value}</Text><Text variant="caption" tone="muted">{label}</Text>
+  </Card>;
 }
-
-function economy(player: PlayerStats): number {
-  return player.legalBalls === 0 ? 0 : (player.runsConceded / player.legalBalls) * 6;
+function StatLine({ label, value }: { label: string; value: string | number }) {
+  return <View style={styles.statLine}><Text variant="body" tone="muted">{label}</Text><Text variant="bodyStrong">{value}</Text></View>;
 }
-
-function formatOvers(legalBalls: number): string {
-  return `${Math.floor(legalBalls / 6)}.${legalBalls % 6}`;
+function average(stats: PersonalStats) {
+  return stats.dismissals ? (stats.runs / stats.dismissals).toFixed(2) : stats.runs ? '—' : '0.00';
 }
+function strikeRate(stats: PersonalStats) {
+  return stats.ballsFaced ? ((stats.runs / stats.ballsFaced) * 100).toFixed(2) : '0.00';
+}
+function bowlingAverage(stats: PersonalStats) {
+  return stats.wickets ? (stats.runsConceded / stats.wickets).toFixed(2) : '—';
+}
+function economy(stats: PersonalStats) {
+  return stats.bowlingBalls ? ((stats.runsConceded / stats.bowlingBalls) * 6).toFixed(2) : '—';
+}
+function formatOvers(balls: number) { return `${Math.floor(balls / 6)}.${balls % 6}`; }
+function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join(''); }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-  },
-  emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sectionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  summaryTile: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  playerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: 0,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-  },
-  rank: {
-    width: 24,
-    textAlign: 'center',
-  },
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md },
+  content: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxxl, gap: spacing.lg },
+  profile: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  avatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.xl },
+  emptyText: { textAlign: 'center' },
+  emptyIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+  primaryButton: { backgroundColor: colors.accent, borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.xl },
+  errorCard: { borderColor: colors.danger },
+  linkCard: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xl },
+  careerStrip: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.xl, paddingVertical: spacing.lg, borderWidth: 1, borderColor: colors.border },
+  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: spacing.md, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabActive: { borderBottomColor: colors.accent },
+  sections: { gap: spacing.md },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  metric: { width: '48%' },
+  statLine: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
 });

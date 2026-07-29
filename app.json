@@ -4,26 +4,28 @@
     "slug": "sportstage",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/sportstage-app-icon-v2.png",
     "scheme": "sportstage",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vcreativestudio.sportstage",
+      "buildNumber": "1"
     },
     "android": {
+      "package": "com.vcreativestudio.sportstage",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#0E1014",
+        "foregroundImage": "./assets/images/sportstage-app-icon-v2.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/sportstage-app-icon-v2.png"
     },
     "plugins": [
       "expo-router",
@@ -39,7 +41,15 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow SportStage to select tournament logos and banners."
+        }
+      ],
+      "expo-font"
     ],
     "updates": {
       "enabled": false
@@ -51,7 +61,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "be46f89c-24cb-4e8f-8fa8-4036efbdc56b"
+        "projectId": "9804fe3d-1430-4c87-a2a2-d6794deb4e62"
       }
     },
     "owner": "vcreativestudio"

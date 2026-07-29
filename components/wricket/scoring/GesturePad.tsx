@@ -23,11 +23,12 @@ export type PadAction =
 export interface GesturePadProps {
   onAction: (a: PadAction) => void;
   disabled?: boolean;
+  onInteractionChange?: (active: boolean) => void;
 }
 
 const SWIPE_THRESHOLD = 40;
 
-export function GesturePad({ onAction, disabled }: GesturePadProps) {
+export function GesturePad({ onAction, disabled, onInteractionChange }: GesturePadProps) {
   const [flash, setFlash] = useState<string | null>(null);
   const scale = useSharedValue(1);
   const flashOpacity = useSharedValue(0);
@@ -122,7 +123,12 @@ export function GesturePad({ onAction, disabled }: GesturePadProps) {
 
   return (
     <GestureDetector gesture={composed}>
-      <Animated.View style={[styles.pad, animStyle]}>
+      <Animated.View
+        style={[styles.pad, animStyle]}
+        onTouchStart={() => onInteractionChange?.(true)}
+        onTouchEnd={() => onInteractionChange?.(false)}
+        onTouchCancel={() => onInteractionChange?.(false)}
+      >
         <View pointerEvents="none" style={styles.fieldLayer}>
           <View style={styles.boundaryOuter} />
           <View style={styles.boundaryInner} />
@@ -158,7 +164,8 @@ export function GesturePad({ onAction, disabled }: GesturePadProps) {
 
 const styles = StyleSheet.create({
   pad: {
-    aspectRatio: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#165C2F',
     borderRadius: radius.xl,
     borderWidth: 1,

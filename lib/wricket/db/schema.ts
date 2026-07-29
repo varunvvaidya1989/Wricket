@@ -173,6 +173,95 @@ CREATE TABLE IF NOT EXISTS scoring_sessions (
 CREATE INDEX IF NOT EXISTS idx_scoring_sessions_innings ON scoring_sessions(innings_id);
 `;
 
+const CLOUD_SYNC_SQL = `
+ALTER TABLE tournaments ADD COLUMN cloud_id TEXT;
+ALTER TABLE tournaments ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL';
+ALTER TABLE tournaments ADD COLUMN sync_error TEXT;
+ALTER TABLE tournaments ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE teams ADD COLUMN cloud_id TEXT;
+ALTER TABLE teams ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL';
+ALTER TABLE teams ADD COLUMN sync_error TEXT;
+ALTER TABLE teams ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tournaments_cloud_id ON tournaments(cloud_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_cloud_id ON teams(cloud_id);
+
+CREATE TABLE IF NOT EXISTS sync_outbox (
+  id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at INTEGER NOT NULL,
+  next_attempt_at INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(entity_type, entity_id, operation)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sync_outbox_pending
+ON sync_outbox(next_attempt_at, created_at);
+`;
+
+const PLAYER_SYNC_SQL = `
+ALTER TABLE users ADD COLUMN cloud_id TEXT;
+ALTER TABLE users ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL';
+ALTER TABLE users ADD COLUMN sync_error TEXT;
+ALTER TABLE users ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE team_players ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL';
+ALTER TABLE team_players ADD COLUMN sync_error TEXT;
+ALTER TABLE team_players ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_cloud_id ON users(cloud_id);
+`;
+
+const TOURNAMENT_SETUP_SQL = `
+ALTER TABLE tournaments ADD COLUMN organizer_profile_id TEXT;
+ALTER TABLE tournaments ADD COLUMN organizer_phone TEXT;
+ALTER TABLE tournaments ADD COLUMN planned_team_count INTEGER NOT NULL DEFAULT 2;
+ALTER TABLE tournaments ADD COLUMN players_per_team INTEGER NOT NULL DEFAULT 11;
+ALTER TABLE tournaments ADD COLUMN description TEXT;
+ALTER TABLE tournaments ADD COLUMN social_media_url TEXT;
+ALTER TABLE tournaments ADD COLUMN banner_local_uri TEXT;
+ALTER TABLE tournaments ADD COLUMN logo_local_uri TEXT;
+ALTER TABLE tournaments ADD COLUMN banner_url TEXT;
+ALTER TABLE tournaments ADD COLUMN logo_url TEXT;
+`;
+
+const TOURNAMENT_LOCATION_SQL = `
+ALTER TABLE tournaments ADD COLUMN location TEXT;
+`;
+
+const SCORING_EVENT_OUTBOX_SQL = `
+CREATE TABLE IF NOT EXISTS scoring_event_outbox (
+  client_event_id TEXT PRIMARY KEY,
+  match_id TEXT NOT NULL,
+  innings_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+  FOREIGN KEY (innings_id) REFERENCES innings(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_scoring_event_outbox_match_created
+ON scoring_event_outbox(match_id, created_at);
+`;
+
+const WICKET_FIELDING_DETAILS_SQL = `
+ALTER TABLE balls ADD COLUMN assistant_fielder_id TEXT;
+`;
+
+const TOURNAMENT_GEOTAG_SQL = `
+ALTER TABLE tournaments ADD COLUMN latitude REAL;
+ALTER TABLE tournaments ADD COLUMN longitude REAL;
+ALTER TABLE tournaments ADD COLUMN google_place_id TEXT;
+ALTER TABLE tournaments ADD COLUMN google_maps_url TEXT;
+`;
+
 export const MIGRATIONS: SqlMigration[] = [
   {
     version: 1,
@@ -183,6 +272,41 @@ export const MIGRATIONS: SqlMigration[] = [
     version: 2,
     name: 'scoring_sessions',
     sql: SCORING_SESSIONS_SQL,
+  },
+  {
+    version: 3,
+    name: 'cloud_sync_foundation',
+    sql: CLOUD_SYNC_SQL,
+  },
+  {
+    version: 4,
+    name: 'player_membership_sync',
+    sql: PLAYER_SYNC_SQL,
+  },
+  {
+    version: 5,
+    name: 'tournament_organiser_setup',
+    sql: TOURNAMENT_SETUP_SQL,
+  },
+  {
+    version: 6,
+    name: 'tournament_location',
+    sql: TOURNAMENT_LOCATION_SQL,
+  },
+  {
+    version: 7,
+    name: 'scoring_event_outbox',
+    sql: SCORING_EVENT_OUTBOX_SQL,
+  },
+  {
+    version: 8,
+    name: 'wicket_fielding_details',
+    sql: WICKET_FIELDING_DETAILS_SQL,
+  },
+  {
+    version: 9,
+    name: 'tournament_geotag',
+    sql: TOURNAMENT_GEOTAG_SQL,
   },
 ];
 
@@ -214,7 +338,16 @@ export async function runMigrations(db: MigrationDatabase): Promise<void> {
   const appliedVersion = row?.version ?? 0;
 
   for (const migration of getPendingMigrations(appliedVersion)) {
-    await db.execAsync(migration.sql);
+    const alreadyApplied = migration.version === 8
+      ? await db.getFirstAsync<{ count: number }>(
+          `SELECT COUNT(*) AS count
+           FROM pragma_table_info('balls')
+           WHERE name = 'assistant_fielder_id'`,
+        )
+      : null;
+    if (!alreadyApplied?.count) {
+      await db.execAsync(migration.sql);
+    }
     await db.runAsync(
       'INSERT OR REPLACE INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)',
       migration.version,

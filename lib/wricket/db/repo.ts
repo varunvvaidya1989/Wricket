@@ -51,17 +51,24 @@ export async function createUser(input: {
     battingHand: input.battingHand,
     bowlingStyle: input.bowlingStyle,
     createdAt: Date.now(),
+    syncStatus: 'PENDING',
   };
-  await db.runAsync(
-    `INSERT INTO users (id, name, role, batting_hand, bowling_style, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    user.id,
-    user.name,
-    user.role,
-    user.battingHand ?? null,
-    user.bowlingStyle ?? null,
-    user.createdAt,
-  );
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT INTO users
+         (id, name, role, batting_hand, bowling_style, created_at, sync_status, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      user.id,
+      user.name,
+      user.role,
+      user.battingHand ?? null,
+      user.bowlingStyle ?? null,
+      user.createdAt,
+      user.syncStatus,
+      user.createdAt,
+    );
+    await enqueueSyncInDb(db, 'PLAYER', user.id);
+  });
   return user;
 }
 
@@ -85,6 +92,9 @@ function rowToUser(row: any): User {
     battingHand: row.batting_hand ?? undefined,
     bowlingStyle: row.bowling_style ?? undefined,
     createdAt: row.created_at,
+    cloudId: row.cloud_id ?? undefined,
+    syncStatus: row.sync_status ?? 'LOCAL',
+    syncError: row.sync_error ?? undefined,
   };
 }
 
@@ -95,6 +105,19 @@ export async function createTournament(input: {
   format: MatchFormat;
   startDate: number;
   endDate?: number;
+  organizerProfileId?: string;
+  organizerPhone?: string;
+  location?: string;
+  latitude?: number;
+  longitude?: number;
+  googlePlaceId?: string;
+  googleMapsUrl?: string;
+  plannedTeamCount: number;
+  playersPerTeam: number;
+  description?: string;
+  socialMediaUrl?: string;
+  bannerLocalUri?: string;
+  logoLocalUri?: string;
 }): Promise<Tournament> {
   const db = await getDb();
   const t: Tournament = {
@@ -109,11 +132,30 @@ export async function createTournament(input: {
     pointsNoResult: 1,
     status: 'ACTIVE',
     createdAt: Date.now(),
+    organizerProfileId: input.organizerProfileId,
+    organizerPhone: input.organizerPhone,
+    location: input.location,
+    latitude: input.latitude,
+    longitude: input.longitude,
+    googlePlaceId: input.googlePlaceId,
+    googleMapsUrl: input.googleMapsUrl,
+    plannedTeamCount: input.plannedTeamCount,
+    playersPerTeam: input.playersPerTeam,
+    description: input.description,
+    socialMediaUrl: input.socialMediaUrl,
+    bannerLocalUri: input.bannerLocalUri,
+    logoLocalUri: input.logoLocalUri,
+    syncStatus: 'PENDING',
   };
-  await db.runAsync(
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
     `INSERT INTO tournaments (id, name, format, start_date, end_date,
-       points_win, points_tie, points_loss, points_no_result, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       points_win, points_tie, points_loss, points_no_result, status, created_at,
+       sync_status, updated_at, organizer_profile_id, organizer_phone, location, latitude, longitude,
+       google_place_id, google_maps_url,
+       planned_team_count, players_per_team, description, social_media_url,
+       banner_local_uri, logo_local_uri, banner_url, logo_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     t.id,
     t.name,
     t.format,
@@ -125,7 +167,26 @@ export async function createTournament(input: {
     t.pointsNoResult,
     t.status,
     t.createdAt,
-  );
+    t.syncStatus,
+    t.createdAt,
+    t.organizerProfileId ?? null,
+    t.organizerPhone ?? null,
+    t.location ?? null,
+    t.latitude ?? null,
+    t.longitude ?? null,
+    t.googlePlaceId ?? null,
+    t.googleMapsUrl ?? null,
+    t.plannedTeamCount,
+    t.playersPerTeam,
+    t.description ?? null,
+    t.socialMediaUrl ?? null,
+    t.bannerLocalUri ?? null,
+    t.logoLocalUri ?? null,
+    null,
+    null,
+    );
+    await enqueueSyncInDb(db, 'TOURNAMENT', t.id);
+  });
   return t;
 }
 
@@ -159,6 +220,24 @@ function rowToTournament(row: any): Tournament {
     pointsNoResult: row.points_no_result,
     status: row.status,
     createdAt: row.created_at,
+    organizerProfileId: row.organizer_profile_id ?? undefined,
+    organizerPhone: row.organizer_phone ?? undefined,
+    location: row.location ?? undefined,
+    latitude: row.latitude ?? undefined,
+    longitude: row.longitude ?? undefined,
+    googlePlaceId: row.google_place_id ?? undefined,
+    googleMapsUrl: row.google_maps_url ?? undefined,
+    plannedTeamCount: row.planned_team_count ?? 2,
+    playersPerTeam: row.players_per_team ?? 11,
+    description: row.description ?? undefined,
+    socialMediaUrl: row.social_media_url ?? undefined,
+    bannerLocalUri: row.banner_local_uri ?? undefined,
+    logoLocalUri: row.logo_local_uri ?? undefined,
+    bannerUrl: row.banner_url ?? undefined,
+    logoUrl: row.logo_url ?? undefined,
+    cloudId: row.cloud_id ?? undefined,
+    syncStatus: row.sync_status ?? 'LOCAL',
+    syncError: row.sync_error ?? undefined,
   };
 }
 
@@ -178,17 +257,24 @@ export async function createTeam(input: {
     shortName: input.shortName,
     colorHex: input.colorHex,
     createdAt: Date.now(),
+    syncStatus: 'PENDING',
   };
-  await db.runAsync(
-    `INSERT INTO teams (id, tournament_id, name, short_name, color_hex, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+    `INSERT INTO teams (id, tournament_id, name, short_name, color_hex, created_at,
+       sync_status, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     team.id,
     team.tournamentId,
     team.name,
     team.shortName,
     team.colorHex,
     team.createdAt,
-  );
+    team.syncStatus,
+    team.createdAt,
+    );
+    await enqueueSyncInDb(db, 'TEAM', team.id);
+  });
   return team;
 }
 
@@ -205,6 +291,11 @@ export async function listTeams(tournamentId?: string | null): Promise<Team[]> {
   return rows.map(rowToTeam);
 }
 
+export async function deleteTeam(teamId: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM teams WHERE id = ?', teamId);
+}
+
 export async function getTeam(id: string): Promise<Team | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<any>('SELECT * FROM teams WHERE id = ?', id);
@@ -219,7 +310,27 @@ function rowToTeam(row: any): Team {
     shortName: row.short_name,
     colorHex: row.color_hex,
     createdAt: row.created_at,
+    cloudId: row.cloud_id ?? undefined,
+    syncStatus: row.sync_status ?? 'LOCAL',
+    syncError: row.sync_error ?? undefined,
   };
+}
+
+async function enqueueSyncInDb(
+  db: { runAsync(sql: string, ...params: unknown[]): Promise<unknown> },
+  entityType: 'TOURNAMENT' | 'TEAM' | 'PLAYER' | 'TEAM_PLAYER',
+  entityId: string,
+): Promise<void> {
+  const now = Date.now();
+  await db.runAsync(
+    `INSERT OR IGNORE INTO sync_outbox
+       (id, entity_type, entity_id, operation, attempts, created_at, next_attempt_at)
+     VALUES (?, ?, ?, 'UPSERT', 0, ?, 0)`,
+    newId(),
+    entityType,
+    entityId,
+    now,
+  );
 }
 
 export async function addPlayerToTeam(
@@ -228,13 +339,18 @@ export async function addPlayerToTeam(
   jerseyNo?: number,
 ): Promise<void> {
   const db = await getDb();
-  await db.runAsync(
-    `INSERT OR REPLACE INTO team_players (team_id, user_id, jersey_no, is_captain, is_keeper)
-     VALUES (?, ?, ?, 0, 0)`,
-    teamId,
-    userId,
-    jerseyNo ?? null,
-  );
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO team_players
+         (team_id, user_id, jersey_no, is_captain, is_keeper, sync_status, updated_at)
+       VALUES (?, ?, ?, 0, 0, 'PENDING', ?)`,
+      teamId,
+      userId,
+      jerseyNo ?? null,
+      Date.now(),
+    );
+    await enqueueSyncInDb(db, 'TEAM_PLAYER', `${teamId}:${userId}`);
+  });
 }
 
 export async function listTeamPlayers(teamId: string): Promise<User[]> {
@@ -252,6 +368,7 @@ export async function listTeamPlayers(teamId: string): Promise<User[]> {
 // ---------- Matches ----------
 
 export async function createMatch(input: {
+  id?: string;
   tournamentId: string | null;
   format: MatchFormat;
   rules?: Partial<FormatRules>;
@@ -261,9 +378,13 @@ export async function createMatch(input: {
   scheduledAt?: number;
 }): Promise<Match> {
   const db = await getDb();
+  if (input.id) {
+    const existing = await db.getFirstAsync<any>('SELECT * FROM matches WHERE id = ?', input.id);
+    if (existing) return rowToMatch(existing);
+  }
   const rules: FormatRules = { ...DEFAULT_RULES[input.format], ...input.rules };
   const match: Match = {
-    id: newId(),
+    id: input.id ?? newId(),
     tournamentId: input.tournamentId,
     format: input.format,
     rules,
@@ -403,6 +524,7 @@ export async function setMatchXI(
 
 export interface MatchXIPlayer {
   userId: string;
+  cloudId?: string;
   name: string;
   battingOrder: number;
   isCaptain: boolean;
@@ -415,7 +537,7 @@ export async function getMatchXI(
 ): Promise<MatchXIPlayer[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<any>(
-    `SELECT mx.user_id, mx.batting_order, mx.is_captain, mx.is_keeper, u.name
+    `SELECT mx.user_id, mx.batting_order, mx.is_captain, mx.is_keeper, u.name, u.cloud_id
      FROM match_xis mx
      JOIN users u ON u.id = mx.user_id
      WHERE mx.match_id = ? AND mx.team_id = ?
@@ -425,6 +547,7 @@ export async function getMatchXI(
   );
   return rows.map(r => ({
     userId: r.user_id,
+    cloudId: r.cloud_id ?? undefined,
     name: r.name,
     battingOrder: r.batting_order,
     isCaptain: !!r.is_captain,
@@ -435,6 +558,7 @@ export async function getMatchXI(
 // ---------- Innings ----------
 
 export async function createInnings(input: {
+  id?: string;
   matchId: string;
   sequence: 1 | 2 | 3 | 4;
   battingTeamId: string;
@@ -443,8 +567,14 @@ export async function createInnings(input: {
   target?: number;
 }): Promise<Innings> {
   const db = await getDb();
+  const existing = await db.getFirstAsync<any>(
+    'SELECT * FROM innings WHERE match_id = ? AND sequence = ?',
+    input.matchId,
+    input.sequence,
+  );
+  if (existing) return rowToInnings(existing);
   const inn: Innings = {
-    id: newId(),
+    id: input.id ?? newId(),
     matchId: input.matchId,
     sequence: input.sequence,
     battingTeamId: input.battingTeamId,
@@ -539,6 +669,7 @@ export async function insertBall(input: {
   dismissalKind?: DismissalKind;
   outPlayerId?: string;
   fielderId?: string;
+  assistantFielderId?: string;
 }): Promise<Ball> {
   const db = await getDb();
   const ball: Ball = {
@@ -560,6 +691,7 @@ export async function insertBall(input: {
           kind: input.dismissalKind!,
           outPlayerId: input.outPlayerId!,
           fielderId: input.fielderId,
+          assistantFielderId: input.assistantFielderId,
         }
       : undefined,
     createdAt: Date.now(),
@@ -568,8 +700,8 @@ export async function insertBall(input: {
     `INSERT INTO balls (id, innings_id, over_no, ball_in_over, legal_ball_in_over,
        striker_id, non_striker_id, bowler_id,
        runs_bat, runs_extra, extra_kind, is_legal, is_wicket,
-       dismissal_kind, out_player_id, fielder_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       dismissal_kind, out_player_id, fielder_id, assistant_fielder_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ball.id,
     ball.inningsId,
     ball.overNo,
@@ -586,6 +718,7 @@ export async function insertBall(input: {
     input.dismissalKind ?? null,
     input.outPlayerId ?? null,
     input.fielderId ?? null,
+    input.assistantFielderId ?? null,
     ball.createdAt,
   );
   return ball;
@@ -645,6 +778,7 @@ function rowToBall(row: any): Ball {
           kind: row.dismissal_kind,
           outPlayerId: row.out_player_id,
           fielderId: row.fielder_id ?? undefined,
+          assistantFielderId: row.assistant_fielder_id ?? undefined,
         }
       : undefined,
     createdAt: row.created_at,

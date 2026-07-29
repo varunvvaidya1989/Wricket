@@ -1,161 +1,126 @@
-import React, { useCallback, useState } from 'react';
-import { View, StyleSheet, FlatList, Pressable } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
+import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { colors, palette } from '@/lib/theme/colors';
-import { spacing, radius } from '@/lib/theme/spacing';
-import { listLiveMatches, getTeam } from '@/lib/wricket/db/repo';
-import { Match, FORMAT_LABEL } from '@/lib/wricket/domain/types';
-
-interface LiveMatchView {
-  match: Match;
-  teamAName: string;
-  teamBName: string;
-}
+import { CloudLiveTournament, liveMatchApi } from '@/lib/supabase/liveMatchApi';
+import { colors } from '@/lib/theme/colors';
+import { radius, spacing } from '@/lib/theme/spacing';
 
 export default function LiveScreen() {
   const router = useRouter();
-  const [matches, setMatches] = useState<LiveMatchView[]>([]);
+  const [tournaments, setTournaments] = useState<CloudLiveTournament[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
 
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      (async () => {
-        setLoading(true);
-        const list = await listLiveMatches();
-        const enriched = await Promise.all(
-          list.map(async m => {
-            const [a, b] = await Promise.all([getTeam(m.teamAId), getTeam(m.teamBId)]);
-            return {
-              match: m,
-              teamAName: a?.shortName ?? 'A',
-              teamBName: b?.shortName ?? 'B',
-            };
-          }),
-        );
-        if (!cancelled) {
-          setMatches(enriched);
-          setLoading(false);
-        }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }, []),
-  );
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setTournaments(await liveMatchApi.listTournaments());
+      setError(undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load live tournaments');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => {
+    void load();
+    return undefined;
+  }, [load]));
+  useEffect(() => liveMatchApi.subscribeList(() => void load()), [load]);
 
   return (
     <Screen padded={false}>
       <View style={styles.header}>
-        <View>
-          <Text variant="overline" tone="muted">Live</Text>
-          <Text variant="h1">Matches</Text>
-        </View>
+        <Text variant="overline" tone="muted">LIVE NOW</Text>
+        <Text variant="h1">Tournaments</Text>
+        <Text variant="body" tone="muted" style={{ marginTop: spacing.xs }}>
+          Open a tournament to follow its live matches.
+        </Text>
       </View>
-
-      <View style={styles.content}>
-        <Pressable style={styles.bigCta} onPress={() => router.push('/wricket/match/new')}>
-          <View style={styles.bigCtaIcon}>
-            <MaterialCommunityIcons name="plus" size={28} color={colors.accentInk} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text variant="h3" style={{ color: colors.accentInk }}>Start a match</Text>
-            <Text variant="caption" style={{ color: colors.accentInk, opacity: 0.7 }}>
-              Set up teams, toss and start scoring
-            </Text>
-          </View>
+      {error && (
+        <Pressable style={styles.errorCard} onPress={() => void load()}>
+          <Text variant="caption">{error} Tap to retry.</Text>
         </Pressable>
-
-        {loading ? null : matches.length > 0 ? (
-          <View style={{ marginTop: spacing.xl }}>
-            <Text variant="overline" tone="muted" style={{ marginBottom: spacing.md }}>
-              In Progress
-            </Text>
-            <FlatList
-              data={matches}
-              keyExtractor={m => m.match.id}
-              ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
-              renderItem={({ item }) => (
-                <Card
-                  onPress={() =>
-                    router.push({
-                      pathname: '/wricket/match/[id]/score',
-                      params: { id: item.match.id },
-                    })
-                  }
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                    <View style={styles.liveDot} />
-                    <View style={{ flex: 1 }}>
-                      <Text variant="h3">
-                        {item.teamAName} vs {item.teamBName}
-                      </Text>
-                      <Text variant="caption" tone="muted">
-                        {FORMAT_LABEL[item.match.format]}
-                      </Text>
-                    </View>
-                    <Button
-                      title="Score"
-                      size="sm"
-                      onPress={() =>
-                        router.push({
-                          pathname: '/wricket/match/[id]/score',
-                          params: { id: item.match.id },
-                        })
-                      }
-                    />
-                  </View>
-                </Card>
-              )}
-            />
-          </View>
-        ) : (
-          <Text variant="caption" tone="dim" style={{ marginTop: spacing.xl, textAlign: 'center' }}>
-            No live matches. Start one above.
+      )}
+      {!loading && tournaments.length === 0 ? (
+        <View style={styles.empty}>
+          <MaterialCommunityIcons name="access-point-off" size={42} color={colors.textDim} />
+          <Text variant="h3">No tournaments are live</Text>
+          <Text variant="body" tone="muted" style={{ textAlign: 'center' }}>
+            Tournaments appear here when one of their matches starts.
           </Text>
-        )}
-      </View>
+        </View>
+      ) : (
+        <FlatList
+          data={tournaments}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.list}
+          ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
+          renderItem={({ item }) => (
+            <Card
+              onPress={() => router.push({
+                pathname: '/wricket/tournament/[id]/live',
+                params: { id: item.id },
+              })}
+            >
+              <View style={styles.cardTop}>
+                <View style={styles.icon}>
+                  <MaterialCommunityIcons name="trophy-outline" size={26} color={colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text variant="h3">{item.name}</Text>
+                  <Text variant="caption" tone="muted">
+                    {item.matches.length} live match{item.matches.length === 1 ? '' : 'es'}
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textMuted} />
+              </View>
+              <View style={styles.liveRow}>
+                <View style={styles.liveDot} />
+                <Text variant="caption" style={{ color: colors.danger }}>
+                  {item.matches.map(match => `${match.teamA.shortName} vs ${match.teamB.shortName}`).join(' · ')}
+                </Text>
+              </View>
+            </Card>
+          )}
+        />
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.lg,
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md },
+  list: { padding: spacing.lg, paddingBottom: spacing.xxxl },
+  errorCard: {
+    marginHorizontal: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    padding: spacing.md,
   },
-  content: {
+  empty: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-  },
-  bigCta: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.xl,
-    padding: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  bigCtaIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: palette.black,
     alignItems: 'center',
     justifyContent: 'center',
-    opacity: 0.85,
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
   },
-  liveDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.danger,
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  icon: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  liveRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger },
 });

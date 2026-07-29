@@ -256,7 +256,9 @@ function dismissalTextFor(event: DeliveryEvent): string {
     case 'LBW':
       return `lbw b ${shortId(event.bowlerId)}`;
     case 'RUN_OUT':
-      return `run out (${shortId(event.wicket.fielderId ?? '')})`;
+      return event.wicket.assistantFielderId
+        ? `run out (${shortId(event.wicket.assistantFielderId)} / ${shortId(event.wicket.fielderId ?? '')})`
+        : `run out (${shortId(event.wicket.fielderId ?? '')})`;
     case 'STUMPED':
       return `st ${shortId(event.wicket.fielderId ?? '')} b ${shortId(event.bowlerId)}`;
     case 'HIT_WICKET':

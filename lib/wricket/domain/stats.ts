@@ -110,7 +110,9 @@ export function describeDismissal(b: Ball): string {
     case 'LBW':
       return `lbw b ${shortId(b.bowlerId)}`;
     case 'RUN_OUT':
-      return `run out (${shortId(b.dismissal.fielderId ?? '')})`;
+      return b.dismissal.assistantFielderId
+        ? `run out (${shortId(b.dismissal.assistantFielderId)} / ${shortId(b.dismissal.fielderId ?? '')})`
+        : `run out (${shortId(b.dismissal.fielderId ?? '')})`;
     case 'STUMPED':
       return `st ${shortId(b.dismissal.fielderId ?? '')} b ${shortId(b.bowlerId)}`;
     case 'HIT_WICKET':

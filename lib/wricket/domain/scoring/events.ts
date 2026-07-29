@@ -107,6 +107,7 @@ export interface WicketDetail {
   readonly kind: DismissalKind;
   readonly outPlayerId: string;
   readonly fielderId?: string;
+  readonly assistantFielderId?: string;
   readonly creditedToBowler: boolean;
 }
 
@@ -216,6 +217,7 @@ export function deliveryEventFromBall(ball: Ball, sequence: number): DomainResul
           kind: ball.dismissal.kind,
           outPlayerId: ball.dismissal.outPlayerId,
           fielderId: ball.dismissal.fielderId,
+          assistantFielderId: ball.dismissal.assistantFielderId,
           creditedToBowler: isBowlerCreditedWicket(ball.dismissal.kind),
         }
       : undefined,

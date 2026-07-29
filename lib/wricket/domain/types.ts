@@ -1,4 +1,4 @@
-export type MatchFormat = 'BOX' | 'TURF' | 'TURF_TEST';
+export type MatchFormat = 'BOX' | 'TURF' | 'TURF_TEST' | 'T20' | 'T10' | 'ODI';
 
 export type DismissalKind =
   | 'BOWLED'
@@ -32,6 +32,7 @@ export type ResultKind =
 export type TossChoice = 'BAT' | 'BOWL';
 
 export type PlayerRole = 'BAT' | 'BOWL' | 'AR' | 'WK';
+export type SyncStatus = 'LOCAL' | 'PENDING' | 'SYNCED' | 'FAILED';
 
 export interface User {
   id: string;
@@ -40,6 +41,9 @@ export interface User {
   battingHand?: 'RIGHT' | 'LEFT';
   bowlingStyle?: string;
   createdAt: number;
+  cloudId?: string;
+  syncStatus: SyncStatus;
+  syncError?: string;
 }
 
 export interface Tournament {
@@ -54,6 +58,24 @@ export interface Tournament {
   pointsNoResult: number;
   status: 'ACTIVE' | 'COMPLETED';
   createdAt: number;
+  organizerProfileId?: string;
+  organizerPhone?: string;
+  location?: string;
+  latitude?: number;
+  longitude?: number;
+  googlePlaceId?: string;
+  googleMapsUrl?: string;
+  plannedTeamCount: number;
+  playersPerTeam: number;
+  description?: string;
+  socialMediaUrl?: string;
+  bannerLocalUri?: string;
+  logoLocalUri?: string;
+  bannerUrl?: string;
+  logoUrl?: string;
+  cloudId?: string;
+  syncStatus: SyncStatus;
+  syncError?: string;
 }
 
 export interface Team {
@@ -63,6 +85,9 @@ export interface Team {
   shortName: string;
   colorHex: string;
   createdAt: number;
+  cloudId?: string;
+  syncStatus: SyncStatus;
+  syncError?: string;
 }
 
 export interface TeamPlayer {
@@ -139,6 +164,7 @@ export interface Ball {
     kind: DismissalKind;
     outPlayerId: string;
     fielderId?: string;
+    assistantFielderId?: string;
   };
   createdAt: number;
 }
@@ -197,19 +223,52 @@ export const DEFAULT_RULES: Record<MatchFormat, FormatRules> = {
     powerPlayOvers: 2,
   },
   TURF_TEST: {
-    oversPerInnings: 5,
+    oversPerInnings: 90,
     inningsPerTeam: 2,
     playersPerSide: 11,
-    maxOversPerBowler: 2,
+    maxOversPerBowler: 90,
     followOnEnabled: true,
-    followOnThreshold: 25,
+    followOnThreshold: 200,
     lbwEnabled: true,
     powerPlayOvers: 0,
+  },
+  T20: {
+    oversPerInnings: 20,
+    inningsPerTeam: 1,
+    playersPerSide: 11,
+    maxOversPerBowler: 4,
+    followOnEnabled: false,
+    followOnThreshold: 0,
+    lbwEnabled: true,
+    powerPlayOvers: 6,
+  },
+  T10: {
+    oversPerInnings: 10,
+    inningsPerTeam: 1,
+    playersPerSide: 11,
+    maxOversPerBowler: 2,
+    followOnEnabled: false,
+    followOnThreshold: 0,
+    lbwEnabled: true,
+    powerPlayOvers: 3,
+  },
+  ODI: {
+    oversPerInnings: 50,
+    inningsPerTeam: 1,
+    playersPerSide: 11,
+    maxOversPerBowler: 10,
+    followOnEnabled: false,
+    followOnThreshold: 0,
+    lbwEnabled: true,
+    powerPlayOvers: 10,
   },
 };
 
 export const FORMAT_LABEL: Record<MatchFormat, string> = {
   BOX: 'Box Cricket',
-  TURF: 'Turf Cricket',
-  TURF_TEST: 'Turf Test',
+  TURF: 'Turf cricket',
+  TURF_TEST: 'Test',
+  T20: 'T20',
+  T10: 'T10',
+  ODI: 'ODI',
 };

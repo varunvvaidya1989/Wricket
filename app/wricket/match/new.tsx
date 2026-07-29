@@ -19,39 +19,68 @@ import { spacing, radius } from '@/lib/theme/spacing';
 import {
   listTeams,
   listTeamPlayers,
+  getTournament,
   createMatch,
   setMatchToss,
   setMatchXI,
-  createUser,
-  addPlayerToTeam,
   createInnings,
   setMatchStatus,
 } from '@/lib/wricket/db/repo';
 import { Team, User, MatchFormat, FORMAT_LABEL, DEFAULT_RULES, TossChoice } from '@/lib/wricket/domain/types';
+import { matchSetupApi } from '@/lib/supabase/matchSetupApi';
+import { fixturesApi } from '@/lib/supabase/fixturesApi';
 
 type Step = 'teams' | 'players' | 'toss' | 'review';
 
-const FORMATS: MatchFormat[] = ['BOX', 'TURF', 'TURF_TEST'];
+const FORMATS: MatchFormat[] = ['BOX', 'TURF', 'TURF_TEST', 'T20', 'T10', 'ODI'];
 
 export default function NewMatchScreen() {
   const router = useRouter();
-  const { tournamentId } = useLocalSearchParams<{ tournamentId?: string }>();
+  const {
+    tournamentId,
+    teamAId: initialTeamAId,
+    teamBId: initialTeamBId,
+    canonicalMatchId,
+    editFixtureId,
+    format: initialFormat,
+  } =
+    useLocalSearchParams<{
+      tournamentId?: string;
+      teamAId?: string;
+      teamBId?: string;
+      canonicalMatchId?: string;
+      format?: MatchFormat;
+      editFixtureId?: string;
+    }>();
 
   const [step, setStep] = useState<Step>('teams');
-  const [format, setFormat] = useState<MatchFormat>('TURF');
+  const [format, setFormat] = useState<MatchFormat>(
+    initialFormat && FORMATS.includes(initialFormat) ? initialFormat : 'TURF',
+  );
   const [allTeams, setAllTeams] = useState<Team[]>([]);
-  const [teamAId, setTeamAId] = useState<string | null>(null);
-  const [teamBId, setTeamBId] = useState<string | null>(null);
+  const [teamAId, setTeamAId] = useState<string | null>(initialTeamAId ?? null);
+  const [teamBId, setTeamBId] = useState<string | null>(initialTeamBId ?? null);
   const [playersA, setPlayersA] = useState<User[]>([]);
   const [playersB, setPlayersB] = useState<User[]>([]);
   const [tossWinnerId, setTossWinnerId] = useState<string | null>(null);
   const [tossChoice, setTossChoice] = useState<TossChoice>('BAT');
   const [saving, setSaving] = useState(false);
+  const [venue, setVenue] = useState('');
+  const [scheduledAt, setScheduledAt] = useState(new Date().toISOString());
+  const [isTournamentMatch, setIsTournamentMatch] = useState(Boolean(tournamentId));
 
   useEffect(() => {
     (async () => {
-      const t = await listTeams(tournamentId ?? null);
-      setAllTeams(t);
+      const [teamList, tournament] = await Promise.all([
+        listTeams(tournamentId ?? null),
+        tournamentId ? getTournament(tournamentId) : Promise.resolve(null),
+      ]);
+      setAllTeams(teamList);
+      if (tournament) {
+        setFormat(tournament.format);
+        setVenue(tournament.location ?? '');
+        setIsTournamentMatch(true);
+      }
     })();
   }, [tournamentId]);
 
@@ -79,14 +108,64 @@ export default function NewMatchScreen() {
   const canProceedToss = !!tossWinnerId;
 
   const onStart = async () => {
-    if (!teamAId || !teamBId || !tossWinnerId) return;
+    if (!teamAId || !teamBId || !tossWinnerId || !teamA || !teamB) return;
+    const scheduledTimestamp = Date.parse(scheduledAt);
+    if (!Number.isFinite(scheduledTimestamp)) {
+      Alert.alert('Invalid date and time', 'Enter a valid ISO date and time.');
+      return;
+    }
     setSaving(true);
     try {
+      if (!teamA.cloudId || !teamB.cloudId) {
+        throw new Error('Both teams must be available online before starting the match');
+      }
+      const selectedPlayersA = playersA.slice(0, rules.playersPerSide);
+      const selectedPlayersB = playersB.slice(0, rules.playersPerSide);
+      if (selectedPlayersA.some(player => !player.cloudId) || selectedPlayersB.some(player => !player.cloudId)) {
+        throw new Error('Every selected player must be available online before starting the match');
+      }
+      let cloudMatchId = canonicalMatchId;
+      if (!cloudMatchId) {
+        if (!tournamentId) throw new Error('Online match creation requires a tournament');
+        const tournament = await getTournament(tournamentId);
+        if (!tournament?.cloudId) throw new Error('Tournament is not available online');
+        cloudMatchId = await matchSetupApi.createMatch({
+          tournamentId: tournament.cloudId,
+          teamAId: teamA.cloudId,
+          teamBId: teamB.cloudId,
+          format,
+          scheduledAt,
+          venue,
+        });
+      }
+      await matchSetupApi.updateMatchDetails(cloudMatchId, { scheduledAt, venue });
+      const cloudTossWinnerId = tossWinnerId === teamAId ? teamA.cloudId : teamB.cloudId;
+      const cloudSetup = await matchSetupApi.startMatch({
+        matchId: cloudMatchId,
+        teamAXI: selectedPlayersA.map((player, index) => ({
+          playerId: player.cloudId!,
+          battingOrder: index + 1,
+          isCaptain: index === 0,
+          isKeeper: false,
+        })),
+        teamBXI: selectedPlayersB.map((player, index) => ({
+          playerId: player.cloudId!,
+          battingOrder: index + 1,
+          isCaptain: index === 0,
+          isKeeper: false,
+        })),
+        tossWinnerTeamId: cloudTossWinnerId,
+        tossChoice,
+      });
+
       const match = await createMatch({
+        id: cloudMatchId,
         tournamentId: tournamentId ?? null,
         format,
         teamAId,
         teamBId,
+        venue: venue.trim() || undefined,
+        scheduledAt: scheduledTimestamp,
       });
       await setMatchToss(match.id, tossWinnerId, tossChoice);
 
@@ -119,19 +198,47 @@ export default function NewMatchScreen() {
       const bowlingFirst = battingFirst === teamAId ? teamBId : teamAId;
 
       await createInnings({
+        id: cloudSetup.inningsId,
         matchId: match.id,
         sequence: 1,
         battingTeamId: battingFirst,
         bowlingTeamId: bowlingFirst,
       });
       await setMatchStatus(match.id, 'IN_PROGRESS');
-
       router.replace({
         pathname: '/wricket/match/[id]/score',
         params: { id: match.id },
       });
     } catch (e: any) {
       Alert.alert('Could not start match', String(e?.message ?? e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onSaveFixture = async () => {
+    if (!editFixtureId || !canonicalMatchId || !teamA || !teamB || !teamA.cloudId || !teamB.cloudId) return;
+    if (teamA.id === teamB.id) {
+      Alert.alert('Pick both teams', 'Choose two different teams.');
+      return;
+    }
+    if (!Number.isFinite(Date.parse(scheduledAt))) {
+      Alert.alert('Invalid date and time', 'Enter a valid ISO date and time.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await fixturesApi.updateMatchById({
+        fixtureMatchId: editFixtureId,
+        canonicalMatchId,
+        teamAId: teamA.cloudId,
+        teamBId: teamB.cloudId,
+        scheduledAt,
+        venue,
+      });
+      router.back();
+    } catch (cause) {
+      Alert.alert('Could not update fixture', cause instanceof Error ? cause.message : 'Please try again.');
     } finally {
       setSaving(false);
     }
@@ -151,6 +258,11 @@ export default function NewMatchScreen() {
             teamBId={teamBId}
             setTeamAId={setTeamAId}
             setTeamBId={setTeamBId}
+            lockFormat={isTournamentMatch}
+            venue={venue}
+            scheduledAt={scheduledAt}
+            setVenue={setVenue}
+            setScheduledAt={setScheduledAt}
           />
         )}
 
@@ -200,7 +312,9 @@ export default function NewMatchScreen() {
               style={{ flex: 1 }}
             />
           )}
-          {step !== 'review' ? (
+          {step === 'teams' && editFixtureId ? (
+            <Button title="Save fixture" onPress={onSaveFixture} loading={saving} style={{ flex: 1 }} />
+          ) : step !== 'review' ? (
             <Button
               title="Next"
               onPress={() => {
@@ -252,6 +366,7 @@ function StepBadge({ step }: { step: Step }) {
 
 function TeamsStep({
   format, setFormat, teams, teamAId, teamBId, setTeamAId, setTeamBId,
+  lockFormat, venue, scheduledAt, setVenue, setScheduledAt,
 }: {
   format: MatchFormat;
   setFormat: (f: MatchFormat) => void;
@@ -260,12 +375,24 @@ function TeamsStep({
   teamBId: string | null;
   setTeamAId: (id: string) => void;
   setTeamBId: (id: string) => void;
+  lockFormat: boolean;
+  venue: string;
+  scheduledAt: string;
+  setVenue: (value: string) => void;
+  setScheduledAt: (value: string) => void;
 }) {
   return (
     <View style={{ gap: spacing.lg }}>
       <View>
         <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>FORMAT</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+        {lockFormat ? (
+          <Card>
+            <Text variant="bodyStrong">{FORMAT_LABEL[format]}</Text>
+            <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
+              Inherited from tournament
+            </Text>
+          </Card>
+        ) : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
           {FORMATS.map(f => (
             <Pressable
               key={f}
@@ -280,7 +407,29 @@ function TeamsStep({
               </Text>
             </Pressable>
           ))}
-        </ScrollView>
+        </ScrollView>}
+      </View>
+
+      <View>
+        <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>DATE & TIME (ISO)</Text>
+        <TextInput
+          value={scheduledAt}
+          onChangeText={setScheduledAt}
+          placeholder="2026-07-28T18:00:00+05:30"
+          placeholderTextColor={colors.textDim}
+          style={styles.input}
+          autoCapitalize="none"
+        />
+      </View>
+      <View>
+        <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>LOCATION</Text>
+        <TextInput
+          value={venue}
+          onChangeText={setVenue}
+          placeholder="Ground or venue"
+          placeholderTextColor={colors.textDim}
+          style={styles.input}
+        />
       </View>
 
       <TeamPicker label="TEAM A" teams={teams} selectedId={teamAId} excludeId={teamBId} onSelect={setTeamAId} />
@@ -353,24 +502,14 @@ function PlayersStep({
 }
 
 function TeamPlayersBlock({
-  team, players, max, onChange,
+  team, players, max,
 }: {
   team: Team;
   players: User[];
   max: number;
   onChange: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState('');
-
-  const onAdd = async () => {
-    if (name.trim().length < 2) return;
-    const u = await createUser({ name: name.trim(), role: 'AR' });
-    await addPlayerToTeam(team.id, u.id);
-    setName('');
-    setAdding(false);
-    onChange();
-  };
+  const router = useRouter();
 
   return (
     <View>
@@ -383,8 +522,8 @@ function TeamPlayersBlock({
       </View>
 
       <Card>
-        {players.length === 0 && !adding && (
-          <Text variant="caption" tone="muted">No players yet</Text>
+        {players.length === 0 && (
+          <Text variant="caption" tone="muted">No signed-in players have joined this team yet.</Text>
         )}
         {players.map((p, i) => (
           <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm }}>
@@ -393,26 +532,14 @@ function TeamPlayersBlock({
           </View>
         ))}
 
-        {adding ? (
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="Player name"
-              placeholderTextColor={colors.textDim}
-              style={[styles.input, { flex: 1 }]}
-              autoFocus
-              onSubmitEditing={onAdd}
-            />
-            <Button title="Add" onPress={onAdd} size="sm" />
-          </View>
-        ) : (
-          players.length < max && (
-            <Pressable onPress={() => setAdding(true)} style={styles.addRow}>
-              <MaterialCommunityIcons name="plus" size={18} color={colors.accent} />
-              <Text variant="bodyStrong" tone="accent">Add player</Text>
-            </Pressable>
-          )
+        {team.cloudId && players.length < max && (
+          <Pressable
+            onPress={() => router.push({ pathname: '/wricket/team/[id]', params: { id: team.cloudId! } })}
+            style={styles.addRow}
+          >
+            <MaterialCommunityIcons name="account-multiple-plus-outline" size={18} color={colors.accent} />
+            <Text variant="bodyStrong" tone="accent">Open team invitations</Text>
+          </Pressable>
         )}
       </Card>
     </View>

@@ -18,6 +18,8 @@ export default function WricketLayout() {
         options={{ presentation: 'modal', title: 'New Tournament' }}
       />
       <Stack.Screen name="tournament/[id]" options={{ title: '' }} />
+      <Stack.Screen name="team/join" options={{ title: 'Join team' }} />
+      <Stack.Screen name="team/[id]" options={{ title: 'Team' }} />
       <Stack.Screen
         name="match/new"
         options={{ presentation: 'modal', title: 'New Match' }}
@@ -26,6 +28,7 @@ export default function WricketLayout() {
         name="match/[id]/score"
         options={{ headerShown: false, gestureEnabled: false }}
       />
+      <Stack.Screen name="match/[id]/live" options={{ title: 'Live score' }} />
       <Stack.Screen name="match/[id]/scorecard" options={{ title: 'Scorecard' }} />
       <Stack.Screen name="player/[id]" options={{ title: '' }} />
     </Stack>

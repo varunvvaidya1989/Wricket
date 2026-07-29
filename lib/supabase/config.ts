@@ -29,5 +29,13 @@ export function readSupabaseConfig(env: SupabaseEnv): SupabaseConfig {
 }
 
 export function getSupabaseConfig(): SupabaseConfig {
-  return readSupabaseConfig(process.env);
+  // Expo only inlines EXPO_PUBLIC_* values when each variable is referenced
+  // statically with dot notation. Passing process.env through to computed
+  // property access works in Node/tests but produces undefined in native EAS
+  // bundles.
+  return readSupabaseConfig({
+    EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
+    EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
+      process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  });
 }

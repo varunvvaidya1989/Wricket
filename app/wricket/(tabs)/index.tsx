@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { View, StyleSheet, FlatList, Pressable } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -10,11 +10,40 @@ import { colors } from '@/lib/theme/colors';
 import { spacing, radius } from '@/lib/theme/spacing';
 import { listTournaments } from '@/lib/wricket/db/repo';
 import { Tournament, FORMAT_LABEL } from '@/lib/wricket/domain/types';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { syncTournamentData } from '@/lib/wricket/sync/tournamentSync';
 
 export default function TournamentsScreen() {
   const router = useRouter();
+  const auth = useAuth();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const syncingRef = useRef(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const refreshLocal = useCallback(async () => {
+    setTournaments(await listTournaments());
+  }, []);
+
+  const syncNow = useCallback(async (forceRetry = false) => {
+    if (!auth.session || !auth.profile || syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const result = await syncTournamentData(auth.session.user.id, { forceRetry });
+      await refreshLocal();
+      setSyncMessage(result.failed > 0
+        ? `${result.failed} item${result.failed === 1 ? '' : 's'} need attention`
+        : 'Cloud sync complete');
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : 'Cloud sync failed');
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, [auth.profile, auth.session, refreshLocal]);
 
   useFocusEffect(
     useCallback(() => {
@@ -25,12 +54,13 @@ export default function TournamentsScreen() {
         if (!cancelled) {
           setTournaments(list);
           setLoading(false);
+          if (auth.session && auth.profile) void syncNow();
         }
       })();
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [auth.profile, auth.session, syncNow]),
   );
 
   const active = tournaments.filter(t => t.status === 'ACTIVE');
@@ -43,13 +73,25 @@ export default function TournamentsScreen() {
           <Text variant="overline" tone="muted">Wricket</Text>
           <Text variant="h1">Tournaments</Text>
         </View>
-        <Pressable
-          style={styles.fab}
-          onPress={() => router.push('/wricket/tournament/new')}
-        >
-          <MaterialCommunityIcons name="plus" size={24} color={colors.accentInk} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          {auth.session && auth.profile && (
+            <Pressable style={styles.syncButton} onPress={() => syncNow(true)} disabled={syncing}>
+              <MaterialCommunityIcons
+                name={syncing ? 'cloud-sync-outline' : 'cloud-check-outline'}
+                size={22}
+                color={syncing ? colors.textDim : colors.accent}
+              />
+            </Pressable>
+          )}
+          <Pressable style={styles.fab} onPress={() => router.push('/wricket/tournament/new')}>
+            <MaterialCommunityIcons name="plus" size={24} color={colors.accentInk} />
+          </Pressable>
+        </View>
       </View>
+
+      {syncMessage && (
+        <Text variant="caption" tone="muted" style={styles.syncMessage}>{syncMessage}</Text>
+      )}
 
       {loading ? null : tournaments.length === 0 ? (
         <EmptyState onCreate={() => router.push('/wricket/tournament/new')} />
@@ -81,6 +123,9 @@ export default function TournamentsScreen() {
                     {FORMAT_LABEL[item.format]} ·{' '}
                     {item.status === 'ACTIVE' ? 'Active' : 'Completed'}
                   </Text>
+                  <Text variant="caption" tone={item.syncStatus === 'FAILED' ? 'default' : 'dim'}>
+                    {syncLabel(item.syncStatus)}
+                  </Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} />
               </View>
@@ -90,6 +135,13 @@ export default function TournamentsScreen() {
       )}
     </Screen>
   );
+}
+
+function syncLabel(status: Tournament['syncStatus']): string {
+  if (status === 'SYNCED') return 'Cloud synced';
+  if (status === 'FAILED') return 'Sync failed — tap cloud to retry';
+  if (status === 'PENDING') return 'Waiting to sync';
+  return 'On this device';
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
@@ -138,6 +190,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  syncButton: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceElevated,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  syncMessage: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   iconBubble: {
     width: 40,
     height: 40,

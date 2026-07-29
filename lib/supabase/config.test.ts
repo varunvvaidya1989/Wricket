@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { readSupabaseConfig } from './config';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 describe('readSupabaseConfig', () => {
   it('reads client-safe Supabase public configuration', () => {
@@ -37,5 +39,12 @@ describe('readSupabaseConfig', () => {
         EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_secret_example',
       }),
     ).toThrow('EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY must be a publishable key');
+  });
+
+  it('uses Expo-compatible static environment references in the app bundle', () => {
+    const source = readFileSync(resolve(__dirname, 'config.ts'), 'utf8');
+    expect(source).toContain('process.env.EXPO_PUBLIC_SUPABASE_URL');
+    expect(source).toContain('process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY');
+    expect(source).not.toContain('readSupabaseConfig(process.env)');
   });
 });

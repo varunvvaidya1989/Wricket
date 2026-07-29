@@ -7,6 +7,7 @@ export interface BallEvent {
   dismissalKind?: DismissalKind;
   outPlayerId?: string;      // who got out (defaults to striker if omitted)
   fielderId?: string;
+  assistantFielderId?: string;
 }
 
 export interface InningsState {
@@ -107,6 +108,7 @@ export function applyBall(state: InningsState, event: BallEvent): AppliedBall {
           kind: event.dismissalKind ?? 'BOWLED',
           outPlayerId: outPlayerId!,
           fielderId: event.fielderId,
+          assistantFielderId: event.assistantFielderId,
         }
       : undefined,
   };
