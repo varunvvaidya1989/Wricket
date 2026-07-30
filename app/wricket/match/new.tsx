@@ -6,7 +6,10 @@ import {
   TextInput,
   Alert,
   ScrollView,
+  Image,
+  Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
@@ -29,6 +32,8 @@ import {
 import { Team, User, MatchFormat, FORMAT_LABEL, DEFAULT_RULES, TossChoice } from '@/lib/wricket/domain/types';
 import { matchSetupApi } from '@/lib/supabase/matchSetupApi';
 import { fixturesApi } from '@/lib/supabase/fixturesApi';
+import { googleStaticMapUrl } from '@/lib/maps/googlePlaces';
+import { VirtualCoinToss } from '@/components/sports/VirtualCoinToss';
 
 type Step = 'teams' | 'players' | 'toss' | 'review';
 
@@ -43,6 +48,7 @@ export default function NewMatchScreen() {
     canonicalMatchId,
     editFixtureId,
     format: initialFormat,
+    scheduledAt: initialScheduledAt,
   } =
     useLocalSearchParams<{
       tournamentId?: string;
@@ -51,6 +57,7 @@ export default function NewMatchScreen() {
       canonicalMatchId?: string;
       format?: MatchFormat;
       editFixtureId?: string;
+      scheduledAt?: string;
     }>();
 
   const [step, setStep] = useState<Step>('teams');
@@ -63,11 +70,16 @@ export default function NewMatchScreen() {
   const [playersA, setPlayersA] = useState<User[]>([]);
   const [playersB, setPlayersB] = useState<User[]>([]);
   const [tossWinnerId, setTossWinnerId] = useState<string | null>(null);
-  const [tossChoice, setTossChoice] = useState<TossChoice>('BAT');
+  const [tossChoice, setTossChoice] = useState<TossChoice | null>(null);
   const [saving, setSaving] = useState(false);
   const [venue, setVenue] = useState('');
-  const [scheduledAt, setScheduledAt] = useState(new Date().toISOString());
+  const [scheduledAt, setScheduledAt] = useState(
+    initialScheduledAt && Number.isFinite(Date.parse(initialScheduledAt))
+      ? new Date(initialScheduledAt).toISOString()
+      : new Date().toISOString(),
+  );
   const [isTournamentMatch, setIsTournamentMatch] = useState(Boolean(tournamentId));
+  const [selectedTournament, setSelectedTournament] = useState<Awaited<ReturnType<typeof getTournament>>>(null);
 
   useEffect(() => {
     (async () => {
@@ -77,7 +89,9 @@ export default function NewMatchScreen() {
       ]);
       setAllTeams(teamList);
       if (tournament) {
+        setSelectedTournament(tournament);
         setFormat(tournament.format);
+        // Tournament fixtures always inherit the canonical tournament venue.
         setVenue(tournament.location ?? '');
         setIsTournamentMatch(true);
       }
@@ -105,10 +119,10 @@ export default function NewMatchScreen() {
   const canProceedTeams = teamAId && teamBId && teamAId !== teamBId;
   const canProceedPlayers =
     playersA.length >= rules.playersPerSide && playersB.length >= rules.playersPerSide;
-  const canProceedToss = !!tossWinnerId;
+  const canProceedToss = !!tossWinnerId && !!tossChoice;
 
   const onStart = async () => {
-    if (!teamAId || !teamBId || !tossWinnerId || !teamA || !teamB) return;
+    if (!teamAId || !teamBId || !tossWinnerId || !tossChoice || !teamA || !teamB) return;
     const scheduledTimestamp = Date.parse(scheduledAt);
     if (!Number.isFinite(scheduledTimestamp)) {
       Alert.alert('Invalid date and time', 'Enter a valid ISO date and time.');
@@ -263,6 +277,7 @@ export default function NewMatchScreen() {
             scheduledAt={scheduledAt}
             setVenue={setVenue}
             setScheduledAt={setScheduledAt}
+            tournament={selectedTournament}
           />
         )}
 
@@ -291,7 +306,7 @@ export default function NewMatchScreen() {
           />
         )}
 
-        {step === 'review' && teamA && teamB && (
+        {step === 'review' && teamA && teamB && tossChoice && (
           <ReviewStep
             format={format}
             teamA={teamA}
@@ -330,7 +345,10 @@ export default function NewMatchScreen() {
                   return;
                 }
                 if (step === 'toss' && !canProceedToss) {
-                  Alert.alert('Toss missing', 'Pick the toss winner.');
+                  Alert.alert(
+                    'Toss incomplete',
+                    'Flip the coin, then let the winner choose to bat or field first.',
+                  );
                   return;
                 }
                 setStep(nextStep(step));
@@ -366,7 +384,7 @@ function StepBadge({ step }: { step: Step }) {
 
 function TeamsStep({
   format, setFormat, teams, teamAId, teamBId, setTeamAId, setTeamBId,
-  lockFormat, venue, scheduledAt, setVenue, setScheduledAt,
+  lockFormat, venue, scheduledAt, setVenue, setScheduledAt, tournament,
 }: {
   format: MatchFormat;
   setFormat: (f: MatchFormat) => void;
@@ -380,6 +398,7 @@ function TeamsStep({
   scheduledAt: string;
   setVenue: (value: string) => void;
   setScheduledAt: (value: string) => void;
+  tournament: Awaited<ReturnType<typeof getTournament>>;
 }) {
   return (
     <View style={{ gap: spacing.lg }}>
@@ -411,25 +430,37 @@ function TeamsStep({
       </View>
 
       <View>
-        <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>DATE & TIME (ISO)</Text>
-        <TextInput
-          value={scheduledAt}
-          onChangeText={setScheduledAt}
-          placeholder="2026-07-28T18:00:00+05:30"
-          placeholderTextColor={colors.textDim}
-          style={styles.input}
-          autoCapitalize="none"
-        />
+        <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>DATE & TIME</Text>
+        <MatchDateTimePicker value={scheduledAt} onChange={setScheduledAt} />
       </View>
       <View>
         <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>LOCATION</Text>
-        <TextInput
-          value={venue}
-          onChangeText={setVenue}
-          placeholder="Ground or venue"
-          placeholderTextColor={colors.textDim}
-          style={styles.input}
-        />
+        {tournament ? (
+          <Card>
+            <View style={styles.venueRow}>
+              <MaterialCommunityIcons name="map-marker" size={22} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text variant="bodyStrong">{venue || 'Tournament venue not set'}</Text>
+                <Text variant="caption" tone="muted">Inherited from tournament</Text>
+              </View>
+            </View>
+            {tournament.latitude != null && tournament.longitude != null &&
+              googleStaticMapUrl(tournament.latitude, tournament.longitude) && (
+                <Image
+                  source={{ uri: googleStaticMapUrl(tournament.latitude, tournament.longitude)! }}
+                  style={styles.venueMap}
+                />
+              )}
+          </Card>
+        ) : (
+          <TextInput
+            value={venue}
+            onChangeText={setVenue}
+            placeholder="Ground or venue"
+            placeholderTextColor={colors.textDim}
+            style={styles.input}
+          />
+        )}
       </View>
 
       <TeamPicker label="TEAM A" teams={teams} selectedId={teamAId} excludeId={teamBId} onSelect={setTeamAId} />
@@ -439,6 +470,53 @@ function TeamsStep({
         <Text variant="caption" tone="muted">
           You need at least 2 teams. Create teams in a tournament first.
         </Text>
+      )}
+    </View>
+  );
+}
+
+function MatchDateTimePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const date = Number.isFinite(Date.parse(value)) ? new Date(value) : new Date();
+  const [mode, setMode] = useState<'date' | 'time'>();
+  const update = (next?: Date) => {
+    if (Platform.OS !== 'ios') setMode(undefined);
+    if (next) onChange(next.toISOString());
+  };
+  if (Platform.OS === 'web') {
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+      .toISOString().slice(0, 16);
+    return (
+      <TextInput
+        value={local}
+        onChangeText={text => {
+          const next = new Date(text);
+          if (Number.isFinite(next.getTime())) onChange(next.toISOString());
+        }}
+        style={styles.input}
+        // React Native Web forwards this to the HTML input.
+        {...({ type: 'datetime-local' } as object)}
+      />
+    );
+  }
+  return (
+    <View>
+      <View style={styles.dateTimeRow}>
+        <Pressable style={styles.dateTimeButton} onPress={() => setMode('date')}>
+          <MaterialCommunityIcons name="calendar" size={20} color={colors.accent} />
+          <Text variant="bodyStrong">{date.toLocaleDateString()}</Text>
+        </Pressable>
+        <Pressable style={styles.dateTimeButton} onPress={() => setMode('time')}>
+          <MaterialCommunityIcons name="clock-outline" size={20} color={colors.accent} />
+          <Text variant="bodyStrong">{date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+        </Pressable>
+      </View>
+      {mode && (
+        <DateTimePicker
+          value={date}
+          mode={mode}
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(_, next) => update(next)}
+        />
       )}
     </View>
   );
@@ -552,55 +630,154 @@ function TossStep({
   teamA: Team;
   teamB: Team;
   tossWinnerId: string | null;
-  setTossWinnerId: (id: string) => void;
-  tossChoice: TossChoice;
-  setTossChoice: (c: TossChoice) => void;
+  setTossWinnerId: (id: string | null) => void;
+  tossChoice: TossChoice | null;
+  setTossChoice: (c: TossChoice | null) => void;
 }) {
+  const [mode, setMode] = useState<'VIRTUAL' | 'MANUAL'>('VIRTUAL');
+  const winner = tossWinnerId === teamA.id ? teamA : tossWinnerId === teamB.id ? teamB : null;
+
+  const switchMode = (next: 'VIRTUAL' | 'MANUAL') => {
+    if (next === mode) return;
+    setMode(next);
+    setTossWinnerId(null);
+    setTossChoice(null);
+  };
+
   return (
     <View style={{ gap: spacing.lg }}>
-      <View>
-        <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>WHO WON THE TOSS?</Text>
-        {[teamA, teamB].map(t => (
-          <Pressable
-            key={t.id}
-            onPress={() => setTossWinnerId(t.id)}
-            style={[
-              styles.teamRow,
-              { marginBottom: spacing.sm },
-              tossWinnerId === t.id && styles.teamRowActive,
-            ]}
-          >
-            <View style={[styles.teamSwatch, { backgroundColor: t.colorHex }]}>
-              <Text variant="bodyStrong" style={{ color: palette.black }}>{t.shortName}</Text>
-            </View>
-            <Text variant="bodyStrong" style={{ flex: 1 }}>{t.name}</Text>
-            {tossWinnerId === t.id && (
-              <MaterialCommunityIcons name="check-circle" size={22} color={colors.accent} />
-            )}
-          </Pressable>
-        ))}
+      <View style={styles.tossModeToggle}>
+        <TossModeTab
+          icon="rotate-3d-variant"
+          label="Virtual coin"
+          active={mode === 'VIRTUAL'}
+          onPress={() => switchMode('VIRTUAL')}
+        />
+        <TossModeTab
+          icon="hand-coin-outline"
+          label="Manual entry"
+          active={mode === 'MANUAL'}
+          onPress={() => switchMode('MANUAL')}
+        />
       </View>
 
-      <View>
-        <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>CHOSE TO</Text>
-        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-          <Pressable
-            onPress={() => setTossChoice('BAT')}
-            style={[styles.bigChoice, tossChoice === 'BAT' && styles.bigChoiceActive]}
-          >
-            <MaterialCommunityIcons name="cricket" size={32} color={tossChoice === 'BAT' ? colors.accentInk : colors.text} />
-            <Text variant="bodyStrong" style={tossChoice === 'BAT' ? { color: colors.accentInk, marginTop: spacing.sm } : { marginTop: spacing.sm }}>Bat</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setTossChoice('BOWL')}
-            style={[styles.bigChoice, tossChoice === 'BOWL' && styles.bigChoiceActive]}
-          >
-            <MaterialCommunityIcons name="bullseye" size={32} color={tossChoice === 'BOWL' ? colors.accentInk : colors.text} />
-            <Text variant="bodyStrong" style={tossChoice === 'BOWL' ? { color: colors.accentInk, marginTop: spacing.sm } : { marginTop: spacing.sm }}>Bowl</Text>
-          </Pressable>
+      {mode === 'VIRTUAL' ? (
+        <VirtualCoinToss
+          participants={[
+            { id: teamA.id, name: teamA.name, shortName: teamA.shortName, color: teamA.colorHex },
+            { id: teamB.id, name: teamB.name, shortName: teamB.shortName, color: teamB.colorHex },
+          ]}
+          onResult={result => {
+            setTossWinnerId(result.winnerId);
+            setTossChoice(null);
+          }}
+          onReset={() => {
+            setTossWinnerId(null);
+            setTossChoice(null);
+          }}
+        />
+      ) : (
+        <Card>
+          <Text variant="h3">Real coin, real toss</Text>
+          <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs, marginBottom: spacing.md }}>
+            The toss happened on the field — record which team won it.
+          </Text>
+          <View style={{ gap: spacing.sm }}>
+            {[teamA, teamB].map(team => {
+              const selected = tossWinnerId === team.id;
+              return (
+                <Pressable
+                  key={team.id}
+                  onPress={() => {
+                    setTossWinnerId(team.id);
+                    setTossChoice(null);
+                  }}
+                  style={[styles.teamRow, selected && styles.teamRowActive]}
+                >
+                  <View style={[styles.teamSwatch, { backgroundColor: team.colorHex }]}>
+                    <Text variant="bodyStrong" style={{ color: palette.black }}>{team.shortName}</Text>
+                  </View>
+                  <Text variant="bodyStrong" style={{ flex: 1 }}>{team.name}</Text>
+                  {selected && (
+                    <MaterialCommunityIcons name="trophy" size={22} color={colors.accent} />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
+      )}
+
+      {winner ? (
+        <View>
+          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>
+            {winner.name.toUpperCase()} CHOOSES TO
+          </Text>
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <TossDecision
+              icon="cricket"
+              title="Bat first"
+              subtitle="Set the target"
+              selected={tossChoice === 'BAT'}
+              onPress={() => setTossChoice('BAT')}
+            />
+            <TossDecision
+              icon="bullseye"
+              title="Field first"
+              subtitle="Chase it down"
+              selected={tossChoice === 'BOWL'}
+              onPress={() => setTossChoice('BOWL')}
+            />
+          </View>
         </View>
-      </View>
+      ) : (
+        <Text variant="caption" tone="dim" style={{ textAlign: 'center' }}>
+          {mode === 'VIRTUAL'
+            ? 'Flip the coin — the winning team then chooses to bat or field first.'
+            : 'Pick the toss winner — they then choose to bat or field first.'}
+        </Text>
+      )}
     </View>
+  );
+}
+
+function TossModeTab({
+  icon, label, active, onPress,
+}: {
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={[styles.tossModeTab, active && styles.tossModeTabActive]}>
+      <MaterialCommunityIcons name={icon} size={18} color={active ? colors.accentInk : colors.textMuted} />
+      <Text variant="bodyStrong" style={{ color: active ? colors.accentInk : colors.textMuted }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function TossDecision({
+  icon, title, subtitle, selected, onPress,
+}: {
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  title: string;
+  subtitle: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={[styles.bigChoice, selected && styles.bigChoiceActive]}>
+      <MaterialCommunityIcons name={icon} size={32} color={selected ? colors.accentInk : colors.text} />
+      <Text variant="bodyStrong" style={{ marginTop: spacing.sm, color: selected ? colors.accentInk : colors.text }}>
+        {title}
+      </Text>
+      <Text variant="caption" style={{ marginTop: 2, color: selected ? colors.accentInk : colors.textMuted }}>
+        {subtitle}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -687,6 +864,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     color: colors.text,
     fontSize: 15,
+  },
+  dateTimeRow: { flexDirection: 'row', gap: spacing.sm },
+  dateTimeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  venueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  venueMap: { width: '100%', height: 120, borderRadius: radius.md, marginTop: spacing.md },
+  tossModeToggle: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    padding: spacing.xs,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  tossModeTab: {
+    flex: 1,
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.pill,
+  },
+  tossModeTabActive: {
+    backgroundColor: colors.accent,
   },
   addRow: {
     flexDirection: 'row',

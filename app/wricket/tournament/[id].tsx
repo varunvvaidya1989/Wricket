@@ -1,7 +1,22 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet, FlatList, Pressable, TextInput, Modal, Alert, Image, Linking, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Alert,
+  Animated,
+  FlatList,
+  Image,
+  Linking,
+  Modal,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
@@ -24,6 +39,10 @@ import { fixturesApi, GeneratedFixtureSetup } from '@/lib/supabase/fixturesApi';
 import { TeamRosterMember, teamManagementApi } from '@/lib/supabase/teamManagementApi';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { createOnlineTeam, deleteOnlineTeam } from '@/lib/wricket/data/cloudFirst';
+import { TournamentMvpLeaderboard } from '@/components/wricket/mvp/TournamentMvpLeaderboard';
+import { MatchMoments } from '@/components/wricket/moments/MatchMoments';
+import { StandingsCalculator } from '@/lib/wricket/fixtures';
+import { tournamentStatsApi } from '@/lib/supabase/tournamentStatsApi';
 
 type Tab = 'fixtures' | 'table' | 'teams' | 'stats' | 'settings';
 
@@ -35,6 +54,8 @@ interface TournamentPlayerStats {
 }
 
 interface TournamentStats {
+  matches: number;
+  completedMatches: number;
   balls: number;
   runs: number;
   wickets: number;
@@ -43,6 +64,12 @@ interface TournamentStats {
 
 export default function TournamentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { height: viewportHeight } = useWindowDimensions();
+  const safeArea = useSafeAreaInsets();
+  // Native Stack owns the navigation header above this screen. Keeping the
+  // sheet inside the remaining route area prevents its handle being trapped
+  // underneath that header.
+  const usableScreenHeight = Math.max(320, viewportHeight - safeArea.top - 56);
   const auth = useAuth();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -50,10 +77,57 @@ export default function TournamentDetailScreen() {
   const [points, setPoints] = useState<PointsRow[]>([]);
   const [tab, setTab] = useState<Tab>('fixtures');
   const [showAddTeam, setShowAddTeam] = useState(false);
-  const [stats, setStats] = useState<TournamentStats>({ balls: 0, runs: 0, wickets: 0, players: [] });
+  const [stats, setStats] = useState<TournamentStats>({
+    matches: 0, completedMatches: 0, balls: 0, runs: 0, wickets: 0, players: [],
+  });
   const [generatedSetup, setGeneratedSetup] = useState<GeneratedFixtureSetup>({
     stages: [], groups: [], matches: [], bracket: null,
   });
+  const minSheetHeight = Math.max(112, usableScreenHeight * 0.16);
+  const maxSheetHeight = usableScreenHeight;
+  const sheetHeight = useRef(new Animated.Value(minSheetHeight)).current;
+  const sheetHeightValue = useRef(minSheetHeight);
+  const sheetDragStart = useRef(minSheetHeight);
+
+  useEffect(() => {
+    const next = Math.min(maxSheetHeight, Math.max(minSheetHeight, sheetHeightValue.current));
+    sheetHeightValue.current = next;
+    sheetHeight.setValue(next);
+  }, [maxSheetHeight, minSheetHeight, sheetHeight]);
+
+  const sheetPanResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 3,
+    onPanResponderGrant: () => {
+      sheetHeight.stopAnimation(value => {
+        sheetDragStart.current = value;
+        sheetHeightValue.current = value;
+      });
+    },
+    onPanResponderMove: (_, gesture) => {
+      const next = Math.min(maxSheetHeight, Math.max(minSheetHeight, sheetDragStart.current - gesture.dy));
+      sheetHeightValue.current = next;
+      sheetHeight.setValue(next);
+    },
+    onPanResponderRelease: (_, gesture) => {
+      const midpoint = (minSheetHeight + maxSheetHeight) / 2;
+      const destination = gesture.vy < -0.35
+        ? maxSheetHeight
+        : gesture.vy > 0.35
+          ? minSheetHeight
+          : sheetHeightValue.current >= midpoint
+            ? maxSheetHeight
+            : minSheetHeight;
+      sheetHeightValue.current = destination;
+      Animated.spring(sheetHeight, {
+        toValue: destination,
+        useNativeDriver: false,
+        damping: 22,
+        stiffness: 220,
+        mass: 0.8,
+      }).start();
+    },
+  })).current;
 
   const refresh = useCallback(async () => {
     if (!id) return;
@@ -66,13 +140,18 @@ export default function TournamentDetailScreen() {
     setTournament(t);
     setTeams(teamList);
     setMatches(matchList);
+    if (t?.cloudId && t.organizerProfileId === auth.session?.user.id) {
+      await fixturesApi.advanceTournamentIfReady(t.cloudId);
+    }
     setGeneratedSetup(t?.cloudId
       ? await fixturesApi.getFixtureSetup(t.cloudId)
       : { stages: [], groups: [], matches: [], bracket: null });
     const pts = await computePointsTable(id);
     setPoints(pts);
-    setStats(await buildTournamentStats(matchList, users));
-  }, [id]);
+    setStats(t?.cloudId
+      ? await tournamentStatsApi.get(t.cloudId)
+      : await buildTournamentStats(matchList, users));
+  }, [auth.session?.user.id, id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,11 +162,9 @@ export default function TournamentDetailScreen() {
   useEffect(() => {
     if (!tournament?.cloudId) return;
     return fixturesApi.subscribeToTournament(tournament.cloudId, () => {
-      fixturesApi.getFixtureSetup(tournament.cloudId!)
-        .then(setGeneratedSetup)
-        .catch(() => undefined);
+      void refresh().catch(() => undefined);
     });
-  }, [tournament?.cloudId]);
+  }, [refresh, tournament?.cloudId]);
 
   if (!tournament) {
     return <Screen><Text tone="muted">Loading…</Text></Screen>;
@@ -96,13 +173,19 @@ export default function TournamentDetailScreen() {
   return (
     <Screen padded={false}>
       <Stack.Screen options={{ title: tournament.name }} />
-      {(tournament.bannerUrl || tournament.bannerLocalUri) && (
-        <Image
-          source={{ uri: tournament.bannerUrl ?? tournament.bannerLocalUri }}
-          style={styles.banner}
-        />
-      )}
-      <View style={styles.header}>
+      <ScrollView
+        style={styles.overview}
+        contentContainerStyle={styles.overviewContent}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+      >
+        {(tournament.bannerUrl || tournament.bannerLocalUri) && (
+          <Image
+            source={{ uri: tournament.bannerUrl ?? tournament.bannerLocalUri }}
+            style={styles.banner}
+          />
+        )}
+        <View style={styles.header}>
         <View style={styles.titleRow}>
           {(tournament.logoUrl || tournament.logoLocalUri) && (
             <Image
@@ -153,6 +236,11 @@ export default function TournamentDetailScreen() {
             )}
           </>
         )}
+        <MatchMoments
+          cloudTournamentId={tournament.cloudId}
+          profileId={auth.session?.user.id}
+          canModerate={tournament.organizerProfileId === auth.session?.user.id}
+        />
         {tournament.description && (
           <Text variant="body" tone="muted" style={{ marginTop: spacing.md }}>
             {tournament.description}
@@ -171,49 +259,78 @@ export default function TournamentDetailScreen() {
         <Text variant="caption" tone="dim" style={{ marginTop: spacing.xs }}>
           {teams.length} teams · {matches.length} matches
         </Text>
-      </View>
+        </View>
+      </ScrollView>
 
-      <View style={styles.tabBar}>
-        <TabBtn label="Fixtures" active={tab === 'fixtures'} onPress={() => setTab('fixtures')} />
-        <TabBtn label="Table" active={tab === 'table'} onPress={() => setTab('table')} />
-        <TabBtn label="Teams" active={tab === 'teams'} onPress={() => setTab('teams')} />
-        <TabBtn label="Stats" active={tab === 'stats'} onPress={() => setTab('stats')} />
-        {tournament.organizerProfileId === auth.session?.user.id && (
-          <TabBtn label="Settings" active={tab === 'settings'} onPress={() => setTab('settings')} />
-        )}
-      </View>
+      <Animated.View style={[styles.tabWorkspace, { height: sheetHeight }]}>
+        <View style={styles.sheetHandleArea} {...sheetPanResponder.panHandlers}>
+          <View style={styles.sheetHandle} />
+          <Text variant="caption" tone="dim">Drag for tournament panels</Text>
+        </View>
+        <View style={styles.tabBarShell}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabBar}
+          >
+            <TabBtn label="Fixtures" active={tab === 'fixtures'} onPress={() => setTab('fixtures')} />
+            <TabBtn label="Table" active={tab === 'table'} onPress={() => setTab('table')} />
+            <TabBtn label="Teams" active={tab === 'teams'} onPress={() => setTab('teams')} />
+            <TabBtn label="Stats" active={tab === 'stats'} onPress={() => setTab('stats')} />
+            {tournament.organizerProfileId === auth.session?.user.id && (
+              <TabBtn label="Settings" active={tab === 'settings'} onPress={() => setTab('settings')} />
+            )}
+          </ScrollView>
+        </View>
 
-      <View style={{ flex: 1, paddingHorizontal: spacing.lg }}>
-        {tab === 'fixtures' && (
-          <FixturesView
-            matches={matches}
-            generatedSetup={generatedSetup}
-            teams={teams}
-            tournament={tournament}
-            canManage={tournament.organizerProfileId === auth.session?.user.id}
-            onChanged={refresh}
-          />
-        )}
-        {tab === 'table' && <PointsTableView rows={points} teams={teams} />}
-        {tab === 'teams' && (
-          <TeamsView
-            teams={teams}
-            plannedTeamCount={tournament.plannedTeamCount}
-            canManage={tournament.organizerProfileId === auth.session?.user.id}
-            onAdd={() => setShowAddTeam(true)}
-            onChanged={refresh}
-          />
-        )}
-        {tab === 'stats' && <TournamentStatsView stats={stats} matches={matches} />}
-        {tab === 'settings' && (
-          <TournamentSettingsView
-            tournament={tournament}
-            teams={teams}
-            hasGenerated={generatedSetup.stages.length > 0}
-            onChanged={refresh}
-          />
-        )}
-      </View>
+        <View style={styles.tabContent}>
+          {tab === 'fixtures' && (
+            <FixturesView
+              matches={matches}
+              generatedSetup={generatedSetup}
+              teams={teams}
+              tournament={tournament}
+              canManage={tournament.organizerProfileId === auth.session?.user.id}
+              onChanged={refresh}
+            />
+          )}
+          {tab === 'table' && (
+            <PointsTableView rows={points} teams={teams} generatedSetup={generatedSetup} />
+          )}
+          {tab === 'teams' && (
+            <TeamsView
+              teams={teams}
+              plannedTeamCount={tournament.plannedTeamCount}
+              canManage={tournament.organizerProfileId === auth.session?.user.id}
+              viewerId={auth.session?.user.id}
+              onAdd={() => setShowAddTeam(true)}
+              onChanged={refresh}
+            />
+          )}
+          {tab === 'stats' && (
+            <ScrollView
+              style={styles.statsPanel}
+              contentContainerStyle={styles.statsPanelContent}
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
+            >
+              <TournamentStatsView stats={stats} />
+              <TournamentMvpLeaderboard
+                tournamentId={tournament.id}
+                cloudTournamentId={tournament.cloudId}
+              />
+            </ScrollView>
+          )}
+          {tab === 'settings' && (
+            <TournamentSettingsView
+              tournament={tournament}
+              teams={teams}
+              hasGenerated={generatedSetup.stages.length > 0}
+              onChanged={refresh}
+            />
+          )}
+        </View>
+      </Animated.View>
 
       <AddTeamModal
         visible={showAddTeam}
@@ -257,7 +374,11 @@ function FixturesView({
   const teamMap = new Map(teams.map(t => [t.id, t]));
   const cloudTeamMap = new Map(teams.filter(t => t.cloudId).map(t => [t.cloudId!, t]));
   const groupMap = new Map(generatedSetup.groups.map(group => [group.id, group.name]));
-  const sortedMatches = matches.filter(match => matchSectionLabel(match) === section);
+  const generatedCanonicalIds = new Set(
+    generatedSetup.matches.flatMap(match => match.canonicalMatchId ? [match.canonicalMatchId] : []),
+  );
+  const sortedMatches = matches.filter(match =>
+    !generatedCanonicalIds.has(match.id) && matchSectionLabel(match) === section);
   const generatedMatches = generatedSetup.matches.filter(item =>
     section === 'UPCOMING'
       ? item.status === 'SCHEDULED'
@@ -302,7 +423,18 @@ function FixturesView({
                 const teamA = cloudTeamMap.get(item.teamA);
                 const teamB = item.teamB ? cloudTeamMap.get(item.teamB) : undefined;
                 return (
-                  <Card key={item.id}>
+                  <Card
+                    key={item.id}
+                    onPress={item.canonicalMatchId ? () => router.push({
+                      pathname: '/wricket/match/[id]/live',
+                      params: {
+                        id: item.canonicalMatchId!,
+                        tab: item.status === 'COMPLETED' || item.status === 'WALKOVER'
+                          ? 'insights'
+                          : 'summary',
+                      },
+                    }) : undefined}
+                  >
                     <View style={styles.generatedMeta}>
                       <Text variant="caption" tone="dim">
                         {item.groupId ? `${groupMap.get(item.groupId) ?? 'Group'} · ` : ''}
@@ -333,9 +465,26 @@ function FixturesView({
                       </Text>
                     )}
                     {(item.status === 'COMPLETED' || item.status === 'WALKOVER') && (
-                      <Text variant="bodyStrong" tone="muted" style={{ marginTop: spacing.sm }}>
-                        {formatFixtureResult(item.result)}
-                      </Text>
+                      <>
+                        <Text variant="bodyStrong" tone="muted" style={{ marginTop: spacing.sm }}>
+                          {formatFixtureResult(item.result, [
+                            teamA && { id: item.teamA, name: teamA.name },
+                            teamB && item.teamB && { id: item.teamB, name: teamB.name },
+                          ].filter((team): team is { id: string; name: string } => Boolean(team)))}
+                        </Text>
+                        {item.canonicalMatchId && (
+                          <Button
+                            title="View match insights"
+                            size="sm"
+                            variant="secondary"
+                            style={{ marginTop: spacing.md }}
+                            onPress={() => router.push({
+                              pathname: '/wricket/match/[id]/live',
+                              params: { id: item.canonicalMatchId!, tab: 'insights' },
+                            })}
+                          />
+                        )}
+                      </>
                     )}
                     {canManage && item.status === 'LIVE' && item.canonicalMatchId && (
                       <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
@@ -397,6 +546,8 @@ function FixturesView({
                             teamBId: teamB.id,
                             canonicalMatchId: item.canonicalMatchId,
                             editFixtureId: item.id,
+                            scheduledAt: item.scheduledAt,
+                            venue: tournament.location,
                           },
                         })} />
                       </View>
@@ -424,11 +575,11 @@ function FixturesView({
             onPress={() =>
               router.push({
                 pathname: isCompleted
-                  ? '/wricket/match/[id]/scorecard'
+                  ? '/wricket/match/[id]/live'
                   : isLive && !canManage
                     ? '/wricket/match/[id]/live'
                     : '/wricket/match/[id]/score',
-                params: { id: item.id },
+                params: isCompleted ? { id: item.id, tab: 'insights' } : { id: item.id },
               })
             }
           >
@@ -451,7 +602,15 @@ function FixturesView({
                 </View>
               )}
               {isCompleted && (
-                <Text variant="caption" tone="muted">Completed</Text>
+                <Text variant="caption" tone="muted" style={{ maxWidth: 150, textAlign: 'right' }}>
+                  {formatFixtureResult(
+                    item.result as unknown as Record<string, unknown> | undefined,
+                    [
+                      a && { id: item.teamAId, name: a.name },
+                      b && { id: item.teamBId, name: b.name },
+                    ].filter((team): team is { id: string; name: string } => Boolean(team)),
+                  )}
+                </Text>
               )}
               {item.status === 'SETUP' && (
                 <Text variant="caption" tone="muted">Setup</Text>
@@ -465,9 +624,30 @@ function FixturesView({
   );
 }
 
-function PointsTableView({ rows, teams }: { rows: PointsRow[]; teams: Team[] }) {
+function PointsTableView({
+  rows, teams, generatedSetup,
+}: { rows: PointsRow[]; teams: Team[]; generatedSetup: GeneratedFixtureSetup }) {
   const teamMap = new Map(teams.map(t => [t.id, t]));
-  if (rows.length === 0) {
+  const cloudTeamMap = new Map(teams.filter(team => team.cloudId).map(team => [team.cloudId!, team]));
+  const groupStage = generatedSetup.stages.find(stage => stage.type === 'GROUP');
+  const groupTables = groupStage
+    ? generatedSetup.groups.filter(group => group.stage_id === groupStage.id).map(group => ({
+        group,
+        rows: new StandingsCalculator().calculate(
+          {
+            id: group.id,
+            stageId: group.stage_id,
+            name: group.name,
+            teamIds: group.team_ids,
+          },
+          generatedSetup.matches,
+          groupStage.config?.pointsRule,
+          groupStage.config?.tiebreakers,
+        ),
+      }))
+    : [];
+  const bracket = generatedSetup.bracket;
+  if (rows.length === 0 && groupTables.length === 0 && !bracket) {
     return (
       <Text variant="body" tone="muted" style={{ textAlign: 'center', paddingTop: spacing.xxl }}>
         Points table appears once matches are played.
@@ -475,35 +655,102 @@ function PointsTableView({ rows, teams }: { rows: PointsRow[]; teams: Team[] }) 
     );
   }
   return (
-    <View style={{ paddingTop: spacing.md }}>
-      <View style={[styles.tableRow, styles.tableHeader]}>
-        <Text variant="caption" tone="muted" style={{ width: 24 }}>#</Text>
-        <Text variant="caption" tone="muted" style={{ flex: 1 }}>TEAM</Text>
-        <Text variant="caption" tone="muted" style={styles.numCol}>P</Text>
-        <Text variant="caption" tone="muted" style={styles.numCol}>W</Text>
-        <Text variant="caption" tone="muted" style={styles.numCol}>L</Text>
-        <Text variant="caption" tone="muted" style={styles.numCol}>PTS</Text>
-        <Text variant="caption" tone="muted" style={[styles.numCol, { width: 56 }]}>NRR</Text>
-      </View>
-      {rows.map((r, i) => {
-        const team = teamMap.get(r.teamId);
-        return (
-          <View key={r.teamId} style={styles.tableRow}>
-            <Text variant="bodyStrong" style={{ width: 24 }}>{i + 1}</Text>
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-              <View style={[styles.teamDot, { backgroundColor: team?.colorHex ?? palette.ink400 }]} />
-              <Text variant="bodyStrong">{team?.shortName ?? '—'}</Text>
-            </View>
-            <Text variant="body" style={styles.numCol}>{r.played}</Text>
-            <Text variant="body" style={styles.numCol}>{r.won}</Text>
-            <Text variant="body" style={styles.numCol}>{r.lost}</Text>
-            <Text variant="bodyStrong" style={[styles.numCol, { color: colors.accent }]}>{r.points}</Text>
-            <Text variant="body" style={[styles.numCol, { width: 56 }]}>{r.nrr.toFixed(2)}</Text>
+    <ScrollView contentContainerStyle={styles.publicTables}>
+      {groupTables.map(({ group, rows: standings }) => (
+        <Card key={group.id}>
+          <Text variant="h3">{group.name}</Text>
+          <View style={[styles.tableRow, styles.tableHeader]}>
+            <Text variant="caption" tone="muted" style={{ width: 24 }}>#</Text>
+            <Text variant="caption" tone="muted" style={{ flex: 1 }}>TEAM</Text>
+            <Text variant="caption" tone="muted" style={styles.numCol}>P</Text>
+            <Text variant="caption" tone="muted" style={styles.numCol}>W</Text>
+            <Text variant="caption" tone="muted" style={styles.numCol}>L</Text>
+            <Text variant="caption" tone="muted" style={styles.numCol}>PTS</Text>
+            <Text variant="caption" tone="muted" style={[styles.numCol, { width: 52 }]}>NRR</Text>
           </View>
-        );
-      })}
-    </View>
+          {standings.map(standing => {
+            const team = cloudTeamMap.get(standing.teamId);
+            return (
+              <View key={standing.teamId} style={styles.tableRow}>
+                <Text variant="bodyStrong" style={{ width: 24 }}>{standing.rank}</Text>
+                <Text variant="bodyStrong" style={{ flex: 1 }}>{team?.shortName ?? '—'}</Text>
+                <Text variant="body" style={styles.numCol}>{standing.played}</Text>
+                <Text variant="body" style={styles.numCol}>{standing.won}</Text>
+                <Text variant="body" style={styles.numCol}>{standing.lost}</Text>
+                <Text variant="bodyStrong" tone="accent" style={styles.numCol}>{standing.points}</Text>
+                <Text variant="body" style={[styles.numCol, { width: 52 }]}>
+                  {groupNetRunRate(standing.teamId, generatedSetup.matches.filter(match => match.groupId === group.id))}
+                </Text>
+              </View>
+            );
+          })}
+        </Card>
+      ))}
+      {bracket && (
+        <Card>
+          <Text variant="h3">Knockout bracket</Text>
+          {bracket.rounds.filter(round => round.name !== '3RD_PLACE' || round.matches.length).map(round => (
+            <View key={round.id} style={styles.bracketRound}>
+              <Text variant="overline" tone="muted">{knockoutRoundLabel(round.name)}</Text>
+              {round.matches.length ? round.matches.map(match => (
+                <View key={match.id} style={styles.bracketMatch}>
+                  <Text variant="bodyStrong" style={{ flex: 1 }}>
+                    {cloudTeamMap.get(match.teamA)?.shortName ?? 'TBD'}
+                  </Text>
+                  <Text variant="caption" tone="muted">
+                    {match.scoreA ?? '—'} : {match.scoreB ?? '—'}
+                  </Text>
+                  <Text variant="bodyStrong" style={{ flex: 1, textAlign: 'right' }}>
+                    {match.teamB ? cloudTeamMap.get(match.teamB)?.shortName ?? 'TBD' : 'BYE'}
+                  </Text>
+                </View>
+              )) : (
+                <Text variant="caption" tone="dim">Awaiting qualifiers</Text>
+              )}
+            </View>
+          ))}
+        </Card>
+      )}
+      {groupTables.length === 0 && rows.length > 0 && (
+        <Card>
+          <Text variant="h3">Overall table</Text>
+          {rows.map((row, index) => (
+            <View key={row.teamId} style={styles.tableRow}>
+              <Text variant="bodyStrong" style={{ width: 24 }}>{index + 1}</Text>
+              <Text variant="bodyStrong" style={{ flex: 1 }}>{teamMap.get(row.teamId)?.shortName ?? '—'}</Text>
+              <Text variant="caption" tone="muted">{row.played} played · {row.points} pts</Text>
+            </View>
+          ))}
+        </Card>
+      )}
+    </ScrollView>
   );
+}
+
+function knockoutRoundLabel(name: string): string {
+  return ({ QF: 'Quarter-finals', SF: 'Semi-finals', F: 'Final', '3RD_PLACE': 'Third place' } as Record<string, string>)[name] ?? name;
+}
+
+function groupNetRunRate(teamId: string, matches: GeneratedFixtureSetup['matches']): string {
+  let runsFor = 0;
+  let ballsFaced = 0;
+  let runsAgainst = 0;
+  let ballsBowled = 0;
+  for (const match of matches.filter(item =>
+    (item.status === 'COMPLETED' || item.status === 'WALKOVER') &&
+    (item.teamA === teamId || item.teamB === teamId))) {
+    const own = match.teamInningsStats?.[teamId];
+    const opponentId = match.teamA === teamId ? match.teamB : match.teamA;
+    const opponent = opponentId ? match.teamInningsStats?.[opponentId] : undefined;
+    if (!own || !opponent) continue;
+    runsFor += own.runs;
+    ballsFaced += own.legalBalls;
+    runsAgainst += opponent.runs;
+    ballsBowled += opponent.legalBalls;
+  }
+  if (!ballsFaced || !ballsBowled) return '—';
+  const nrr = runsFor / (ballsFaced / 6) - runsAgainst / (ballsBowled / 6);
+  return `${nrr >= 0 ? '+' : ''}${nrr.toFixed(2)}`;
 }
 
 function TournamentSettingsView({
@@ -580,23 +827,53 @@ function showFixtureError(cause: unknown) {
   Alert.alert('Fixture update failed', cause instanceof Error ? cause.message : 'Please try again.');
 }
 
-function formatFixtureResult(result?: Record<string, unknown>): string {
+function formatFixtureResult(
+  result?: Record<string, unknown>,
+  teams: readonly { id: string; name: string }[] = [],
+): string {
   if (!result) return 'Match completed';
-  if (result.kind === 'NO_RESULT') return 'No result';
-  const margin = typeof result.margin === 'string' ? result.margin : undefined;
-  return margin ?? 'Match completed';
+  const kind = String(result.kind ?? result.result_kind ?? '');
+  if (kind === 'NO_RESULT') return 'No result';
+  if (kind === 'TIE') return 'Match tied';
+
+  const winnerId = typeof result.winnerTeamId === 'string'
+    ? result.winnerTeamId
+    : typeof result.winner_team_id === 'string'
+      ? result.winner_team_id
+      : undefined;
+  const winner = teams.find(team => team.id === winnerId)?.name
+    ?? (winnerId ? 'Winning team' : undefined);
+  const margin = typeof result.margin === 'number' || typeof result.margin === 'string'
+    ? result.margin
+    : undefined;
+  const rawUnit = result.marginUnit ?? result.margin_unit;
+  const unit = typeof rawUnit === 'string' ? rawUnit.toLowerCase() : undefined;
+
+  if (kind === 'WIN_BY_INNINGS') {
+    return winner && margin != null
+      ? `${winner} won by an innings and ${margin} run${Number(margin) === 1 ? '' : 's'}`
+      : 'Won by an innings';
+  }
+  if (winner && margin != null && unit) {
+    const normalizedUnit = Number(margin) === 1 ? unit.replace(/s$/, '') : unit;
+    return `${winner} won by ${margin} ${normalizedUnit}`;
+  }
+  if (winner) return `${winner} won the match`;
+  return 'Match completed';
 }
 
 function TeamsView({
   teams,
   plannedTeamCount,
   canManage,
+  viewerId,
   onAdd,
   onChanged,
 }: {
   teams: Team[];
   plannedTeamCount: number;
   canManage: boolean;
+  viewerId?: string;
   onAdd: () => void;
   onChanged: () => void;
 }) {
@@ -656,6 +933,7 @@ function TeamsView({
             const captain = roster.find(member => member.role === 'CAPTAIN');
             const players = roster.filter(member => member.role === 'PLAYER');
             const visiblePlayers = players.slice(0, 3);
+            const canManageRoster = canManage || captain?.accountId === viewerId;
             return (
             <Card onPress={() => item.cloudId && router.push({
               pathname: '/wricket/team/[id]',
@@ -676,6 +954,9 @@ function TeamsView({
                   </Text>
                   <Text variant="caption" tone="muted">
                     {players.length ? `${players.length} player${players.length === 1 ? '' : 's'}` : 'No players added'}
+                  </Text>
+                  <Text variant="caption" style={{ color: canManageRoster ? colors.accent : colors.textDim }}>
+                    {canManageRoster ? 'Manage team roster' : 'View roster'}
                   </Text>
                   {visiblePlayers.map(player => (
                     <Pressable
@@ -707,14 +988,12 @@ function TeamsView({
   );
 }
 
-function TournamentStatsView({ stats, matches }: { stats: TournamentStats; matches: Match[] }) {
+function TournamentStatsView({ stats }: { stats: TournamentStats }) {
   const router = useRouter();
   const topRuns = [...stats.players].filter(player => player.runs > 0)
     .sort((a, b) => b.runs - a.runs).slice(0, 5);
   const topWickets = [...stats.players].filter(player => player.wickets > 0)
     .sort((a, b) => b.wickets - a.wickets).slice(0, 5);
-  const completed = matches.filter(match => match.status === 'COMPLETED').length;
-
   if (stats.balls === 0) {
     return (
       <View style={styles.statsEmpty}>
@@ -728,9 +1007,9 @@ function TournamentStatsView({ stats, matches }: { stats: TournamentStats; match
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.statsContent} showsVerticalScrollIndicator={false}>
+    <View style={styles.statsContent}>
       <View style={styles.statsSummary}>
-        <StatTile label="MATCHES" value={String(matches.length)} detail={`${completed} completed`} />
+        <StatTile label="MATCHES" value={String(stats.matches)} detail={`${stats.completedMatches} completed`} />
         <StatTile label="RUNS" value={String(stats.runs)} detail={`${stats.balls} balls`} />
         <StatTile label="WICKETS" value={String(stats.wickets)} detail="Tournament" />
       </View>
@@ -746,7 +1025,7 @@ function TournamentStatsView({ stats, matches }: { stats: TournamentStats; match
         value={player => `${player.wickets} wickets`}
         onPress={id => router.push({ pathname: '/wricket/player/[id]', params: { id } })}
       />
-    </ScrollView>
+    </View>
   );
 }
 
@@ -805,6 +1084,8 @@ async function buildTournamentStats(matches: Match[], users: User[]): Promise<To
     if (isBowlerWicket(ball)) player(ball.bowlerId).wickets += 1;
   }
   return {
+    matches: matches.length,
+    completedMatches: matches.filter(match => match.status === 'COMPLETED').length,
     balls: balls.length,
     runs: balls.reduce((sum, ball) => sum + ball.runsBat + ball.runsExtra, 0),
     wickets: balls.filter(ball => ball.isWicket).length,
@@ -922,8 +1203,16 @@ function AddTeamModal({
 const styles = StyleSheet.create({
   banner: {
     width: '100%',
-    aspectRatio: 16 / 9,
+    height: 112,
     backgroundColor: colors.surface,
+  },
+  overview: {
+    flex: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  overviewContent: {
+    paddingBottom: spacing.sm,
   },
   header: {
     paddingHorizontal: spacing.lg,
@@ -949,23 +1238,59 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
   },
-  mapImage: { width: '100%', height: 140 },
-  mapFallback: { height: 100, alignItems: 'center', justifyContent: 'center' },
+  mapImage: { width: '100%', height: 72 },
+  mapFallback: { height: 72, alignItems: 'center', justifyContent: 'center' },
   mapCaption: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: spacing.md,
   },
-  tabBar: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
+  tabBarShell: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  tabWorkspace: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: colors.borderStrong,
+    overflow: 'hidden',
+    shadowColor: palette.black,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  sheetHandleArea: {
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  sheetHandle: {
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong,
+  },
+  tabContent: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+  },
+  tabBar: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.xs,
   },
   tab: {
-    flex: 1,
+    minWidth: 92,
     alignItems: 'center',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xs,
@@ -1048,6 +1373,16 @@ const styles = StyleSheet.create({
     width: 36,
     textAlign: 'right',
   },
+  publicTables: { gap: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xxxl },
+  bracketRound: { gap: spacing.sm, paddingTop: spacing.md },
+  bracketMatch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.md,
+  },
   statsEmpty: {
     flex: 1,
     alignItems: 'center',
@@ -1055,6 +1390,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   statsContent: {
+    gap: spacing.md,
+  },
+  statsPanel: { flex: 1 },
+  statsPanelContent: {
     gap: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.xxxl,

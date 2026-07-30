@@ -49,6 +49,7 @@ import {
 import {
   abandonMatchLifecycle,
   closeAndAdvance,
+  planNextStep,
   startNextInnings,
 } from '@/lib/wricket/app/innings-flow';
 import { deriveScoringStateFromHistory, restoreScoringState } from '@/lib/wricket/app/scoring-session';
@@ -72,6 +73,7 @@ import {
   queueCloudScoringEvent,
   subscribeToCloudScoringSync,
 } from '@/lib/supabase/cloudScoringApi';
+import { hydrateScoringMatch } from '@/lib/supabase/scoringHydration';
 
 interface LiveState {
   totalRuns: number;
@@ -140,6 +142,7 @@ export default function ScoreScreen() {
     status: 'LIVE',
     pending: 0,
   });
+  const lastShownSyncErrorRef = useRef<string | null>(null);
 
   // score flash animation
   const scoreFlash = useSharedValue(0);
@@ -162,11 +165,11 @@ export default function ScoreScreen() {
     setLoadError(null);
     try {
     if (!id) throw new Error('The match ID is missing from this route.');
-    const m = await getMatch(id);
+    let m = await getMatch(id);
     if (!m) {
-      throw new Error(
-        'This match is missing from the local scoring cache. Return to the fixture and start or sync it again.',
-      );
+      await hydrateScoringMatch(id);
+      m = await getMatch(id);
+      if (!m) throw new Error('The cloud match could not be restored to the scoring cache.');
     }
     setMatch(m);
 
@@ -175,8 +178,16 @@ export default function ScoreScreen() {
     setTeamA(a);
     setTeamB(b);
 
-    const innList = await listInningsForMatch(m.id);
-    const open = innList.find(i => !i.isClosed);
+    let innList = await listInningsForMatch(m.id);
+    let open = innList.find(i => !i.isClosed);
+    if (!open && m.status === 'INNINGS_BREAK') {
+      const step = await planNextStep(m.id);
+      if (step.kind === 'NEXT_INNINGS' && step.next) {
+        await startNextInnings(m.id, step.next);
+        innList = await listInningsForMatch(m.id);
+        open = innList.find(i => !i.isClosed);
+      }
+    }
     if (!open) {
       router.replace({
         pathname: '/wricket/match/[id]/scorecard',
@@ -267,6 +278,27 @@ export default function ScoreScreen() {
     if (!id || !isUuid(id)) return;
     return subscribeToCloudScoringSync(id, setCloudSync);
   }, [id]);
+  useEffect(() => {
+    if (cloudSync.status !== 'ERROR' || !cloudSync.error) {
+      if (cloudSync.status === 'LIVE') lastShownSyncErrorRef.current = null;
+      return;
+    }
+    if (lastShownSyncErrorRef.current === cloudSync.error) return;
+    lastShownSyncErrorRef.current = cloudSync.error;
+    Alert.alert(
+      'Scoring sync failed',
+      cloudSync.error,
+      [
+        { text: 'Dismiss', style: 'cancel' },
+        {
+          text: 'Retry',
+          onPress: () => {
+            if (id && isUuid(id)) void flushScoringEvents(id);
+          },
+        },
+      ],
+    );
+  }, [cloudSync.error, cloudSync.status, id]);
   useEffect(() => {
     if (!id || !isUuid(id)) return;
     const subscription = AppState.addEventListener('change', state => {
@@ -880,7 +912,7 @@ export default function ScoreScreen() {
             {cloudSync.status === 'LIVE'
               ? 'Live · spectators are up to date'
               : cloudSync.status === 'ERROR'
-                ? `${cloudSync.pending} update${cloudSync.pending === 1 ? '' : 's'} waiting · tap to retry`
+                ? `${cloudSync.error ?? 'Cloud scoring sync failed'} · ${cloudSync.pending} update${cloudSync.pending === 1 ? '' : 's'} waiting · tap to retry`
                 : `${cloudSync.pending} update${cloudSync.pending === 1 ? '' : 's'} ${cloudSync.status === 'SYNCING' ? 'syncing' : 'waiting'}`}
           </Text>
         </Pressable>

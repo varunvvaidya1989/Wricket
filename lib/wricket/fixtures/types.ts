@@ -38,6 +38,7 @@ export interface FixtureMatch {
   venue?: string;
   liveScore?: { runs: number; wickets: number; legalBalls: number };
   result?: Record<string, unknown>;
+  teamInningsStats?: Record<string, { runs: number; legalBalls: number }>;
 }
 
 export interface PairingConfig {

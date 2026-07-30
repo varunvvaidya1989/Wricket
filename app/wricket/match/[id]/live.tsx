@@ -21,9 +21,13 @@ interface Celebration {
 }
 
 export default function CloudLiveMatchScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, tab: initialTab } = useLocalSearchParams<{ id: string; tab?: FeedTab }>();
   const [match, setMatch] = useState<CloudLiveMatch | null>(null);
-  const [tab, setTab] = useState<FeedTab>('summary');
+  const [tab, setTab] = useState<FeedTab>(
+    initialTab && ['summary', 'commentary', 'scorecard', 'insights'].includes(initialTab)
+      ? initialTab
+      : 'summary',
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [realtimeError, setRealtimeError] = useState<string>();
@@ -73,7 +77,7 @@ export default function CloudLiveMatchScreen() {
     return () => subscription.remove();
   }, [load]);
 
-  const scorecard = useMemo(() => match ? buildScorecard(match) : null, [match]);
+  const scorecard = useMemo(() => match ? buildCompleteScorecard(match) : null, [match]);
   if (loading && !match) return <Screen><Text tone="muted">Loading live feed…</Text></Screen>;
   if (!match) {
     return <Screen><Stack.Screen options={{ title: 'Live match' }} /><View style={styles.centered}>
@@ -91,8 +95,13 @@ export default function CloudLiveMatchScreen() {
       <Stack.Screen options={{ title: `${match.teamA.shortName} vs ${match.teamB.shortName}` }} />
       <View style={styles.stickyHeader}>
         <View style={styles.statusRow}>
-          <View style={styles.liveDot} />
-          <Text variant="overline" style={{ color: colors.danger }}>LIVE</Text>
+          <View style={[styles.liveDot, match.status === 'COMPLETED' && { backgroundColor: colors.accent }]} />
+          <Text
+            variant="overline"
+            style={{ color: match.status === 'COMPLETED' ? colors.accent : colors.danger }}
+          >
+            {match.status === 'COMPLETED' ? 'COMPLETE' : 'LIVE'}
+          </Text>
           <Text variant="caption" tone="muted" style={{ flex: 1 }}>{match.tournamentName}</Text>
           <MaterialCommunityIcons
             name={realtimeError ? 'cloud-alert-outline' : 'access-point'}
@@ -143,7 +152,7 @@ export default function CloudLiveMatchScreen() {
       >
         {tab === 'summary' && <Summary match={match} insights={insights} />}
         {tab === 'commentary' && <Commentary match={match} />}
-        {tab === 'scorecard' && scorecard && <Scorecard match={match} data={scorecard} />}
+        {tab === 'scorecard' && scorecard && <CompleteScorecard match={match} data={scorecard} />}
         {tab === 'insights' && <Insights match={match} insights={insights} />}
       </ScrollView>
       {celebration && (
@@ -292,10 +301,23 @@ function Commentary({ match }: { match: CloudLiveMatch }) {
   ))}</View>;
 }
 
+interface CompleteInningsScorecardData {
+  inningsId: string;
+  sequence: number;
+  battingTeamId: string;
+  totalRuns: number;
+  totalWickets: number;
+  totalBalls: number;
+  batters: { id: string; runs: number; balls: number; fours: number; sixes: number; out: boolean }[];
+  bowlers: { id: string; runs: number; balls: number; wickets: number }[];
+}
+type CompleteScorecardData = CompleteInningsScorecardData[];
 interface ScorecardData {
   batters: { id: string; runs: number; balls: number; fours: number; sixes: number; out: boolean }[];
   bowlers: { id: string; runs: number; balls: number; wickets: number }[];
 }
+// Kept temporarily for compatibility with cached development bundles.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function Scorecard({ match, data }: { match: CloudLiveMatch; data: ScorecardData }) {
   return <View style={styles.section}>
     <Card>
@@ -317,6 +339,114 @@ function Scorecard({ match, data }: { match: CloudLiveMatch; data: ScorecardData
       />)}
     </Card>
   </View>;
+}
+
+function CompleteScorecard({
+  match,
+  data,
+}: {
+  match: CloudLiveMatch;
+  data: CompleteScorecardData;
+}) {
+  if (!data.length) return <Empty text="The scorecard is not available yet." />;
+  return <View style={styles.section}>
+    {data.map(innings => {
+      const battingTeam = innings.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
+      return <View key={innings.inningsId} style={styles.section}>
+        <Card>
+          <Text variant="h3">{battingTeam.name} · Innings {innings.sequence}</Text>
+          <Text variant="bodyStrong" tone="accent" style={{ marginTop: spacing.xs }}>
+            {innings.totalRuns}/{innings.totalWickets} ({formatOver(innings.totalBalls)} overs)
+          </Text>
+          <Text variant="overline" tone="muted" style={{ marginTop: spacing.lg }}>BATTING</Text>
+          <TableHeader columns={['BATTER', 'R', 'B', 'SR']} />
+          {innings.batters.map(row => <StatRow
+            key={row.id}
+            name={`${match.playerNames[row.id] ?? 'Batter'}${row.out ? ' †' : '*'}`}
+            values={[row.runs, row.balls, row.balls ? ((row.runs / row.balls) * 100).toFixed(1) : '0.0']}
+          />)}
+        </Card>
+        <Card>
+          <Text variant="overline" tone="muted">BOWLING</Text>
+          <TableHeader columns={['BOWLER', 'O', 'R', 'W']} />
+          {innings.bowlers.map(row => <StatRow
+            key={row.id}
+            name={match.playerNames[row.id] ?? 'Bowler'}
+            values={[formatOver(row.balls), row.runs, row.wickets]}
+          />)}
+        </Card>
+      </View>;
+    })}
+  </View>;
+}
+
+function buildCompleteScorecard(match: CloudLiveMatch): CompleteScorecardData {
+  const rowsByInnings = new Map<string, {
+    batters: Map<string, CompleteInningsScorecardData['batters'][number]>;
+    bowlers: Map<string, CompleteInningsScorecardData['bowlers'][number]>;
+  }>();
+  match.allInnings.forEach(innings => {
+    rowsByInnings.set(innings.id, { batters: new Map(), bowlers: new Map() });
+  });
+
+  [...match.commentary].reverse().forEach(event => {
+    if (event.kind !== 'BALL_RECORDED') return;
+    const payload = event.payload;
+    const rows = rowsByInnings.get(String(payload.innings_id ?? ''));
+    if (!rows) return;
+    const striker = String(payload.striker_id ?? '');
+    const bowler = String(payload.bowler_id ?? '');
+    const batRuns = Number(payload.runs_bat ?? 0);
+    const extraKind = String(payload.extra_kind ?? '');
+    const bowlerRuns = batRuns +
+      (extraKind === 'BYE' || extraKind === 'LEG_BYE' ? 0 : Number(payload.runs_extra ?? 0));
+    const legal = Boolean(payload.is_legal);
+
+    if (striker) {
+      const batter = rows.batters.get(striker) ??
+        { id: striker, runs: 0, balls: 0, fours: 0, sixes: 0, out: false };
+      batter.runs += batRuns;
+      batter.balls += legal ? 1 : 0;
+      batter.fours += batRuns === 4 ? 1 : 0;
+      batter.sixes += batRuns === 6 ? 1 : 0;
+      rows.batters.set(striker, batter);
+    }
+    if (bowler) {
+      const bowling = rows.bowlers.get(bowler) ?? { id: bowler, runs: 0, balls: 0, wickets: 0 };
+      bowling.runs += bowlerRuns;
+      bowling.balls += legal ? 1 : 0;
+      if (
+        payload.is_wicket &&
+        !['RUN_OUT', 'RETIRED_OUT', 'OBSTRUCTING_FIELD', 'TIMED_OUT'].includes(
+          String(payload.dismissal_kind ?? ''),
+        )
+      ) {
+        bowling.wickets += 1;
+      }
+      rows.bowlers.set(bowler, bowling);
+    }
+    const outId = typeof payload.out_player_id === 'string' ? payload.out_player_id : undefined;
+    if (outId) {
+      const batter = rows.batters.get(outId) ??
+        { id: outId, runs: 0, balls: 0, fours: 0, sixes: 0, out: false };
+      batter.out = true;
+      rows.batters.set(outId, batter);
+    }
+  });
+
+  return match.allInnings.map(innings => {
+    const rows = rowsByInnings.get(innings.id)!;
+    return {
+      inningsId: innings.id,
+      sequence: innings.sequence,
+      battingTeamId: innings.battingTeamId,
+      totalRuns: innings.totalRuns,
+      totalWickets: innings.totalWickets,
+      totalBalls: innings.totalBalls,
+      batters: [...rows.batters.values()],
+      bowlers: [...rows.bowlers.values()],
+    };
+  });
 }
 
 function Insights({ match, insights }: { match: CloudLiveMatch; insights: MatchInsights }) {
@@ -345,6 +475,7 @@ function Insights({ match, insights }: { match: CloudLiveMatch; insights: MatchI
   </View>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function buildScorecard(match: CloudLiveMatch): ScorecardData {
   const batters = new Map<string, ScorecardData['batters'][number]>();
   const bowlers = new Map<string, ScorecardData['bowlers'][number]>();

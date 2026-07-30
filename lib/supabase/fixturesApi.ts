@@ -142,12 +142,125 @@ export const fixturesApi = {
     if (matchError) throw matchError;
     const canonicalByFixtureId = await getCanonicalMatches(matches.map(match => match.id));
     const knockout = stages.find(stage => stage.type === 'KNOCKOUT');
+    const mappedMatches = matches.map(match => mapFixtureMatch(match, canonicalByFixtureId.get(match.id)));
+    const bracket = knockout ? await this.getBracket(knockout.id) : null;
+    if (bracket) {
+      for (const round of bracket.rounds) {
+        const current = mappedMatches.filter(match => match.roundId === round.id);
+        if (current.length) round.matches = current;
+      }
+    }
     return {
       stages,
       groups,
-      matches: matches.map(match => mapFixtureMatch(match, canonicalByFixtureId.get(match.id))),
-      bracket: knockout ? await this.getBracket(knockout.id) : null,
+      matches: mappedMatches,
+      bracket,
     };
+  },
+
+  /**
+   * Reconciles completed canonical matches into generated fixtures and advances
+   * group/knockout stages. Every step checks for an existing bracket/round,
+   * making refreshes and realtime retries idempotent.
+   */
+  async advanceTournamentIfReady(tournamentId: string): Promise<boolean> {
+    const client = getSupabaseClient();
+    const setup = await this.getFixtureSetup(tournamentId);
+    if (!setup.stages.length) return false;
+    let changed = false;
+    const groupStage = setup.stages.find(stage => stage.type === 'GROUP');
+    const knockoutStage = setup.stages.find(stage => stage.type === 'KNOCKOUT');
+
+    if (groupStage && knockoutStage && !setup.bracket) {
+      const groupMatches = setup.matches.filter(match => match.stageId === groupStage.id);
+      const complete = groupMatches.length > 0 && groupMatches.every(match =>
+        match.status === 'COMPLETED' || match.status === 'WALKOVER');
+      if (complete) {
+        const qualifiers: { teamId: string; groupId: string; sourceRef: string }[] = [];
+        let unresolved = false;
+        for (const groupRow of setup.groups.filter(group => group.stage_id === groupStage.id)) {
+          const group: FixtureGroup = {
+            id: groupRow.id,
+            stageId: groupRow.stage_id,
+            name: groupRow.name,
+            teamIds: groupRow.team_ids,
+          };
+          const standings = new StandingsCalculator().calculate(
+            group,
+            groupMatches,
+            groupStage.config?.pointsRule,
+            groupStage.config?.tiebreakers,
+          );
+          const count = Number(groupStage.config?.advancePerGroup ?? 1);
+          const selected = standings.slice(0, count);
+          if (selected.some(row => row.unresolved)) {
+            unresolved = true;
+            break;
+          }
+          qualifiers.push(...selected.map(row => ({
+            teamId: row.teamId,
+            groupId: group.id,
+            sourceRef: `${group.name} #${row.rank}`,
+          })));
+        }
+        if (!unresolved && qualifiers.length >= 2) {
+          const bracket = new KnockoutBracketBuilder().build(
+            knockoutStage.id,
+            qualifiers,
+            knockoutStage.config.knockout,
+          );
+          await saveBracketAndMatches(bracket);
+          const { error: groupError } = await client.from('fixture_stages')
+            .update({ status: 'COMPLETED' }).eq('id', groupStage.id);
+          if (groupError) throw groupError;
+          const { error: knockoutError } = await client.from('fixture_stages')
+            .update({ status: 'IN_PROGRESS' }).eq('id', knockoutStage.id);
+          if (knockoutError) throw knockoutError;
+          changed = true;
+        }
+      }
+    }
+
+    const refreshed = changed ? await this.getFixtureSetup(tournamentId) : setup;
+    const bracket = refreshed.bracket;
+    if (!knockoutStage || !bracket) return changed;
+    // The bracket JSON is a durable template. Canonical fixture rows are the
+    // authoritative status/result source and are projected into it here.
+    const knockoutMatches = refreshed.matches.filter(match => match.stageId === knockoutStage.id);
+    for (const round of bracket.rounds) {
+      const saved = knockoutMatches.filter(match => match.roundId === round.id);
+      if (saved.length) round.matches = saved;
+    }
+    const populated = bracket.rounds
+      .map((round, index) => ({ round, index }))
+      .filter(item => item.round.name !== '3RD_PLACE' && item.round.matches.length > 0);
+    const current = populated.at(-1);
+    if (!current || !current.round.matches.every(match =>
+      match.status === 'COMPLETED' || match.status === 'WALKOVER')) return changed;
+    const next = bracket.rounds[current.index + 1];
+    if (next && next.name !== '3RD_PLACE' && next.matches.length === 0) {
+      const nextMatches = new KnockoutBracketBuilder().resolveNextRound(bracket, current.index);
+      if (nextMatches.length) {
+        const { error: matchError } = await client.from('fixture_matches')
+          .upsert(nextMatches.map(toFixtureRow), {
+            onConflict: 'stage_id,round_id,team_a_id,team_b_id,leg',
+            ignoreDuplicates: true,
+          });
+        if (matchError) throw matchError;
+        const { error: bracketError } = await client.from('knockout_brackets')
+          .update({ rounds: bracket.rounds, updated_at: new Date().toISOString() })
+          .eq('stage_id', knockoutStage.id);
+        if (bracketError) throw bracketError;
+        return true;
+      }
+    }
+    if (!next) {
+      const { error } = await client.from('fixture_stages')
+        .update({ status: 'COMPLETED' }).eq('id', knockoutStage.id);
+      if (error) throw error;
+      changed = true;
+    }
+    return changed;
   },
 
   async saveCustomFormat(format: CustomFormat, teamCount: number): Promise<CustomFormat> {
@@ -404,6 +517,9 @@ function mapFixtureMatch(
     venue?: string;
     result?: Record<string, unknown>;
     liveScore?: { runs: number; wickets: number; legalBalls: number };
+    scoreA?: number;
+    scoreB?: number;
+    teamInningsStats?: Record<string, { runs: number; legalBalls: number }>;
   },
 ): FixtureMatch {
   return {
@@ -418,12 +534,13 @@ function mapFixtureMatch(
     leg: row.leg,
     weight: row.weight ?? undefined,
     status: canonical ? mapCanonicalStatus(canonical.status) : row.status,
-    scoreA: row.score_a ?? undefined,
-    scoreB: row.score_b ?? undefined,
+    scoreA: canonical?.scoreA ?? row.score_a ?? undefined,
+    scoreB: canonical?.scoreB ?? row.score_b ?? undefined,
     scheduledAt: canonical?.scheduledAt,
     venue: canonical?.venue,
     result: canonical?.result,
     liveScore: canonical?.liveScore,
+    teamInningsStats: canonical?.teamInningsStats,
   };
 }
 
@@ -436,18 +553,26 @@ async function getCanonicalMatches(
   venue?: string;
   result?: Record<string, unknown>;
   liveScore?: { runs: number; wickets: number; legalBalls: number };
+  scoreA?: number;
+  scoreB?: number;
+  teamInningsStats?: Record<string, { runs: number; legalBalls: number }>;
 }>> {
   if (fixtureIds.length === 0) return new Map();
   const client = getSupabaseClient();
   const { data, error } = await client.from('matches')
-    .select('id, fixture_match_id, status, scheduled_at, venue, result')
+    .select('id, fixture_match_id, status, scheduled_at, venue, result, team_a_id, team_b_id')
     .in('fixture_match_id', fixtureIds);
   if (error) throw error;
   if (data.length === 0) return new Map();
-  const { data: snapshots, error: snapshotError } = await client.from('match_snapshots')
-    .select('match_id, scoreboard')
-    .in('match_id', data.map(match => match.id));
+  const [{ data: snapshots, error: snapshotError }, { data: innings, error: inningsError }] =
+    await Promise.all([
+      client.from('match_snapshots').select('match_id, scoreboard')
+        .in('match_id', data.map(match => match.id)),
+      client.from('match_innings').select('match_id, batting_team_id, total_runs, total_balls')
+        .in('match_id', data.map(match => match.id)),
+    ]);
   if (snapshotError) throw snapshotError;
+  if (inningsError) throw inningsError;
   const scoreByMatchId = new Map((snapshots ?? []).map(snapshot => {
     const score = snapshot.scoreboard ?? {};
     return [snapshot.match_id, {
@@ -456,17 +581,46 @@ async function getCanonicalMatches(
       legalBalls: Number(score.legal_balls ?? 0),
     }];
   }));
-  return new Map(data.map(match => [
-    match.fixture_match_id,
-    {
+  const totalsByMatchAndTeam = new Map<string, number>();
+  const ballsByMatchAndTeam = new Map<string, number>();
+  for (const item of innings ?? []) {
+    const key = `${item.match_id}:${item.batting_team_id}`;
+    totalsByMatchAndTeam.set(key, (totalsByMatchAndTeam.get(key) ?? 0) + Number(item.total_runs ?? 0));
+    ballsByMatchAndTeam.set(key, (ballsByMatchAndTeam.get(key) ?? 0) + Number(item.total_balls ?? 0));
+  }
+  return new Map(data.map(match => {
+    const teamARuns = totalsByMatchAndTeam.get(`${match.id}:${match.team_a_id}`) ?? 0;
+    const teamBRuns = totalsByMatchAndTeam.get(`${match.id}:${match.team_b_id}`) ?? 0;
+    // A super-over result can have level regulation totals. Fixture standings
+    // still need a deterministic winner, so use a minimal synthetic edge.
+    const winner = match.result?.winnerTeamId;
+    const scoreA = teamARuns === teamBRuns && winner
+      ? teamARuns + Number(winner === match.team_a_id)
+      : teamARuns;
+    const scoreB = teamARuns === teamBRuns && winner
+      ? teamBRuns + Number(winner === match.team_b_id)
+      : teamBRuns;
+    return [match.fixture_match_id, {
       id: match.id,
       status: match.status,
       scheduledAt: match.scheduled_at ?? undefined,
       venue: match.venue ?? undefined,
       result: match.result ?? undefined,
       liveScore: scoreByMatchId.get(match.id),
-    },
-  ]));
+      scoreA: match.status === 'COMPLETED' ? scoreA : undefined,
+      scoreB: match.status === 'COMPLETED' ? scoreB : undefined,
+      teamInningsStats: match.status === 'COMPLETED' ? {
+        [match.team_a_id]: {
+          runs: teamARuns,
+          legalBalls: ballsByMatchAndTeam.get(`${match.id}:${match.team_a_id}`) ?? 0,
+        },
+        [match.team_b_id]: {
+          runs: teamBRuns,
+          legalBalls: ballsByMatchAndTeam.get(`${match.id}:${match.team_b_id}`) ?? 0,
+        },
+      } : undefined,
+    }] as const;
+  }));
 }
 
 function mapCanonicalStatus(status: string): FixtureMatch['status'] {

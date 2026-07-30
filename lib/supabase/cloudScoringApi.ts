@@ -8,6 +8,7 @@ import {
   markScoringEventSent,
 } from '@/lib/wricket/db/scoringEventOutbox';
 import type { PendingScoringEvent } from '@/lib/wricket/db/scoringEventOutbox';
+import { getTeam } from '@/lib/wricket/db/repo';
 
 const DEVICE_ID_KEY = 'wricket.scoring-device-id';
 const activeFlushes = new Map<string, Promise<void>>();
@@ -132,6 +133,7 @@ async function runFlush(matchId: string): Promise<void> {
           'MATCH_COMPLETED',
           'MATCH_ABANDONED',
         ].includes(event.kind);
+        const payload = await normalizeLifecyclePayload(event);
         const { data, error } = await getSupabaseClient().rpc(
           lifecycleEvent ? 'append_match_lifecycle_event' : 'append_match_event',
           {
@@ -140,12 +142,22 @@ async function runFlush(matchId: string): Promise<void> {
             p_expected_sequence: expectedSequence,
             p_lease_token: lease.lease_token,
             p_kind: event.kind,
-            p_payload: event.payload,
+            p_payload: payload,
           },
         );
         if (error) {
           await markScoringEventFailed(event.clientEventId, error);
-          throw error;
+          const message = describeSupabaseError(error);
+          console.error('[Wricket scoring sync]', {
+            matchId,
+            eventKind: event.kind,
+            clientEventId: event.clientEventId,
+            message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+          });
+          throw new Error(`${event.kind}: ${message}`);
         }
         if (!data.duplicate) expectedSequence = Number(data.sequence);
         await markScoringEventSent(event.clientEventId);
@@ -161,9 +173,53 @@ async function runFlush(matchId: string): Promise<void> {
     setSyncState(matchId, {
       status: 'ERROR',
       pending: pending.length,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: describeSupabaseError(cause),
     });
   }
+}
+
+function describeSupabaseError(cause: unknown): string {
+  if (cause instanceof Error) return cause.message;
+  if (cause && typeof cause === 'object') {
+    const error = cause as Record<string, unknown>;
+    const parts = [error.message, error.details, error.hint]
+      .filter((value): value is string => typeof value === 'string' && value.length > 0);
+    if (parts.length > 0) return [...new Set(parts)].join(' — ');
+  }
+  return String(cause);
+}
+
+async function normalizeLifecyclePayload(
+  event: PendingScoringEvent,
+): Promise<Record<string, unknown>> {
+  if (event.kind !== 'INNINGS_STARTED' && event.kind !== 'MATCH_COMPLETED') {
+    return event.payload;
+  }
+
+  const cloudTeamId = async (value: unknown): Promise<unknown> => {
+    if (typeof value !== 'string') return value;
+    const team = await getTeam(value);
+    return team?.cloudId ?? value;
+  };
+
+  if (event.kind === 'INNINGS_STARTED') {
+    return {
+      ...event.payload,
+      batting_team_id: await cloudTeamId(event.payload.batting_team_id),
+      bowling_team_id: await cloudTeamId(event.payload.bowling_team_id),
+    };
+  }
+
+  const result = event.payload.result;
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return event.payload;
+  const typedResult = result as Record<string, unknown>;
+  return {
+    ...event.payload,
+    result: {
+      ...typedResult,
+      winnerTeamId: await cloudTeamId(typedResult.winnerTeamId),
+    },
+  };
 }
 
 function setSyncState(matchId: string, state: CloudScoringSyncState): void {

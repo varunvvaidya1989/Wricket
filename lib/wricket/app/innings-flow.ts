@@ -2,6 +2,7 @@ import {
   closeInnings,
   createInnings,
   getMatch,
+  getTeam,
   listInningsForMatch,
   setMatchResult,
   setMatchStatus,
@@ -12,6 +13,23 @@ import { queueCloudScoringEvent } from '@/lib/supabase/cloudScoringApi';
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function requireCloudTeamId(localTeamId: string): Promise<string> {
+  const team = await getTeam(localTeamId);
+  const cloudTeamId = team?.cloudId ?? (isUuid(localTeamId) ? localTeamId : undefined);
+  if (!cloudTeamId || !isUuid(cloudTeamId)) {
+    throw new Error('A match team has not finished syncing. Sync the teams before continuing.');
+  }
+  return cloudTeamId;
+}
+
+async function toCloudResult(result: MatchResult): Promise<MatchResult> {
+  if (!('winnerTeamId' in result) || !result.winnerTeamId) return result;
+  return {
+    ...result,
+    winnerTeamId: await requireCloudTeamId(result.winnerTeamId),
+  };
 }
 
 /**
@@ -216,15 +234,20 @@ export async function closeAndAdvance(
   const step = await planNextStep(matchId);
   if (step.kind === 'COMPLETED' && step.result) {
     if (isUuid(matchId)) {
+      const cloudResult = await toCloudResult(step.result);
       await queueCloudScoringEvent({
         clientEventId: `complete-${matchId}`,
         matchId,
         inningsId,
         kind: 'MATCH_COMPLETED',
-        payload: { innings_id: inningsId, result: step.result },
+        payload: { innings_id: inningsId, result: cloudResult },
       });
     }
     await setMatchResult(matchId, step.result);
+    // MVP is derived data: scorecard finalization succeeds even if calculation
+    // fails, and the recorded failure remains retryable from the admin action.
+    const { recalculateMatchMvp } = await import('./mvp');
+    void recalculateMatchMvp(matchId).catch(() => undefined);
   } else if (step.kind === 'FOLLOW_ON_DECISION') {
     await setMatchStatus(matchId, 'FOLLOW_ON_DECISION');
   } else if (step.kind === 'NEXT_INNINGS' && step.next) {
@@ -237,6 +260,12 @@ export async function startNextInnings(
   matchId: string,
   step: NonNullable<NextStep['next']>,
 ): Promise<void> {
+  const cloudTeams = isUuid(matchId)
+    ? {
+        battingTeamId: await requireCloudTeamId(step.battingTeamId),
+        bowlingTeamId: await requireCloudTeamId(step.bowlingTeamId),
+      }
+    : undefined;
   const requestedInningsId = isUuid(matchId) ? newUuid() : newId();
   // Create the local parent before its outbox event. scoring_event_outbox.innings_id
   // references innings.id, so queuing first fails when SQLite finalizes the statement.
@@ -260,8 +289,8 @@ export async function startNextInnings(
       payload: {
         innings_id: innings.id,
         sequence: step.sequence,
-        batting_team_id: step.battingTeamId,
-        bowling_team_id: step.bowlingTeamId,
+        batting_team_id: cloudTeams!.battingTeamId,
+        bowling_team_id: cloudTeams!.bowlingTeamId,
         target: step.target,
         is_follow_on: step.isFollowOn ?? false,
       },

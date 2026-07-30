@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
@@ -20,6 +20,7 @@ import {
 import { Ball, BatterRetirement, Innings, Match, ScoreAdjustment, Team } from '@/lib/wricket/domain/types';
 import { batsmanLineFor, bowlerLineFor } from '@/lib/wricket/domain/stats';
 import { formatOver } from '@/lib/wricket/domain/scoring';
+import { MatchMvpSection } from '@/components/wricket/mvp/MatchMvpSection';
 
 interface InningsView {
   innings: Innings;
@@ -34,6 +35,7 @@ interface InningsView {
 
 export default function ScorecardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [match, setMatch] = useState<Match | null>(null);
   const [views, setViews] = useState<InningsView[]>([]);
   const [tab, setTab] = useState(0);
@@ -46,7 +48,13 @@ export default function ScorecardScreen() {
       (async () => {
         if (!id) return;
         const m = await getMatch(id);
-        if (!m) return;
+        if (!m) {
+          router.replace({
+            pathname: '/wricket/match/[id]/live',
+            params: { id, tab: 'scorecard' },
+          });
+          return;
+        }
         const [a, b] = await Promise.all([getTeam(m.teamAId), getTeam(m.teamBId)]);
         if (!a || !b) return;
 
@@ -78,7 +86,7 @@ export default function ScorecardScreen() {
         }
       })();
       return () => { cancelled = true; };
-    }, [id]),
+    }, [id, router]),
   );
 
   if (!match || !teamA || !teamB) {
@@ -124,6 +132,12 @@ export default function ScorecardScreen() {
         )}
 
         {current && <InningsSection view={current} />}
+        <MatchMvpSection
+          matchId={match.id}
+          teamAId={match.teamAId}
+          teamBId={match.teamBId}
+          completed={match.status === 'COMPLETED'}
+        />
       </ScrollView>
     </Screen>
   );

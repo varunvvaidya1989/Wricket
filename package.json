@@ -17,6 +17,7 @@
     "check:env": "node scripts/check-env.js",
     "check:architecture": "node scripts/check-architecture.js",
     "migrate:auction-yodha-players": "node scripts/migrate-auction-yodha-players.mjs",
+    "recalculate-mvp": "node scripts/recalculate-mvp.mjs",
     "build:check": "npm run lint && npm run typecheck && npm run test && npm run check:env && npm run check:architecture && npx expo export --platform web --output-dir dist"
   },
   "dependencies": {

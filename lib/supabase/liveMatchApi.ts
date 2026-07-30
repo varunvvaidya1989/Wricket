@@ -18,6 +18,16 @@ export interface CloudLiveMatch {
     battingTeamId: string;
     target?: number;
   } | null;
+  allInnings: Array<{
+    id: string;
+    sequence: number;
+    battingTeamId: string;
+    target?: number;
+    status: string;
+    totalRuns: number;
+    totalWickets: number;
+    totalBalls: number;
+  }>;
   score: {
     runs: number;
     wickets: number;
@@ -161,9 +171,9 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
   ] = await Promise.all([
     client.from('teams').select('id, name, short_name').in('id', teamIds),
     client.from('match_innings')
-      .select('id, match_id, sequence, batting_team_id, target, status')
+      .select('id, match_id, sequence, batting_team_id, target, status, total_runs, total_wickets, total_balls')
       .in('match_id', matchIds)
-      .eq('status', 'IN_PROGRESS'),
+      .order('sequence'),
     client.from('match_snapshots')
       .select('match_id, latest_sequence, scoreboard, scorecard, updated_at')
       .in('match_id', matchIds),
@@ -171,11 +181,7 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
       .select('id, source_local_id, name, location, logo_url')
       .in('id', tournamentIds),
     detailed
-      ? client.from('match_events')
-          .select('id, match_id, sequence, kind, payload, created_at')
-          .in('match_id', matchIds)
-          .order('sequence', { ascending: false })
-          .limit(500)
+      ? loadAllMatchEvents(matchIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (teamsError) throw teamsError;
@@ -205,7 +211,12 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
   const playerNames = Object.fromEntries((players ?? []).map(player => [player.id, player.display_name]));
 
   const teamMap = new Map(teams.map(team => [team.id, team]));
-  const inningsMap = new Map(innings.map(item => [item.match_id, item]));
+  const inningsByMatch = new Map<string, typeof innings>();
+  for (const item of innings) {
+    const current = inningsByMatch.get(item.match_id) ?? [];
+    current.push(item);
+    inningsByMatch.set(item.match_id, current);
+  }
   const snapshotMap = new Map(snapshots.map(snapshot => [snapshot.match_id, snapshot]));
   const tournamentMap = new Map(tournaments.map(tournament => [tournament.id, tournament]));
 
@@ -213,7 +224,9 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
     const teamA = teamMap.get(match.team_a_id);
     const teamB = teamMap.get(match.team_b_id);
     if (!teamA || !teamB) return [];
-    const currentInnings = inningsMap.get(match.id);
+    const matchInnings = inningsByMatch.get(match.id) ?? [];
+    const currentInnings = matchInnings.find(item => item.status === 'IN_PROGRESS')
+      ?? matchInnings[matchInnings.length - 1];
     const snapshot = snapshotMap.get(match.id);
     const tournament = tournamentMap.get(match.tournament_id);
     if (!tournament) return [];
@@ -236,6 +249,16 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
         battingTeamId: currentInnings.batting_team_id,
         target: currentInnings.target ?? undefined,
       } : null,
+      allInnings: matchInnings.map(item => ({
+        id: item.id,
+        sequence: item.sequence,
+        battingTeamId: item.batting_team_id,
+        target: item.target ?? undefined,
+        status: item.status,
+        totalRuns: Number(item.total_runs ?? 0),
+        totalWickets: Number(item.total_wickets ?? 0),
+        totalBalls: Number(item.total_balls ?? 0),
+      })),
       score: {
         runs: Number(scoreboard.total_runs ?? 0),
         wickets: Number(scoreboard.total_wickets ?? 0),
@@ -257,4 +280,19 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
       playerNames,
     } satisfies CloudLiveMatch];
   });
+}
+
+async function loadAllMatchEvents(matchIds: string[]) {
+  const client = getSupabaseClient();
+  const events: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await client.from('match_events')
+      .select('id, match_id, sequence, kind, payload, created_at')
+      .in('match_id', matchIds)
+      .order('sequence', { ascending: false })
+      .range(from, from + 999);
+    if (error) return { data: null, error };
+    events.push(...data);
+    if (data.length < 1000) return { data: events, error: null };
+  }
 }

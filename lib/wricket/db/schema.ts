@@ -262,6 +262,43 @@ ALTER TABLE tournaments ADD COLUMN google_place_id TEXT;
 ALTER TABLE tournaments ADD COLUMN google_maps_url TEXT;
 `;
 
+const MVP_RESULTS_SQL = `
+CREATE TABLE IF NOT EXISTS match_mvp_results (
+  match_id TEXT NOT NULL,
+  player_id TEXT NOT NULL,
+  team_id TEXT NOT NULL,
+  algorithm_version TEXT NOT NULL,
+  batting_points REAL NOT NULL,
+  bowling_points REAL NOT NULL,
+  fielding_points REAL NOT NULL,
+  total_points REAL NOT NULL,
+  rank INTEGER,
+  deterministic_order INTEGER NOT NULL,
+  is_player_of_match INTEGER NOT NULL DEFAULT 0,
+  is_fighter_of_match INTEGER NOT NULL DEFAULT 0,
+  batting_breakdown_json TEXT NOT NULL,
+  bowling_breakdown_json TEXT NOT NULL,
+  fielding_breakdown_json TEXT NOT NULL,
+  explanations_json TEXT NOT NULL,
+  calculated_at TEXT NOT NULL,
+  PRIMARY KEY (match_id, player_id, algorithm_version),
+  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_match_mvp_rank
+ON match_mvp_results(match_id, algorithm_version, deterministic_order);
+CREATE INDEX IF NOT EXISTS idx_match_mvp_player
+ON match_mvp_results(player_id, algorithm_version);
+
+CREATE TABLE IF NOT EXISTS match_mvp_calculations (
+  match_id TEXT PRIMARY KEY,
+  algorithm_version TEXT NOT NULL,
+  status TEXT NOT NULL,
+  calculated_at TEXT,
+  error TEXT,
+  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
+);
+`;
+
 export const MIGRATIONS: SqlMigration[] = [
   {
     version: 1,
@@ -307,6 +344,11 @@ export const MIGRATIONS: SqlMigration[] = [
     version: 9,
     name: 'tournament_geotag',
     sql: TOURNAMENT_GEOTAG_SQL,
+  },
+  {
+    version: 10,
+    name: 'mvp_results',
+    sql: MVP_RESULTS_SQL,
   },
 ];
 
