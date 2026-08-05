@@ -1,4 +1,5 @@
 import { Innings, Match, Tournament } from './types';
+import { nrrBallsForInnings } from './nrr';
 
 export interface PointsRow {
   teamId: string;
@@ -54,7 +55,12 @@ export function computePointsTableFromData(
     // Track runs/overs for NRR
     const innings = inningsByMatch.get(m.id) ?? [];
     for (const inn of innings) {
-      const overs = inn.totalBalls / 6;
+      const overs = nrrBallsForInnings(
+        inn.totalBalls,
+        inn.totalWickets,
+        m.rules.oversPerInnings,
+        m.rules.playersPerSide,
+      ) / 6;
       const forTeam = ensure(inn.battingTeamId);
       const againstTeam = ensure(inn.bowlingTeamId);
       forTeam.runsFor += inn.totalRuns;

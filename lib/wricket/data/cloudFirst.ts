@@ -56,13 +56,18 @@ export async function createOnlineTeam(input: {
   name: string;
   shortName: string;
   colorHex: string;
+  logoLocalUri?: string;
+  userId: string;
 }): Promise<Team> {
   if (!input.tournament.cloudId) throw new Error('Tournament is not available online');
+  if (input.tournament.organizerProfileId !== input.userId) throw new Error('Only the tournament owner can add teams');
   const cloud = await createCloudTeam({
     tournamentId: input.tournament.cloudId,
     name: input.name,
     shortName: input.shortName,
     colorHex: input.colorHex,
+    logoLocalUri: input.logoLocalUri,
+    userId: input.userId,
   });
   await mergeCloudTeam({
     cloudId: cloud.cloudId,
@@ -71,6 +76,7 @@ export async function createOnlineTeam(input: {
     name: input.name,
     shortName: input.shortName,
     colorHex: input.colorHex,
+    logoUrl: cloud.logoUrl,
     createdAt: cloud.createdAt,
   });
   const cached = await getTeam(cloud.cloudId);

@@ -207,6 +207,55 @@ export async function getTournament(id: string): Promise<Tournament | null> {
   return row ? rowToTournament(row) : null;
 }
 
+export async function updateTournamentMediaLocally(
+  tournamentId: string,
+  kind: 'logo' | 'banner',
+  url: string,
+): Promise<void> {
+  const db = await getDb();
+  const urlColumn = kind === 'logo' ? 'logo_url' : 'banner_url';
+  const localColumn = kind === 'logo' ? 'logo_local_uri' : 'banner_local_uri';
+  await db.runAsync(
+    `UPDATE tournaments SET ${urlColumn} = ?, ${localColumn} = NULL, sync_status = ? WHERE id = ?`,
+    url,
+    'SYNCED',
+    tournamentId,
+  );
+}
+
+export async function updateTournamentDetailsLocally(tournamentId: string, input: {
+  name: string; startDate: number; location?: string; plannedTeamCount: number;
+  playersPerTeam: number; organizerPhone?: string; description?: string;
+  socialMediaUrl?: string; rewards?: string;
+}): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `UPDATE tournaments SET name = ?, start_date = ?, location = ?, planned_team_count = ?,
+      players_per_team = ?, organizer_phone = ?, description = ?, social_media_url = ?, rewards = ?, sync_status = ? WHERE id = ?`,
+    input.name, input.startDate, input.location ?? null, input.plannedTeamCount, input.playersPerTeam,
+    input.organizerPhone ?? null, input.description ?? null, input.socialMediaUrl ?? null,
+    input.rewards ?? null, 'SYNCED', tournamentId,
+  );
+}
+
+export async function deleteTournamentLocally(tournamentId: string): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    const matches = await db.getAllAsync<{ id: string }>('SELECT id FROM matches WHERE tournament_id = ?', tournamentId);
+    const teams = await db.getAllAsync<{ id: string }>('SELECT id FROM teams WHERE tournament_id = ?', tournamentId);
+    for (const match of matches) {
+      await db.runAsync('DELETE FROM sync_outbox WHERE entity_id = ?', match.id);
+      await db.runAsync('DELETE FROM matches WHERE id = ?', match.id);
+    }
+    for (const team of teams) {
+      await db.runAsync('DELETE FROM sync_outbox WHERE entity_id = ?', team.id);
+      await db.runAsync('DELETE FROM teams WHERE id = ?', team.id);
+    }
+    await db.runAsync('DELETE FROM sync_outbox WHERE entity_id = ?', tournamentId);
+    await db.runAsync('DELETE FROM tournaments WHERE id = ?', tournamentId);
+  });
+}
+
 function rowToTournament(row: any): Tournament {
   return {
     id: row.id,
@@ -230,6 +279,7 @@ function rowToTournament(row: any): Tournament {
     plannedTeamCount: row.planned_team_count ?? 2,
     playersPerTeam: row.players_per_team ?? 11,
     description: row.description ?? undefined,
+    rewards: row.rewards ?? undefined,
     socialMediaUrl: row.social_media_url ?? undefined,
     bannerLocalUri: row.banner_local_uri ?? undefined,
     logoLocalUri: row.logo_local_uri ?? undefined,
@@ -302,6 +352,16 @@ export async function getTeam(id: string): Promise<Team | null> {
   return row ? rowToTeam(row) : null;
 }
 
+export async function updateTeamLogoByCloudId(cloudTeamId: string, logoUrl: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'UPDATE teams SET logo_url = ?, sync_status = ? WHERE cloud_id = ?',
+    logoUrl,
+    'SYNCED',
+    cloudTeamId,
+  );
+}
+
 function rowToTeam(row: any): Team {
   return {
     id: row.id,
@@ -309,6 +369,7 @@ function rowToTeam(row: any): Team {
     name: row.name,
     shortName: row.short_name,
     colorHex: row.color_hex,
+    logoUrl: row.logo_url ?? undefined,
     createdAt: row.created_at,
     cloudId: row.cloud_id ?? undefined,
     syncStatus: row.sync_status ?? 'LOCAL',

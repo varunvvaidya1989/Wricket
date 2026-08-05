@@ -1,4 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { getSupabaseClient } from '@/lib/supabase/client';
@@ -9,10 +10,18 @@ interface AuthContextValue {
   profile: CloudProfile | null;
   loading: boolean;
   error: string | null;
+  authLinkError: { code: string; message: string } | null;
+  clearAuthLinkError(): void;
   signIn(email: string, password: string): Promise<void>;
-  signUp(email: string, password: string): Promise<boolean>;
+  signUp(email: string, password: string, draft?: { displayName: string; sportCode: string }): Promise<boolean>;
   signOut(): Promise<void>;
   saveProfile(displayName: string): Promise<void>;
+  refreshProfile(): Promise<void>;
+  requestPasswordReset(email: string): Promise<void>;
+  updatePassword(password: string, currentPassword?: string): Promise<void>;
+  updateEmail(email: string): Promise<void>;
+  resendSignupConfirmation(email: string): Promise<void>;
+  sendMagicLink(email: string): Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -22,6 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<CloudProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authLinkError, setAuthLinkError] = useState<{ code: string; message: string } | null>(null);
 
   const loadProfile = useCallback(async (nextSession: Session | null) => {
     setSession(nextSession);
@@ -42,6 +52,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .catch(cause => setError(cause instanceof Error ? cause.message : 'Could not restore cloud session'))
       .finally(() => setLoading(false));
 
+    const createSessionFromUrl = async (url: string) => {
+      const parsed = Linking.parse(url);
+      const fragment = url.includes('#') ? new URLSearchParams(url.split('#')[1]) : null;
+      const errorDescription = parsed.queryParams?.error_description ?? fragment?.get('error_description');
+      const errorCode = parsed.queryParams?.error_code ?? fragment?.get('error_code');
+      if (errorDescription) {
+        setAuthLinkError({ code: String(errorCode ?? 'auth_link_invalid'), message: String(errorDescription) });
+        return;
+      }
+      const code = parsed.queryParams?.code;
+      if (typeof code === 'string') {
+        setAuthLinkError(null);
+        const { error: exchangeError } = await client.auth.exchangeCodeForSession(code);
+        if (exchangeError) throw exchangeError;
+        return;
+      }
+      const accessToken = parsed.queryParams?.access_token ?? fragment?.get('access_token');
+      const refreshToken = parsed.queryParams?.refresh_token ?? fragment?.get('refresh_token');
+      if (typeof accessToken === 'string' && typeof refreshToken === 'string') {
+        setAuthLinkError(null);
+        const { error: sessionError } = await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (sessionError) throw sessionError;
+      }
+    };
+    const handleUrl = (url: string | null) => {
+      if (!url) return;
+      void createSessionFromUrl(url).catch(cause => {
+        const authCause = cause as { code?: unknown; message?: unknown };
+        setAuthLinkError({
+          code: typeof authCause.code === 'string' ? authCause.code : 'auth_link_invalid',
+          message: typeof authCause.message === 'string' ? authCause.message : 'Could not open authentication link',
+        });
+      });
+    };
+    void Linking.getInitialURL().then(handleUrl);
+    const linkingSubscription = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+
     const { data } = client.auth.onAuthStateChange((_event, nextSession) => {
       setTimeout(() => {
         loadProfile(nextSession).catch(cause => {
@@ -50,7 +97,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
       }, 0);
     });
-    return () => data.subscription.unsubscribe();
+    return () => {
+      data.subscription.unsubscribe();
+      linkingSubscription.remove();
+    };
   }, [loadProfile]);
 
   const value = useMemo<AuthContextValue>(() => ({
@@ -58,12 +108,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profile,
     loading,
     error,
+    authLinkError,
+    clearAuthLinkError() { setAuthLinkError(null); },
     async signIn(email, password) {
       const { error } = await getSupabaseClient().auth.signInWithPassword({ email: email.trim(), password });
       if (error) throw error;
     },
-    async signUp(email, password) {
-      const { data, error } = await getSupabaseClient().auth.signUp({ email: email.trim(), password });
+    async signUp(email, password, draft) {
+      const { data, error } = await getSupabaseClient().auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          emailRedirectTo: Linking.createURL('onboarding'),
+          ...(draft ? { data: { display_name: draft.displayName.trim(), primary_sport_code: draft.sportCode } } : {}),
+        },
+      });
       if (error) throw error;
       return Boolean(data.session);
     },
@@ -75,7 +134,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!session) throw new Error('Sign in before creating a profile');
       setProfile(await saveCloudProfile(session.user, displayName));
     },
-  }), [error, loading, profile, session]);
+    async refreshProfile() {
+      if (!session) { setProfile(null); return; }
+      setProfile(await getCloudProfile(session.user.id));
+    },
+    async requestPasswordReset(email) {
+      const { error } = await getSupabaseClient().auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: Linking.createURL('reset-password'),
+      });
+      if (error) throw error;
+    },
+    async updatePassword(password, currentPassword) {
+      const { error } = await getSupabaseClient().auth.updateUser({
+        password,
+        ...(currentPassword ? { current_password: currentPassword } : {}),
+      });
+      if (error) throw error;
+    },
+    async updateEmail(email) {
+      const { error } = await getSupabaseClient().auth.updateUser(
+        { email: email.trim() },
+        { emailRedirectTo: Linking.createURL('account') },
+      );
+      if (error) throw error;
+    },
+    async resendSignupConfirmation(email) {
+      const { error } = await getSupabaseClient().auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: { emailRedirectTo: Linking.createURL('onboarding') },
+      });
+      if (error) throw error;
+    },
+    async sendMagicLink(email) {
+      const { error } = await getSupabaseClient().auth.signInWithOtp({
+        email: email.trim(),
+        options: {
+          emailRedirectTo: Linking.createURL(''),
+          shouldCreateUser: false,
+        },
+      });
+      if (error) throw error;
+    },
+  }), [authLinkError, error, loading, profile, session]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

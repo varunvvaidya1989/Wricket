@@ -63,6 +63,7 @@ describe('cloud-first entity creation', () => {
       name: 'Falcons',
       shortName: 'FAL',
       colorHex: '#fff000',
+      userId: 'owner-id',
     })).rejects.toThrow('Tournament is not available online');
     expect(cloud.createCloudTeam).not.toHaveBeenCalled();
     expect(cache.mergeCloudTeam).not.toHaveBeenCalled();

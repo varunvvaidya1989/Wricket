@@ -39,7 +39,11 @@ export interface CloudLiveMatch {
   commentary: CloudMatchEvent[];
   scorecard: Record<string, unknown>;
   playerNames: Record<string, string>;
+  eligibilityReason?: 'OWNER' | 'MY_TEAM' | 'TOURNAMENT_MEMBER' | 'FOLLOWING';
 }
+
+export interface LiveMatchCursor { updatedAt: string; id: string }
+export interface LiveMatchPage { matches: CloudLiveMatch[]; nextCursor?: LiveMatchCursor; hasMore: boolean }
 
 export interface CloudMatchEvent {
   id: string;
@@ -47,6 +51,15 @@ export interface CloudMatchEvent {
   kind: string;
   payload: Record<string, unknown>;
   createdAt: string;
+}
+
+interface RawLiveEvent {
+  id: string;
+  match_id: string;
+  sequence: number | string;
+  kind: string;
+  payload: Record<string, unknown> | null;
+  created_at: string;
 }
 
 export interface CloudLiveTournament {
@@ -63,16 +76,50 @@ const CHANNEL_COUNTER_KEY = '__wricketLiveMatchChannelCounter';
 const globalWithChannelCounter = globalThis as typeof globalThis & {
   [CHANNEL_COUNTER_KEY]?: number;
 };
+const LIVE_PAGE_SIZE = 8;
 
 export const liveMatchApi = {
   async list(): Promise<CloudLiveMatch[]> {
-    const { data: matches, error } = await getSupabaseClient()
+    return (await this.listPage()).matches;
+  },
+
+  async listPage(cursor?: LiveMatchCursor): Promise<LiveMatchPage> {
+    const client = getSupabaseClient();
+    const { data: pageRows, error: pageError } = await client.rpc('list_eligible_live_matches', {
+      p_cursor_updated_at: cursor?.updatedAt ?? null,
+      p_cursor_id: cursor?.id ?? null,
+      p_limit: LIVE_PAGE_SIZE,
+    });
+    if (pageError) throw pageError;
+    const rows = pageRows ?? [];
+    if (rows.length === 0) return { matches: [], hasMore: false };
+    const ids = rows.map((row: Record<string, unknown>) => String(row.match_id));
+    const { data: matches, error } = await client
       .from('matches')
       .select('id, tournament_id, format, status, team_a_id, team_b_id, venue, rules, result')
-      .in('status', LIVE_STATUSES)
-      .order('updated_at', { ascending: false });
+      .in('id', ids);
     if (error) throw error;
-    return loadRelated(matches, false);
+    const order = new Map<string, number>(ids.map((id: string, index: number) => [id, index]));
+    const reason = new Map(rows.map((row: Record<string, unknown>) => [String(row.match_id), String(row.eligibility_reason)]));
+    const hydrated = await loadRelated((matches ?? []).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)), false);
+    const withReason = hydrated.map(match => ({ ...match, eligibilityReason: reason.get(match.id) as CloudLiveMatch['eligibilityReason'] }));
+    const last = rows[rows.length - 1] as Record<string, unknown>;
+    return {
+      matches: withReason,
+      hasMore: rows.length === LIVE_PAGE_SIZE,
+      nextCursor: { updatedAt: String(last.match_updated_at), id: String(last.match_id) },
+    };
+  },
+
+  async getSummary(matchId: string): Promise<CloudLiveMatch | null> {
+    const { data: match, error } = await getSupabaseClient()
+      .from('matches')
+      .select('id, tournament_id, format, status, team_a_id, team_b_id, venue, rules, result')
+      .eq('id', matchId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!match || !LIVE_STATUSES.includes(match.status)) return null;
+    return (await loadRelated([match], false))[0] ?? null;
   },
 
   async listTournaments(): Promise<CloudLiveTournament[]> {
@@ -151,6 +198,29 @@ export const liveMatchApi = {
       void client.removeChannel(channel);
     };
   },
+
+  subscribeLoaded(matchIds: string[], onChange: (matchId: string) => void) {
+    if (matchIds.length === 0) return () => undefined;
+    const client = getSupabaseClient();
+    const instance = (globalWithChannelCounter[CHANNEL_COUNTER_KEY] ?? 0) + 1;
+    globalWithChannelCounter[CHANNEL_COUNTER_KEY] = instance;
+    const filterIds = matchIds.slice(0, 100).join(',');
+    const channel = client.channel(`loaded-live-matches:${instance}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'match_snapshots', filter: `match_id=in.(${filterIds})`,
+      }, payload => {
+        const matchId = String((payload.new as Record<string, unknown>)?.match_id ?? '');
+        if (matchId) onChange(matchId);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'matches', filter: `id=in.(${filterIds})`,
+      }, payload => {
+        const matchId = String((payload.new as Record<string, unknown>)?.id ?? '');
+        if (matchId) onChange(matchId);
+      })
+      .subscribe();
+    return () => { void client.removeChannel(channel); };
+  },
 };
 
 async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLiveMatch[]> {
@@ -182,15 +252,16 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
       .in('id', tournamentIds),
     detailed
       ? loadAllMatchEvents(matchIds)
-      : Promise.resolve({ data: [], error: null }),
+      : loadRecentMatchEvents(matchIds),
   ]);
   if (teamsError) throw teamsError;
   if (inningsError) throw inningsError;
   if (snapshotsError) throw snapshotsError;
   if (tournamentsError) throw tournamentsError;
   if (eventsResult.error) throw eventsResult.error;
+  const eventRows = (eventsResult.data ?? []) as RawLiveEvent[];
   const playerIds = detailed
-    ? Array.from(new Set((eventsResult.data ?? []).flatMap(event => {
+    ? Array.from(new Set(eventRows.flatMap(event => {
         const payload = event.payload ?? {};
         return [
           'striker_id',
@@ -267,7 +338,7 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
         lastEvent: scoreboard.last_event,
         updatedAt: snapshot?.updated_at,
       },
-      commentary: (eventsResult.data ?? [])
+      commentary: eventRows
         .filter(event => event.match_id === match.id)
         .map(event => ({
           id: event.id,
@@ -295,4 +366,8 @@ async function loadAllMatchEvents(matchIds: string[]) {
     events.push(...data);
     if (data.length < 1000) return { data: events, error: null };
   }
+}
+
+async function loadRecentMatchEvents(matchIds: string[]) {
+  return getSupabaseClient().rpc('list_recent_live_events', { p_match_ids: matchIds });
 }

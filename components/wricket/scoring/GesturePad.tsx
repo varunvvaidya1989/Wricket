@@ -17,7 +17,6 @@ import { radius, spacing } from '@/lib/theme/spacing';
 export type PadAction =
   | { kind: 'RUNS'; runs: 0 | 1 | 2 | 3 | 4 | 6 }
   | { kind: 'WICKET' }
-  | { kind: 'EXTRA' }
   | { kind: 'UNDO' };
 
 export interface GesturePadProps {
@@ -105,8 +104,8 @@ export function GesturePad({ onAction, disabled, onInteractionChange }: GestureP
             runOnJS(fire)({ kind: 'RUNS', runs: 3 }, '3', Haptics.ImpactFeedbackStyle.Light);
           }
         } else {
-          // left → extras
-          runOnJS(fire)({ kind: 'EXTRA' }, 'EXTRA', Haptics.ImpactFeedbackStyle.Medium);
+          // left → four
+          runOnJS(fire)({ kind: 'RUNS', runs: 4 }, 'FOUR', Haptics.ImpactFeedbackStyle.Medium);
         }
       }
     });
@@ -142,13 +141,13 @@ export function GesturePad({ onAction, disabled, onInteractionChange }: GestureP
         <View style={styles.hintGrid}>
           <Text variant="caption" style={[styles.hintText, styles.hintTopLeft]}>1 ↑</Text>
           <Text variant="caption" style={[styles.hintText, styles.hintTopRight]}>2 ↗</Text>
-          <Text variant="caption" style={[styles.hintText, styles.hintLeft]}>← ext</Text>
+          <Text variant="caption" style={[styles.hintText, styles.hintLeft]}>← 4</Text>
           <Text variant="caption" style={[styles.hintText, styles.hintRight]}>3 →</Text>
           <Text variant="caption" style={[styles.hintText, styles.hintBottom]}>↓ wkt</Text>
         </View>
 
         <View style={styles.center}>
-          <Text variant="overline" style={styles.centerHint}>TAP DOT · 2× FOUR · HOLD SIX</Text>
+          <Text variant="overline" style={styles.centerHint}>TAP DOT · ← FOUR · HOLD SIX</Text>
           <Text variant="scoreLg" style={styles.centerTitle}>
             Score
           </Text>

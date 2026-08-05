@@ -290,7 +290,9 @@ export function MatchMoments({
               </Pressable>
             </View>
             <Text variant="body" style={{ marginTop: spacing.md }}>{moment.caption}</Text>
-            {moment.imageUrl && <Image source={{ uri: moment.imageUrl }} style={styles.momentImage} />}
+            {moment.imageUrl && (isPlaceholderImage(moment.imageUrl)
+              ? <MomentPhotoPlaceholder author={moment.authorName} />
+              : <Image source={{ uri: moment.imageUrl }} style={styles.momentImage} />)}
             <View style={styles.reactions}>
               <ReactionButton icon="heart-outline" label="Like" count={moment.reactions.LIKE}
                 active={moment.myReactions.includes('LIKE')} onPress={() => void react(moment, 'LIKE')} />
@@ -412,6 +414,19 @@ function messageOf(cause: unknown) {
   return cause instanceof Error ? cause.message : 'Please try again.';
 }
 
+function isPlaceholderImage(url: string): boolean {
+  const normalized = url.toLowerCase();
+  return normalized.includes('creativehatti') || normalized.includes('watermark') || normalized.includes('stock-placeholder');
+}
+
+function MomentPhotoPlaceholder({ author }: { author: string }) {
+  return <View style={styles.photoPlaceholder}>
+    <View style={styles.photoPitchLine} />
+    <View style={styles.photoSeam} />
+    <Text variant="caption" tone="muted" style={styles.photoCaption}>Photo attached by {author}</Text>
+  </View>;
+}
+
 const styles = StyleSheet.create({
   container: { gap: spacing.md, marginTop: spacing.xl },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
@@ -451,6 +466,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     backgroundColor: colors.surfaceElevated,
   },
+  photoPlaceholder: { height: 190, marginTop: spacing.md, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.border, justifyContent: 'flex-end' },
+  photoPitchLine: { position: 'absolute', top: 0, bottom: 0, left: '32%', right: '32%', borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(95, 227, 138, 0.16)' },
+  photoSeam: { position: 'absolute', width: 3, height: 110, top: 30, alignSelf: 'center', backgroundColor: 'rgba(232, 196, 104, 0.42)', transform: [{ rotate: '-18deg' }] },
+  photoCaption: { padding: spacing.md, backgroundColor: 'rgba(8, 11, 9, 0.78)' },
   reactions: {
     flexDirection: 'row',
     flexWrap: 'wrap',

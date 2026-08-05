@@ -68,6 +68,7 @@ export interface Tournament {
   plannedTeamCount: number;
   playersPerTeam: number;
   description?: string;
+  rewards?: string;
   socialMediaUrl?: string;
   bannerLocalUri?: string;
   logoLocalUri?: string;
@@ -84,6 +85,7 @@ export interface Team {
   name: string;
   shortName: string;
   colorHex: string;
+  logoUrl?: string;
   createdAt: number;
   cloudId?: string;
   syncStatus: SyncStatus;

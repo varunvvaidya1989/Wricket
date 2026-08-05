@@ -212,6 +212,7 @@ export async function mergeCloudTeam(input: {
   name: string;
   shortName: string;
   colorHex: string;
+  logoUrl?: string;
   createdAt: number;
 }): Promise<void> {
   const db = await getDb();
@@ -226,12 +227,12 @@ export async function mergeCloudTeam(input: {
   const id = existing?.id ?? input.sourceLocalId ?? `cloud_${input.cloudId}`;
   await db.runAsync(
     `INSERT INTO teams
-       (id, tournament_id, name, short_name, color_hex, created_at, cloud_id, sync_status, sync_error, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'SYNCED', NULL, ?)
+       (id, tournament_id, name, short_name, color_hex, logo_url, created_at, cloud_id, sync_status, sync_error, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SYNCED', NULL, ?)
      ON CONFLICT(id) DO UPDATE SET tournament_id=excluded.tournament_id, name=excluded.name,
-       short_name=excluded.short_name, color_hex=excluded.color_hex, cloud_id=excluded.cloud_id,
+       short_name=excluded.short_name, color_hex=excluded.color_hex, logo_url=excluded.logo_url, cloud_id=excluded.cloud_id,
        sync_status='SYNCED', sync_error=NULL, updated_at=excluded.updated_at`,
-    id, tournament?.id ?? null, input.name, input.shortName, input.colorHex,
+    id, tournament?.id ?? null, input.name, input.shortName, input.colorHex, input.logoUrl ?? null,
     input.createdAt, input.cloudId, Date.now(),
   );
 }

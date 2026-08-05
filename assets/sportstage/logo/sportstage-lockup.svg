@@ -1,0 +1,28 @@
+<svg width="900" height="220" viewBox="0 0 900 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#141814"/>
+      <stop offset="1" stop-color="#0A0C0B"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="140" y1="40" x2="56" y2="172" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8CF0AC"/>
+      <stop offset="1" stop-color="#3FAE6E"/>
+    </linearGradient>
+  </defs>
+
+  <!-- icon tile -->
+  <g transform="translate(10,10)">
+    <rect x="1" y="1" width="198" height="198" rx="44" fill="url(#tile)" stroke="#242B25" stroke-width="2"/>
+    <path d="M 140 40
+             C 92 40, 60 60, 60 84
+             C 60 108, 140 92, 140 116
+             C 140 140, 108 160, 60 160"
+          fill="none" stroke="url(#stroke)" stroke-width="24" stroke-linecap="round"/>
+    <circle cx="140" cy="40" r="17" fill="#8CF0AC"/>
+    <circle cx="60" cy="160" r="17" fill="#3FAE6E"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="248" y="130" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="88" fill="#EEF2ED" letter-spacing="-1">SportStage</text>
+  <text x="250" y="168" font-family="IBM Plex Mono, monospace" font-weight="500" font-size="21" fill="#5C6660" letter-spacing="2">ONE ACCOUNT · EVERY SPORT</text>
+</svg>

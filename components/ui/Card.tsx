@@ -39,7 +39,7 @@ export function Card({ children, onPress, style, elevated, accentColor }: CardPr
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.border,

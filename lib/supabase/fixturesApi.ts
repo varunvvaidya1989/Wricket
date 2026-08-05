@@ -516,10 +516,10 @@ function mapFixtureMatch(
     scheduledAt?: string;
     venue?: string;
     result?: Record<string, unknown>;
-    liveScore?: { runs: number; wickets: number; legalBalls: number };
+    liveScore?: { runs: number; wickets: number; legalBalls: number; battingTeamId?: string; target?: number };
     scoreA?: number;
     scoreB?: number;
-    teamInningsStats?: Record<string, { runs: number; legalBalls: number }>;
+    teamInningsStats?: Record<string, { runs: number; wickets: number; legalBalls: number }>;
   },
 ): FixtureMatch {
   return {
@@ -552,10 +552,10 @@ async function getCanonicalMatches(
   scheduledAt?: string;
   venue?: string;
   result?: Record<string, unknown>;
-  liveScore?: { runs: number; wickets: number; legalBalls: number };
+  liveScore?: { runs: number; wickets: number; legalBalls: number; battingTeamId?: string; target?: number };
   scoreA?: number;
   scoreB?: number;
-  teamInningsStats?: Record<string, { runs: number; legalBalls: number }>;
+  teamInningsStats?: Record<string, { runs: number; wickets: number; legalBalls: number }>;
 }>> {
   if (fixtureIds.length === 0) return new Map();
   const client = getSupabaseClient();
@@ -568,7 +568,7 @@ async function getCanonicalMatches(
     await Promise.all([
       client.from('match_snapshots').select('match_id, scoreboard')
         .in('match_id', data.map(match => match.id)),
-      client.from('match_innings').select('match_id, batting_team_id, total_runs, total_balls')
+      client.from('match_innings').select('match_id, sequence, batting_team_id, target, status, total_runs, total_wickets, total_balls')
         .in('match_id', data.map(match => match.id)),
     ]);
   if (snapshotError) throw snapshotError;
@@ -581,11 +581,20 @@ async function getCanonicalMatches(
       legalBalls: Number(score.legal_balls ?? 0),
     }];
   }));
+  const currentInningsByMatch = new Map<string, { battingTeamId: string; target?: number }>();
+  for (const item of innings ?? []) {
+    if (item.status === 'IN_PROGRESS') currentInningsByMatch.set(item.match_id, {
+      battingTeamId: item.batting_team_id,
+      target: item.target ?? undefined,
+    });
+  }
   const totalsByMatchAndTeam = new Map<string, number>();
+  const wicketsByMatchAndTeam = new Map<string, number>();
   const ballsByMatchAndTeam = new Map<string, number>();
   for (const item of innings ?? []) {
     const key = `${item.match_id}:${item.batting_team_id}`;
     totalsByMatchAndTeam.set(key, (totalsByMatchAndTeam.get(key) ?? 0) + Number(item.total_runs ?? 0));
+    wicketsByMatchAndTeam.set(key, (wicketsByMatchAndTeam.get(key) ?? 0) + Number(item.total_wickets ?? 0));
     ballsByMatchAndTeam.set(key, (ballsByMatchAndTeam.get(key) ?? 0) + Number(item.total_balls ?? 0));
   }
   return new Map(data.map(match => {
@@ -606,16 +615,21 @@ async function getCanonicalMatches(
       scheduledAt: match.scheduled_at ?? undefined,
       venue: match.venue ?? undefined,
       result: match.result ?? undefined,
-      liveScore: scoreByMatchId.get(match.id),
+      liveScore: scoreByMatchId.has(match.id) ? {
+        ...scoreByMatchId.get(match.id)!,
+        ...currentInningsByMatch.get(match.id),
+      } : undefined,
       scoreA: match.status === 'COMPLETED' ? scoreA : undefined,
       scoreB: match.status === 'COMPLETED' ? scoreB : undefined,
       teamInningsStats: match.status === 'COMPLETED' ? {
         [match.team_a_id]: {
           runs: teamARuns,
+          wickets: wicketsByMatchAndTeam.get(`${match.id}:${match.team_a_id}`) ?? 0,
           legalBalls: ballsByMatchAndTeam.get(`${match.id}:${match.team_a_id}`) ?? 0,
         },
         [match.team_b_id]: {
           runs: teamBRuns,
+          wickets: wicketsByMatchAndTeam.get(`${match.id}:${match.team_b_id}`) ?? 0,
           legalBalls: ballsByMatchAndTeam.get(`${match.id}:${match.team_b_id}`) ?? 0,
         },
       } : undefined,

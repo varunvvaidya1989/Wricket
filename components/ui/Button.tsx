@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
 const variantStyles = {
   primary: {
     container: { backgroundColor: colors.accent },
-    text: { color: colors.accentInk, fontWeight: '700' as const },
+    text: { color: colors.accentInk },
   },
   secondary: {
     container: {
@@ -87,15 +87,15 @@ const variantStyles = {
       borderWidth: 1,
       borderColor: colors.border,
     },
-    text: { color: colors.text, fontWeight: '600' as const },
+    text: { color: colors.text },
   },
   ghost: {
     container: { backgroundColor: 'transparent' },
-    text: { color: colors.text, fontWeight: '500' as const },
+    text: { color: colors.text },
   },
   danger: {
     container: { backgroundColor: colors.danger },
-    text: { color: palette.white, fontWeight: '700' as const },
+    text: { color: palette.white },
   },
 } as const;
 

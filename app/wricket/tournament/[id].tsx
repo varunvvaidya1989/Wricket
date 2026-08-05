@@ -1,25 +1,24 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
-  Animated,
   FlatList,
   Image,
   Linking,
   Modal,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
+import { AppHeader } from '@/components/ui/AppHeader';
 import { googleStaticMapUrl } from '@/lib/maps/googlePlaces';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -36,13 +35,19 @@ import {
 import { Tournament, Team, Match, Ball, User, FORMAT_LABEL } from '@/lib/wricket/domain/types';
 import { computePointsTable, PointsRow } from '@/lib/wricket/app/points';
 import { fixturesApi, GeneratedFixtureSetup } from '@/lib/supabase/fixturesApi';
-import { TeamRosterMember, teamManagementApi } from '@/lib/supabase/teamManagementApi';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { createOnlineTeam, deleteOnlineTeam } from '@/lib/wricket/data/cloudFirst';
+import { createOnlineTeam } from '@/lib/wricket/data/cloudFirst';
 import { TournamentMvpLeaderboard } from '@/components/wricket/mvp/TournamentMvpLeaderboard';
-import { MatchMoments } from '@/components/wricket/moments/MatchMoments';
 import { StandingsCalculator } from '@/lib/wricket/fixtures';
 import { tournamentStatsApi } from '@/lib/supabase/tournamentStatsApi';
+import {
+  scorerManagementApi,
+  ScorerSearchResult,
+  TournamentScorer,
+} from '@/lib/supabase/scorerManagementApi';
+import { TournamentShareBanner } from '@/components/wricket/tournament/TournamentShareBanner';
+import { tournamentManagementApi } from '@/lib/supabase/tournamentManagementApi';
+import { teamManagementApi } from '@/lib/supabase/teamManagementApi';
 
 type Tab = 'fixtures' | 'table' | 'teams' | 'stats' | 'settings';
 
@@ -64,70 +69,23 @@ interface TournamentStats {
 
 export default function TournamentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { height: viewportHeight } = useWindowDimensions();
-  const safeArea = useSafeAreaInsets();
-  // Native Stack owns the navigation header above this screen. Keeping the
-  // sheet inside the remaining route area prevents its handle being trapped
-  // underneath that header.
-  const usableScreenHeight = Math.max(320, viewportHeight - safeArea.top - 56);
+  const router = useRouter();
   const auth = useAuth();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [points, setPoints] = useState<PointsRow[]>([]);
   const [tab, setTab] = useState<Tab>('fixtures');
+  const [tabsAtEnd, setTabsAtEnd] = useState(false);
   const [showAddTeam, setShowAddTeam] = useState(false);
+  const [showShareBanner, setShowShareBanner] = useState(false);
   const [stats, setStats] = useState<TournamentStats>({
     matches: 0, completedMatches: 0, balls: 0, runs: 0, wickets: 0, players: [],
   });
   const [generatedSetup, setGeneratedSetup] = useState<GeneratedFixtureSetup>({
     stages: [], groups: [], matches: [], bracket: null,
   });
-  const minSheetHeight = Math.max(112, usableScreenHeight * 0.16);
-  const maxSheetHeight = usableScreenHeight;
-  const sheetHeight = useRef(new Animated.Value(minSheetHeight)).current;
-  const sheetHeightValue = useRef(minSheetHeight);
-  const sheetDragStart = useRef(minSheetHeight);
-
-  useEffect(() => {
-    const next = Math.min(maxSheetHeight, Math.max(minSheetHeight, sheetHeightValue.current));
-    sheetHeightValue.current = next;
-    sheetHeight.setValue(next);
-  }, [maxSheetHeight, minSheetHeight, sheetHeight]);
-
-  const sheetPanResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 3,
-    onPanResponderGrant: () => {
-      sheetHeight.stopAnimation(value => {
-        sheetDragStart.current = value;
-        sheetHeightValue.current = value;
-      });
-    },
-    onPanResponderMove: (_, gesture) => {
-      const next = Math.min(maxSheetHeight, Math.max(minSheetHeight, sheetDragStart.current - gesture.dy));
-      sheetHeightValue.current = next;
-      sheetHeight.setValue(next);
-    },
-    onPanResponderRelease: (_, gesture) => {
-      const midpoint = (minSheetHeight + maxSheetHeight) / 2;
-      const destination = gesture.vy < -0.35
-        ? maxSheetHeight
-        : gesture.vy > 0.35
-          ? minSheetHeight
-          : sheetHeightValue.current >= midpoint
-            ? maxSheetHeight
-            : minSheetHeight;
-      sheetHeightValue.current = destination;
-      Animated.spring(sheetHeight, {
-        toValue: destination,
-        useNativeDriver: false,
-        damping: 22,
-        stiffness: 220,
-        mass: 0.8,
-      }).start();
-    },
-  })).current;
+  const [organizerContact, setOrganizerContact] = useState<{ name: string; phone?: string }>({ name: 'Tournament organiser' });
 
   const refresh = useCallback(async () => {
     if (!id) return;
@@ -137,8 +95,18 @@ export default function TournamentDetailScreen() {
       listMatches(id),
       listUsers(),
     ]);
+    const cloudTeamIds = teamList.flatMap(team => team.cloudId ? [team.cloudId] : []);
+    const cloudLogos = cloudTeamIds.length ? await teamManagementApi.listTeamLogos(cloudTeamIds) : new Map<string, string | undefined>();
+    const refreshedTeams = teamList.map(team => team.cloudId && cloudLogos.has(team.cloudId)
+      ? { ...team, logoUrl: cloudLogos.get(team.cloudId) }
+      : team);
     setTournament(t);
-    setTeams(teamList);
+    setTeams(refreshedTeams);
+    if (t?.cloudId) {
+      setOrganizerContact(await tournamentManagementApi.getOrganizerContact(t.cloudId));
+    } else {
+      setOrganizerContact({ name: 'Tournament organiser', phone: t?.organizerPhone });
+    }
     setMatches(matchList);
     if (t?.cloudId && t.organizerProfileId === auth.session?.user.id) {
       await fixturesApi.advanceTournamentIfReady(t.cloudId);
@@ -172,44 +140,53 @@ export default function TournamentDetailScreen() {
 
   return (
     <Screen padded={false}>
-      <Stack.Screen options={{ title: tournament.name }} />
+      <Stack.Screen options={{ headerShown: false }} />
+      <AppHeader
+        title={tournament.name}
+        back
+        right={tournament.organizerProfileId === auth.session?.user.id ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Tournament settings" onPress={() => setTab('settings')} style={styles.headerAction}>
+            <MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} />
+          </Pressable>
+        ) : undefined}
+      />
       <ScrollView
-        style={styles.overview}
+        style={styles.pageScroll}
         contentContainerStyle={styles.overviewContent}
         showsVerticalScrollIndicator={false}
-        nestedScrollEnabled
+        stickyHeaderIndices={[1]}
       >
-        {(tournament.bannerUrl || tournament.bannerLocalUri) && (
-          <Image
-            source={{ uri: tournament.bannerUrl ?? tournament.bannerLocalUri }}
-            style={styles.banner}
-          />
-        )}
+        <View style={styles.overview}>
         <View style={styles.header}>
-        <View style={styles.titleRow}>
-          {(tournament.logoUrl || tournament.logoLocalUri) && (
-            <Image
-              source={{ uri: tournament.logoUrl ?? tournament.logoLocalUri }}
-              style={styles.logo}
-            />
-          )}
-          <View style={{ flex: 1 }}>
-            <Text variant="overline" tone="muted">{FORMAT_LABEL[tournament.format]}</Text>
-            <Text variant="h1">{tournament.name}</Text>
-          </View>
+        <View style={styles.hero}>
+          {(tournament.bannerUrl || tournament.bannerLocalUri)
+            ? <Image source={{ uri: tournament.bannerUrl ?? tournament.bannerLocalUri }} style={styles.heroImage} />
+            : <View style={styles.heroFallback}><View style={styles.pitchStripeOne} /><View style={styles.pitchStripeTwo} /><View style={styles.pitchSeam}>{Array.from({ length: 8 }, (_, index) => <View key={index} style={styles.pitchStitch} />)}</View></View>}
+          <View style={[styles.statusPill, tournament.status === 'COMPLETED' && styles.statusPillComplete]}><Text variant="overline" tone={tournament.status === 'ACTIVE' ? 'accent' : 'muted'}>● {tournament.status}</Text></View>
+          <View style={styles.heroCopy}><Text variant="overline" style={{ color: colors.gold }}>{FORMAT_LABEL[tournament.format]}</Text><Text variant="h2">{tournament.name}</Text></View>
         </View>
-        <Text variant="caption" tone="dim" style={{ marginTop: spacing.xs }}>
-          {new Date(tournament.startDate).toLocaleString()} · {teams.length}/{tournament.plannedTeamCount} planned teams
-        </Text>
-        <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
-          Organised by creator · {tournament.playersPerTeam} players per team
-          {tournament.organizerPhone ? ` · ${tournament.organizerPhone}` : ''}
-        </Text>
+        <View style={styles.quickActions}>
+          <Pressable style={styles.quickAction} onPress={() => setShowShareBanner(true)}><MaterialCommunityIcons name="share-variant-outline" size={18} color={colors.textMuted} /><Text variant="caption">SHARE</Text></Pressable>
+          {tournament.organizerProfileId === auth.session?.user.id ? <Pressable style={styles.quickAction} onPress={() => setTab('settings')}><MaterialCommunityIcons name="pencil-outline" size={18} color={colors.textMuted} /><Text variant="caption">EDIT</Text></Pressable> : <Pressable style={styles.quickAction} onPress={() => router.push({ pathname: '/wricket/tournament/[id]/moments', params: { id: tournament.id } })}><MaterialCommunityIcons name="image-multiple-outline" size={18} color={colors.gold} /><Text variant="caption">MOMENTS</Text></Pressable>}
+          {tournament.organizerProfileId === auth.session?.user.id ? <Pressable style={styles.quickAction} onPress={() => setShowAddTeam(true)}><MaterialCommunityIcons name="account-plus-outline" size={18} color={colors.accent} /><Text variant="caption" tone="accent">ADD TEAM</Text></Pressable> : null}
+        </View>
+        <Card style={styles.infoCard}>
+          <InfoRow icon="calendar-outline" text={formatTournamentDate(tournament.startDate)} />
+          <InfoRow icon="account-group-outline" text={`${teams.length} teams · ${tournament.playersPerTeam} players per team`} />
+          <InfoRow
+            icon="account-outline"
+            text={organizerContact.name}
+            detail={organizerContact.phone}
+            actions={organizerContact.phone ? [
+              { label: 'CALL', onPress: () => void openOrganizerLink(`tel:${organizerContact.phone}`, 'calling') },
+              { label: 'WHATSAPP', onPress: () => void openOrganizerLink(`https://wa.me/${organizerContact.phone!.replace(/\D/g, '')}`, 'WhatsApp') },
+            ] : undefined}
+            last={!tournament.location}
+          />
+          {tournament.location ? <InfoRow icon="map-marker-outline" text={tournament.location} last /> : null}
+        </Card>
         {tournament.location && (
           <>
-            <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
-              {tournament.location}
-            </Text>
             {tournament.latitude != null && tournament.longitude != null && (
               <Pressable
                 style={styles.mapPreview}
@@ -236,11 +213,15 @@ export default function TournamentDetailScreen() {
             )}
           </>
         )}
-        <MatchMoments
-          cloudTournamentId={tournament.cloudId}
-          profileId={auth.session?.user.id}
-          canModerate={tournament.organizerProfileId === auth.session?.user.id}
-        />
+        {tournament.cloudId && (
+          <View style={styles.momentsPreview}>
+            <View style={styles.momentsPreviewTop}>
+              <View style={styles.momentsIcon}><MaterialCommunityIcons name="image-multiple-outline" size={20} color={colors.accent} /></View>
+              <View style={{ flex: 1 }}><Text variant="bodyStrong">Match Moments</Text><Text variant="caption" tone="muted">Photos and conversations from this tournament</Text></View>
+              <Pressable onPress={() => router.push({ pathname: '/wricket/tournament/[id]/moments', params: { id: tournament.id } })}><Text variant="caption" tone="accent">VIEW ALL ›</Text></Pressable>
+            </View>
+          </View>
+        )}
         {tournament.description && (
           <Text variant="body" tone="muted" style={{ marginTop: spacing.md }}>
             {tournament.description}
@@ -260,18 +241,18 @@ export default function TournamentDetailScreen() {
           {teams.length} teams · {matches.length} matches
         </Text>
         </View>
-      </ScrollView>
-
-      <Animated.View style={[styles.tabWorkspace, { height: sheetHeight }]}>
-        <View style={styles.sheetHandleArea} {...sheetPanResponder.panHandlers}>
-          <View style={styles.sheetHandle} />
-          <Text variant="caption" tone="dim">Drag for tournament panels</Text>
         </View>
+
         <View style={styles.tabBarShell}>
+          <View pointerEvents="none" style={styles.stickyGapCover} />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.tabBar}
+            scrollEventThrottle={16}
+            onScroll={({ nativeEvent }) => setTabsAtEnd(
+              nativeEvent.contentOffset.x + nativeEvent.layoutMeasurement.width >= nativeEvent.contentSize.width - 8,
+            )}
           >
             <TabBtn label="Fixtures" active={tab === 'fixtures'} onPress={() => setTab('fixtures')} />
             <TabBtn label="Table" active={tab === 'table'} onPress={() => setTab('table')} />
@@ -281,6 +262,7 @@ export default function TournamentDetailScreen() {
               <TabBtn label="Settings" active={tab === 'settings'} onPress={() => setTab('settings')} />
             )}
           </ScrollView>
+          {!tabsAtEnd ? <View pointerEvents="none" style={styles.tabFadeEdge}><MaterialCommunityIcons name="chevron-right" size={22} color={colors.accent} /></View> : null}
         </View>
 
         <View style={styles.tabContent}>
@@ -300,26 +282,21 @@ export default function TournamentDetailScreen() {
           {tab === 'teams' && (
             <TeamsView
               teams={teams}
+              standings={points}
+              generatedSetup={generatedSetup}
               plannedTeamCount={tournament.plannedTeamCount}
               canManage={tournament.organizerProfileId === auth.session?.user.id}
-              viewerId={auth.session?.user.id}
               onAdd={() => setShowAddTeam(true)}
-              onChanged={refresh}
             />
           )}
           {tab === 'stats' && (
-            <ScrollView
-              style={styles.statsPanel}
-              contentContainerStyle={styles.statsPanelContent}
-              showsVerticalScrollIndicator
-              nestedScrollEnabled
-            >
+            <View style={styles.statsPanelContent}>
               <TournamentStatsView stats={stats} />
               <TournamentMvpLeaderboard
                 tournamentId={tournament.id}
                 cloudTournamentId={tournament.cloudId}
               />
-            </ScrollView>
+            </View>
           )}
           {tab === 'settings' && (
             <TournamentSettingsView
@@ -330,7 +307,7 @@ export default function TournamentDetailScreen() {
             />
           )}
         </View>
-      </Animated.View>
+      </ScrollView>
 
       <AddTeamModal
         visible={showAddTeam}
@@ -342,6 +319,13 @@ export default function TournamentDetailScreen() {
           refresh();
         }}
       />
+      <TournamentShareBanner
+        tournament={tournament}
+        teamCount={teams.length}
+        matchCount={matches.length}
+        visible={showShareBanner}
+        onClose={() => setShowShareBanner(false)}
+      />
     </Screen>
   );
 }
@@ -352,6 +336,26 @@ function TabBtn({ label, active, onPress }: { label: string; active: boolean; on
       <Text variant="bodyStrong" tone={active ? 'default' : 'muted'}>{label}</Text>
     </Pressable>
   );
+}
+
+function InfoRow({ icon, text, detail, action, actions, last }: {
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  text: string;
+  detail?: string;
+  action?: { label: string; onPress: () => void };
+  actions?: { label: string; onPress: () => void }[];
+  last?: boolean;
+}) {
+  return <View style={[styles.infoRow, last && styles.infoRowLast]}>
+    <MaterialCommunityIcons name={icon} size={19} color={colors.textMuted} />
+    <View style={{ flex: 1 }}><Text variant="body">{text}</Text>{detail ? <Text variant="caption" tone="muted">{detail}</Text> : null}</View>
+    {(actions ?? (action ? [action] : [])).map(item => <Pressable key={item.label} onPress={item.onPress} style={styles.infoAction}><Text variant="caption" tone="accent">{item.label}</Text></Pressable>)}
+  </View>;
+}
+
+async function openOrganizerLink(url: string, channel: string): Promise<void> {
+  try { await Linking.openURL(url); }
+  catch { Alert.alert(`Could not open ${channel}`, 'This action is unavailable on your device.'); }
 }
 
 function FixturesView({
@@ -374,6 +378,7 @@ function FixturesView({
   const teamMap = new Map(teams.map(t => [t.id, t]));
   const cloudTeamMap = new Map(teams.filter(t => t.cloudId).map(t => [t.cloudId!, t]));
   const groupMap = new Map(generatedSetup.groups.map(group => [group.id, group.name]));
+  const stageMap = new Map(generatedSetup.stages.map(stage => [stage.id, stage.type]));
   const generatedCanonicalIds = new Set(
     generatedSetup.matches.flatMap(match => match.canonicalMatchId ? [match.canonicalMatchId] : []),
   );
@@ -400,6 +405,7 @@ function FixturesView({
 
   return (
     <FlatList
+      scrollEnabled={false}
       data={sortedMatches}
       keyExtractor={m => m.id}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
@@ -437,12 +443,10 @@ function FixturesView({
                   >
                     <View style={styles.generatedMeta}>
                       <Text variant="caption" tone="dim">
-                        {item.groupId ? `${groupMap.get(item.groupId) ?? 'Group'} · ` : ''}
-                        Round {item.round}{item.leg > 1 ? ` · Leg ${item.leg}` : ''}
+                        {item.groupId ? groupMap.get(item.groupId) ?? 'GROUP' : stageMap.get(item.stageId) ?? 'TOURNAMENT'} · {fixtureRoundLabel(item.round, stageMap.get(item.stageId))}
+                        {item.leg > 1 ? ` · LEG ${item.leg}` : ''}
                       </Text>
-                      <Text variant="caption" tone={item.status === 'LIVE' ? 'accent' : 'muted'}>
-                        {item.status}
-                      </Text>
+                      {item.status === 'COMPLETED' || item.status === 'WALKOVER' ? <Text variant="caption" tone="muted">Final score</Text> : null}
                     </View>
                     <View style={styles.generatedTeams}>
                       <Text variant="bodyStrong" style={styles.generatedTeamName}>
@@ -460,9 +464,14 @@ function FixturesView({
                       </Text>
                     )}
                     {item.status === 'LIVE' && item.liveScore && (
-                      <Text variant="h3" style={{ marginTop: spacing.sm }}>
-                        {item.liveScore.runs}/{item.liveScore.wickets} ({Math.floor(item.liveScore.legalBalls / 6)}.{item.liveScore.legalBalls % 6})
-                      </Text>
+                      <View style={styles.liveScoreStrip}>
+                        <View style={{ flex: 1 }}>
+                          <Text variant="caption" tone="accent">● LIVE · {(item.liveScore.battingTeamId ? cloudTeamMap.get(item.liveScore.battingTeamId) : teamA)?.shortName ?? 'BATTING'}</Text>
+                          {item.liveScore.target != null ? <Text variant="caption" tone="muted">Target {item.liveScore.target} · Need {Math.max(0, item.liveScore.target - item.liveScore.runs)}</Text> : null}
+                        </View>
+                        <Text variant="h2" tone="accent">{item.liveScore.runs}/{item.liveScore.wickets}</Text>
+                        <Text variant="caption" tone="muted">{Math.floor(item.liveScore.legalBalls / 6)}.{item.liveScore.legalBalls % 6} OV</Text>
+                      </View>
                     )}
                     {(item.status === 'COMPLETED' || item.status === 'WALKOVER') && (
                       <>
@@ -473,16 +482,13 @@ function FixturesView({
                           ].filter((team): team is { id: string; name: string } => Boolean(team)))}
                         </Text>
                         {item.canonicalMatchId && (
-                          <Button
-                            title="View match insights"
-                            size="sm"
-                            variant="secondary"
-                            style={{ marginTop: spacing.md }}
+                          <Pressable
+                            style={styles.insightsLink}
                             onPress={() => router.push({
                               pathname: '/wricket/match/[id]/live',
                               params: { id: item.canonicalMatchId!, tab: 'insights' },
                             })}
-                          />
+                          ><Text variant="caption" tone="accent">MATCH INSIGHTS ›</Text></Pressable>
                         )}
                       </>
                     )}
@@ -647,6 +653,12 @@ function PointsTableView({
       }))
     : [];
   const bracket = generatedSetup.bracket;
+  const fixtureById = new Map(generatedSetup.matches.map(match => [match.id, match]));
+  const bracketRounds = bracket?.rounds.filter(round => round.name !== '3RD_PLACE' || round.matches.length) ?? [];
+  const finalBracketMatch = bracketRounds[bracketRounds.length - 1]?.matches[0];
+  const finalFixture = finalBracketMatch ? fixtureById.get(finalBracketMatch.id) : undefined;
+  const championId = finalFixture?.result && (finalFixture.result.winnerTeamId ?? finalFixture.result.winner_team_id);
+  const champion = typeof championId === 'string' ? cloudTeamMap.get(championId) : undefined;
   if (rows.length === 0 && groupTables.length === 0 && !bracket) {
     return (
       <Text variant="body" tone="muted" style={{ textAlign: 'center', paddingTop: spacing.xxl }}>
@@ -655,7 +667,7 @@ function PointsTableView({
     );
   }
   return (
-    <ScrollView contentContainerStyle={styles.publicTables}>
+    <View style={styles.publicTables}>
       {groupTables.map(({ group, rows: standings }) => (
         <Card key={group.id}>
           <Text variant="h3">{group.name}</Text>
@@ -687,29 +699,40 @@ function PointsTableView({
         </Card>
       ))}
       {bracket && (
-        <Card>
-          <Text variant="h3">Knockout bracket</Text>
-          {bracket.rounds.filter(round => round.name !== '3RD_PLACE' || round.matches.length).map(round => (
-            <View key={round.id} style={styles.bracketRound}>
-              <Text variant="overline" tone="muted">{knockoutRoundLabel(round.name)}</Text>
-              {round.matches.length ? round.matches.map(match => (
-                <View key={match.id} style={styles.bracketMatch}>
-                  <Text variant="bodyStrong" style={{ flex: 1 }}>
-                    {cloudTeamMap.get(match.teamA)?.shortName ?? 'TBD'}
-                  </Text>
-                  <Text variant="caption" tone="muted">
-                    {match.scoreA ?? '—'} : {match.scoreB ?? '—'}
-                  </Text>
-                  <Text variant="bodyStrong" style={{ flex: 1, textAlign: 'right' }}>
-                    {match.teamB ? cloudTeamMap.get(match.teamB)?.shortName ?? 'TBD' : 'BYE'}
-                  </Text>
-                </View>
-              )) : (
+        <View>
+          <Text variant="overline" tone="dim" style={{ marginBottom: spacing.sm }}>KNOCKOUT BRACKET</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bracketRail}>
+          {bracketRounds.map((round, roundIndex, rounds) => {
+            const isFinal = roundIndex === rounds.length - 1 || round.name === 'FINAL';
+            return <React.Fragment key={round.id}><View style={styles.bracketColumn}>
+              <Text variant="overline" tone="muted" style={isFinal ? { color: colors.gold } : undefined}>{knockoutRoundLabel(round.name)}</Text>
+              <View style={styles.bracketMatches}>
+              {round.matches.length ? round.matches.map(match => {
+                const fixture = fixtureById.get(match.id);
+                const teamA = cloudTeamMap.get(match.teamA);
+                const teamB = match.teamB ? cloudTeamMap.get(match.teamB) : undefined;
+                const teamAStats = fixture?.teamInningsStats?.[match.teamA];
+                const teamBStats = match.teamB ? fixture?.teamInningsStats?.[match.teamB] : undefined;
+                const winnerId = fixture?.result && (fixture.result.winnerTeamId ?? fixture.result.winner_team_id);
+                const resultText = fixture?.result ? formatFixtureResult(fixture.result, [
+                  teamA && { id: match.teamA, name: teamA.name },
+                  teamB && match.teamB && { id: match.teamB, name: teamB.name },
+                ].filter((team): team is { id: string; name: string } => Boolean(team))) : undefined;
+                return <View key={match.id} style={[styles.bracketMatch, isFinal && styles.bracketFinal]}>
+                  <BracketScoreRow team={teamA?.shortName ?? 'TBD'} stat={teamAStats} fallback={fixture?.scoreA ?? match.scoreA} winner={winnerId === match.teamA} />
+                  <View style={styles.bracketTeamDivider} />
+                  <BracketScoreRow team={match.teamB ? teamB?.shortName ?? 'TBD' : 'BYE'} stat={teamBStats} fallback={fixture?.scoreB ?? match.scoreB} winner={Boolean(match.teamB && winnerId === match.teamB)} />
+                  {resultText ? <Text variant="caption" tone="muted" style={styles.bracketResult}>{resultText}</Text> : null}
+                </View>;
+              }) : (
                 <Text variant="caption" tone="dim">Awaiting qualifiers</Text>
               )}
-            </View>
-          ))}
-        </Card>
+              </View>
+            </View>{!isFinal ? <View style={styles.bracketConnector}><View style={styles.bracketConnectorFork} /><View style={styles.bracketConnectorLine} /></View> : null}</React.Fragment>
+          })}
+          {champion ? <View style={styles.championColumn}><MaterialCommunityIcons name="trophy" size={30} color={colors.gold} /><Text variant="h3" style={{ color: colors.gold }}>{champion.shortName}</Text><Text variant="overline" style={{ color: colors.gold }}>CHAMPION</Text></View> : null}
+          </ScrollView>
+        </View>
       )}
       {groupTables.length === 0 && rows.length > 0 && (
         <Card>
@@ -723,12 +746,32 @@ function PointsTableView({
           ))}
         </Card>
       )}
-    </ScrollView>
+    </View>
   );
 }
 
 function knockoutRoundLabel(name: string): string {
   return ({ QF: 'Quarter-finals', SF: 'Semi-finals', F: 'Final', '3RD_PLACE': 'Third place' } as Record<string, string>)[name] ?? name;
+}
+
+function fixtureRoundLabel(round: number, stageType?: string): string {
+  if (stageType === 'KNOCKOUT') return round === 1 ? 'SF' : round === 2 ? 'FINAL' : `R${round}`;
+  return `R${round}`;
+}
+
+function BracketScoreRow({ team, stat, fallback, winner }: {
+  team: string;
+  stat?: { runs: number; wickets: number; legalBalls: number };
+  fallback?: number;
+  winner: boolean;
+}) {
+  return <View style={styles.bracketScoreRow}>
+    <Text variant="bodyStrong" tone={winner ? 'accent' : 'default'}>{team}</Text>
+    <View style={{ alignItems: 'flex-end' }}>
+      <Text variant="bodyStrong" tone={winner ? 'accent' : 'default'}>{stat ? `${stat.runs}/${stat.wickets}` : fallback ?? '—'}</Text>
+      {stat ? <Text variant="caption" tone="dim">{Math.floor(stat.legalBalls / 6)}.{stat.legalBalls % 6} OV</Text> : null}
+    </View>
+  </View>;
 }
 
 function groupNetRunRate(teamId: string, matches: GeneratedFixtureSetup['matches']): string {
@@ -765,6 +808,55 @@ function TournamentSettingsView({
   onChanged: () => Promise<void>;
 }) {
   const router = useRouter();
+  const auth = useAuth();
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState<'logo' | 'banner'>();
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [detailPicker, setDetailPicker] = useState<'date' | 'time'>();
+  const [details, setDetails] = useState({
+    name: tournament.name, startDate: tournament.startDate, location: tournament.location ?? '',
+    teams: String(tournament.plannedTeamCount), players: String(tournament.playersPerTeam),
+    phone: tournament.organizerPhone ?? '', description: tournament.description ?? '',
+    social: tournament.socialMediaUrl ?? '', rewards: tournament.rewards ?? '',
+  });
+  const confirmationMatches = deleteConfirmation.trim() === tournament.name.trim();
+
+  const deleteTournament = async () => {
+    if (!auth.session || tournament.organizerProfileId !== auth.session.user.id) {
+      Alert.alert('Owner access required', 'Only the tournament owner can delete this tournament.');
+      return;
+    }
+    setDeleting(true);
+    try {
+      await tournamentManagementApi.deleteOwnedTournament({
+        localTournamentId: tournament.id,
+        cloudTournamentId: tournament.cloudId,
+        ownerId: auth.session.user.id,
+      });
+      router.replace('/wricket');
+    } catch (cause) {
+      Alert.alert(
+        'Could not delete tournament',
+        cause instanceof Error ? cause.message : 'No data was removed locally. Please try again.',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDeleteTournament = () => {
+    if (!confirmationMatches || deleting) return;
+    Alert.alert(
+      `Delete ${tournament.name}?`,
+      'This permanently deletes the tournament and all of its teams, fixtures, matches, live scores, ball-by-ball events, moments, standings and assignments.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete permanently', style: 'destructive', onPress: () => void deleteTournament() },
+      ],
+    );
+  };
   const resetFixtures = () => {
     if (!tournament.cloudId) return;
     Alert.alert('Reset fixtures?', 'This deletes every generated fixture and cannot be undone.', [
@@ -776,9 +868,95 @@ function TournamentSettingsView({
       },
     ]);
   };
+
+  const chooseTournamentMedia = async (kind: 'logo' | 'banner') => {
+    if (!auth.session || !tournament.cloudId || tournament.organizerProfileId !== auth.session.user.id) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return Alert.alert('Photo permission needed', `Allow photo access to choose a tournament ${kind}.`);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: kind === 'logo' ? [1, 1] : [16, 7],
+      quality: 0.84,
+    });
+    if (result.canceled) return;
+    setUploadingMedia(kind);
+    try {
+      await tournamentManagementApi.updateMedia({
+        cloudTournamentId: tournament.cloudId,
+        localTournamentId: tournament.id,
+        ownerId: auth.session.user.id,
+        localUri: result.assets[0].uri,
+        kind,
+      });
+      await onChanged();
+    } catch (cause) {
+      Alert.alert('Could not update tournament media', cause instanceof Error ? cause.message : 'Please try again.');
+    } finally {
+      setUploadingMedia(undefined);
+    }
+  };
+
+  const saveDetails = async () => {
+    if (!tournament.cloudId) return;
+    const teamsCount = Number(details.teams); const playersCount = Number(details.players);
+    if (details.name.trim().length < 2) return Alert.alert('Name required', 'Enter a tournament name.');
+    if (!Number.isInteger(teamsCount) || teamsCount < teams.length || teamsCount > 64) return Alert.alert('Invalid team count', `Choose ${teams.length} to 64 teams.`);
+    if (!Number.isInteger(playersCount) || playersCount < 2 || playersCount > 25) return Alert.alert('Invalid squad size', 'Choose 2 to 25 players.');
+    setSavingDetails(true);
+    try {
+      await tournamentManagementApi.updateDetails({ cloudTournamentId: tournament.cloudId, localTournamentId: tournament.id,
+        name: details.name, startDate: details.startDate, location: details.location || undefined,
+        plannedTeamCount: teamsCount, playersPerTeam: playersCount, organizerPhone: details.phone || undefined,
+        description: details.description || undefined, socialMediaUrl: details.social || undefined, rewards: details.rewards || undefined });
+      await onChanged(); setEditingDetails(false);
+    } catch (cause) { Alert.alert('Could not update tournament', cause instanceof Error ? cause.message : 'Please try again.'); }
+    finally { setSavingDetails(false); }
+  };
+
+  const changeDetailDate = (event: DateTimePickerEvent, value?: Date) => {
+    const mode = detailPicker; setDetailPicker(undefined);
+    if (event.type === 'dismissed' || !value || !mode) return;
+    const next = new Date(details.startDate);
+    if (mode === 'date') next.setFullYear(value.getFullYear(), value.getMonth(), value.getDate());
+    else next.setHours(value.getHours(), value.getMinutes(), 0, 0);
+    setDetails(current => ({ ...current, startDate: next.getTime() }));
+  };
   return (
-    <ScrollView contentContainerStyle={{ gap: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.xxxl }}>
+    <View style={{ gap: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.xxxl }}>
       <Text variant="h2">Tournament settings</Text>
+      <Card>
+        <View style={styles.settingsTitleRow}><View style={{ flex: 1 }}><Text variant="h3">Tournament details</Text><Text variant="caption" tone="muted">Schedule, venue, capacity, contact and rewards.</Text></View><Button title={editingDetails ? 'CANCEL' : 'EDIT'} size="sm" variant="secondary" onPress={() => setEditingDetails(value => !value)} /></View>
+        {editingDetails ? <View style={styles.detailsForm}>
+          <SettingsInput label="NAME" value={details.name} onChangeText={name => setDetails(value => ({ ...value, name }))} />
+          <View style={styles.brandingRow}><Button title={new Date(details.startDate).toLocaleDateString()} variant="secondary" onPress={() => setDetailPicker('date')} style={{ flex: 1 }} /><Button title={new Date(details.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} variant="secondary" onPress={() => setDetailPicker('time')} style={{ flex: 1 }} /></View>
+          {detailPicker ? <DateTimePicker value={new Date(details.startDate)} mode={detailPicker} onChange={changeDetailDate} /> : null}
+          <SettingsInput label="LOCATION" value={details.location} onChangeText={location => setDetails(value => ({ ...value, location }))} />
+          <View style={styles.brandingRow}><SettingsInput label="NUMBER OF TEAMS" value={details.teams} keyboardType="number-pad" onChangeText={teamsValue => setDetails(value => ({ ...value, teams: teamsValue }))} containerStyle={{ flex: 1 }} /><SettingsInput label="PLAYERS PER TEAM" value={details.players} keyboardType="number-pad" onChangeText={players => setDetails(value => ({ ...value, players }))} containerStyle={{ flex: 1 }} /></View>
+          <SettingsInput label="ORGANISER PHONE" value={details.phone} keyboardType="phone-pad" onChangeText={phone => setDetails(value => ({ ...value, phone }))} />
+          <SettingsInput label="DESCRIPTION" value={details.description} multiline onChangeText={description => setDetails(value => ({ ...value, description }))} />
+          <SettingsInput label="SOCIAL LINK" value={details.social} autoCapitalize="none" onChangeText={social => setDetails(value => ({ ...value, social }))} />
+          <SettingsInput label="REWARDS / PRIZES" value={details.rewards} multiline onChangeText={rewards => setDetails(value => ({ ...value, rewards }))} />
+          <Button title="Save tournament details" loading={savingDetails} onPress={() => void saveDetails()} fullWidth />
+        </View> : null}
+      </Card>
+      {tournament.cloudId ? <ScorerSettingsCard tournamentId={tournament.cloudId} /> : (
+        <Card><Text variant="h3">Manage scorers</Text><Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>Sync this tournament to the cloud before assigning scorers.</Text></Card>
+      )}
+      <Card>
+        <Text variant="h3">Tournament branding</Text>
+        <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>Update the logo used in lists and the banner shown on the tournament page.</Text>
+        <View style={styles.brandingRow}>
+          <Pressable disabled={!tournament.cloudId || Boolean(uploadingMedia)} onPress={() => void chooseTournamentMedia('logo')} style={styles.brandingItem}>
+            <View style={styles.brandingLogo}>{tournament.logoUrl ? <Image source={{ uri: tournament.logoUrl }} style={styles.brandingImage} /> : <MaterialCommunityIcons name="image-plus" size={26} color={colors.accent} />}</View>
+            <Text variant="caption">{uploadingMedia === 'logo' ? 'UPLOADING…' : 'CHANGE LOGO'}</Text>
+          </Pressable>
+          <Pressable disabled={!tournament.cloudId || Boolean(uploadingMedia)} onPress={() => void chooseTournamentMedia('banner')} style={[styles.brandingItem, { flex: 2 }]}>
+            <View style={styles.brandingBanner}>{tournament.bannerUrl ? <Image source={{ uri: tournament.bannerUrl }} style={styles.brandingImage} /> : <MaterialCommunityIcons name="image-plus" size={26} color={colors.accent} />}</View>
+            <Text variant="caption">{uploadingMedia === 'banner' ? 'UPLOADING…' : 'CHANGE BANNER'}</Text>
+          </Pressable>
+        </View>
+      </Card>
       <Card>
         <Text variant="h3">Matches and fixtures</Text>
         <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
@@ -808,8 +986,180 @@ function TournamentSettingsView({
           )}
         </View>
       </Card>
-    </ScrollView>
+      <Card style={styles.dangerZone}>
+        <View style={styles.dangerHeading}>
+          <MaterialCommunityIcons name="alert-octagon-outline" size={22} color={colors.danger} />
+          <View style={{ flex: 1 }}>
+            <Text variant="h3" tone="danger">Danger zone</Text>
+            <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
+              Permanently delete this tournament and every related team, fixture, match, live score, ball event, moment and assignment.
+            </Text>
+          </View>
+        </View>
+        <Text variant="caption" tone="muted" style={{ marginTop: spacing.lg, marginBottom: spacing.sm }}>
+          Type {tournament.name} to confirm
+        </Text>
+        <TextInput
+          value={deleteConfirmation}
+          onChangeText={setDeleteConfirmation}
+          placeholder={tournament.name}
+          placeholderTextColor={colors.textDim}
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!deleting}
+          style={styles.deleteConfirmationInput}
+        />
+        <Button
+          title="Delete tournament permanently"
+          variant="danger"
+          loading={deleting}
+          disabled={!confirmationMatches}
+          onPress={confirmDeleteTournament}
+          fullWidth
+          style={{ marginTop: spacing.md }}
+        />
+      </Card>
+    </View>
   );
+}
+
+function SettingsInput({ label, containerStyle, ...props }: React.ComponentProps<typeof TextInput> & { label: string; containerStyle?: object }) {
+  return <View style={containerStyle}><Text variant="caption" tone="muted" style={{ marginBottom: spacing.xs }}>{label}</Text><TextInput {...props} placeholderTextColor={colors.textDim} style={[styles.scorerSearch, props.multiline && { minHeight: 90, textAlignVertical: 'top' }]} /></View>;
+}
+
+function ScorerSettingsCard({ tournamentId }: { tournamentId: string }) {
+  const [assigned, setAssigned] = useState<TournamentScorer[]>([]);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<ScorerSearchResult[]>([]);
+  const [busyAccountId, setBusyAccountId] = useState<string>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+
+  const loadAssigned = useCallback(async () => {
+    try {
+      setAssigned(await scorerManagementApi.list(tournamentId));
+      setError(undefined);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load tournament scorers');
+    } finally {
+      setLoading(false);
+    }
+  }, [tournamentId]);
+
+  useEffect(() => { void loadAssigned(); }, [loadAssigned]);
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (query.trim().length < 2) {
+        setResults([]);
+        return;
+      }
+      scorerManagementApi.search(tournamentId, query)
+        .then(items => { if (!cancelled) setResults(items); })
+        .catch(cause => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Scorer search failed'); });
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [query, tournamentId]);
+
+  const assign = async (scorer: ScorerSearchResult) => {
+    setBusyAccountId(scorer.accountId);
+    try {
+      await scorerManagementApi.assign(tournamentId, scorer.accountId);
+      await loadAssigned();
+      setResults(current => current.map(item => item.accountId === scorer.accountId ? { ...item, isAssigned: true } : item));
+    } catch (cause) {
+      Alert.alert('Could not assign scorer', cause instanceof Error ? cause.message : 'Please try again.');
+    } finally { setBusyAccountId(undefined); }
+  };
+
+  const confirmRemove = (scorer: TournamentScorer) => {
+    Alert.alert('Remove tournament scorer?', `${scorer.displayName} will no longer be able to score this tournament.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive', onPress: () => {
+          setBusyAccountId(scorer.accountId);
+          scorerManagementApi.remove(tournamentId, scorer.scorerId)
+            .then(loadAssigned)
+            .catch(cause => Alert.alert('Could not remove scorer', cause instanceof Error ? cause.message : 'Please try again.'))
+            .finally(() => setBusyAccountId(undefined));
+        },
+      },
+    ]);
+  };
+
+  return <Card>
+    <View style={styles.scorerHeading}>
+      <View style={styles.scorerIcon}><MaterialCommunityIcons name="scoreboard-outline" size={20} color={colors.accent} /></View>
+      <View style={{ flex: 1 }}><Text variant="h3">Manage scorers</Text><Text variant="caption" tone="muted">Search and assign Wricket members who can score matches.</Text></View>
+    </View>
+
+    <TextInput
+      value={query}
+      onChangeText={setQuery}
+      placeholder="Search members by name"
+      placeholderTextColor={colors.textDim}
+      autoCapitalize="words"
+      style={styles.scorerSearch}
+    />
+
+    {query.trim().length >= 2 && results.length === 0 ? <Text variant="caption" tone="dim" style={styles.scorerMessage}>No matching members found.</Text> : null}
+    {results.map(item => <ScorerRow
+      key={item.accountId}
+      name={item.displayName}
+      avatarUrl={item.avatarUrl}
+      detail={item.availabilityStatus === 'UNAVAILABLE' ? 'Unavailable' : item.isAssigned ? 'Already assigned' : 'Available'}
+      actionLabel={item.isAssigned ? undefined : 'ASSIGN'}
+      disabled={item.availabilityStatus === 'UNAVAILABLE' || busyAccountId === item.accountId}
+      onAction={() => void assign(item)}
+    />)}
+
+    <View style={styles.scorerDivider} />
+    <Text variant="overline" tone="dim">ASSIGNED · {assigned.length}</Text>
+    {loading ? <Text variant="caption" tone="muted" style={styles.scorerMessage}>Loading scorers…</Text> : assigned.length === 0 ? <Text variant="caption" tone="muted" style={styles.scorerMessage}>No dedicated scorer assigned. The owner can still score.</Text> : null}
+    {assigned.map(item => <ScorerRow
+      key={item.assignmentId}
+      name={item.displayName}
+      avatarUrl={item.avatarUrl}
+      detail="Tournament scorer"
+      actionLabel="REMOVE"
+      disabled={busyAccountId === item.accountId}
+      onAction={() => confirmRemove(item)}
+    />)}
+    {error ? <Pressable onPress={() => void loadAssigned()}><Text variant="caption" tone="danger" style={styles.scorerMessage}>{error} · Tap to retry</Text></Pressable> : null}
+  </Card>;
+}
+
+function ScorerRow({ name, avatarUrl, detail, actionLabel, disabled, onAction }: {
+  name: string;
+  avatarUrl?: string;
+  detail: string;
+  actionLabel?: string;
+  disabled?: boolean;
+  onAction: () => void;
+}) {
+  return <View style={styles.scorerRow}>
+    {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.scorerAvatar} /> : <View style={styles.scorerAvatarFallback}><Text variant="bodyStrong" tone="accent">{name.slice(0, 1).toUpperCase()}</Text></View>}
+    <View style={{ flex: 1 }}><Text variant="bodyStrong">{name}</Text><Text variant="caption" tone="muted">{detail}</Text></View>
+    {actionLabel ? <Pressable disabled={disabled} onPress={onAction} style={[styles.scorerAction, disabled && styles.scorerActionDisabled]}><Text variant="overline" tone={actionLabel === 'REMOVE' ? 'danger' : 'accent'}>{actionLabel}</Text></Pressable> : null}
+  </View>;
+}
+
+function formatTournamentDate(value: number): string {
+  const date = new Date(value);
+  const month = date.toLocaleString('en', { month: 'short' });
+  const time = date.toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return `${ordinalDay(date.getDate())} ${month}, ${date.getFullYear()} · ${time}`;
+}
+
+function ordinalDay(day: number): string {
+  const lastTwoDigits = day % 100;
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 13) return `${day}th`;
+  switch (day % 10) {
+    case 1: return `${day}st`;
+    case 2: return `${day}nd`;
+    case 3: return `${day}rd`;
+    default: return `${day}th`;
+  }
 }
 
 function matchSectionRank(match: Match): number {
@@ -864,52 +1214,28 @@ function formatFixtureResult(
 
 function TeamsView({
   teams,
+  standings,
+  generatedSetup,
   plannedTeamCount,
   canManage,
-  viewerId,
   onAdd,
-  onChanged,
 }: {
   teams: Team[];
+  standings: PointsRow[];
+  generatedSetup: GeneratedFixtureSetup;
   plannedTeamCount: number;
   canManage: boolean;
-  viewerId?: string;
   onAdd: () => void;
-  onChanged: () => void;
 }) {
   const router = useRouter();
-  const [rosters, setRosters] = useState<Record<string, TeamRosterMember[]>>({});
+  const bracketRounds = generatedSetup.bracket?.rounds ?? [];
+  const finalBracketMatch = bracketRounds[bracketRounds.length - 1]?.matches[0];
+  const finalFixture = finalBracketMatch ? generatedSetup.matches.find(match => match.id === finalBracketMatch.id) : undefined;
+  const championId = finalFixture?.result && (finalFixture.result.winnerTeamId ?? finalFixture.result.winner_team_id);
+  const runnerUpId = finalBracketMatch && championId
+    ? (championId === finalBracketMatch.teamA ? finalBracketMatch.teamB : finalBracketMatch.teamA)
+    : undefined;
 
-  useEffect(() => {
-    let active = true;
-    const cloudTeams = teams.filter(team => team.cloudId);
-    if (!cloudTeams.length) {
-      setRosters({});
-      return () => { active = false; };
-    }
-    void Promise.all(cloudTeams.map(async team => [
-      team.cloudId!,
-      await teamManagementApi.listRoster(team.cloudId!),
-    ] as const)).then(entries => {
-      if (active) setRosters(Object.fromEntries(entries));
-    }).catch(() => {
-      if (active) setRosters({});
-    });
-    return () => { active = false; };
-  }, [teams]);
-
-  const removeTeam = (team: Team) => {
-    Alert.alert('Delete team?', `${team.name} will be removed from this tournament.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteOnlineTeam(team).then(onChanged).catch(cause => {
-          Alert.alert('Could not delete team', cause instanceof Error ? cause.message : 'Please try again.');
-        }),
-      },
-    ]);
-  };
   return (
     <View style={{ flex: 1, paddingTop: spacing.md }}>
       {canManage && teams.length < plannedTeamCount && (
@@ -924,60 +1250,28 @@ function TeamsView({
         </Text>
       ) : (
         <FlatList
+          scrollEnabled={false}
           data={teams}
           keyExtractor={t => t.id}
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
           contentContainerStyle={{ paddingBottom: spacing.xxxl }}
           renderItem={({ item }) => {
-            const roster = item.cloudId ? rosters[item.cloudId] ?? [] : [];
-            const captain = roster.find(member => member.role === 'CAPTAIN');
-            const players = roster.filter(member => member.role === 'PLAYER');
-            const visiblePlayers = players.slice(0, 3);
-            const canManageRoster = canManage || captain?.accountId === viewerId;
+            const localRecord = standings.find(row => row.teamId === item.id || row.teamId === item.cloudId);
+            const cloudRecord = item.cloudId ? fixtureWinLoss(item.cloudId, generatedSetup.matches) : undefined;
+            const record = cloudRecord?.played ? cloudRecord : localRecord;
+            const special = item.cloudId === championId ? 'CHAMPION' : item.cloudId === runnerUpId ? 'RUNNER-UP' : undefined;
             return (
             <Card onPress={() => item.cloudId && router.push({
               pathname: '/wricket/team/[id]',
               params: { id: item.cloudId },
             })}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                <View style={[styles.teamSwatch, { backgroundColor: item.colorHex }]}>
-                  <Text variant="bodyStrong" style={{ color: palette.black }}>{item.shortName}</Text>
-                </View>
+                <View style={[styles.teamListSwatch, { backgroundColor: item.colorHex }]}>{item.logoUrl ? <Image source={{ uri: item.logoUrl }} style={styles.teamLogo} /> : <Text variant="bodyStrong" style={{ color: palette.black }}>{item.shortName}</Text>}</View>
                 <View style={{ flex: 1 }}>
-                  <Text variant="bodyStrong">{item.name}</Text>
-                  <Text variant="caption" tone="dim">
-                    {item.syncStatus === 'SYNCED' ? 'Cloud synced' :
-                      item.syncStatus === 'FAILED' ? 'Sync failed' : 'Waiting to sync'}
-                  </Text>
-                  <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
-                    {captain ? `Captain: ${captain.name}` : 'Captain not assigned'}
-                  </Text>
-                  <Text variant="caption" tone="muted">
-                    {players.length ? `${players.length} player${players.length === 1 ? '' : 's'}` : 'No players added'}
-                  </Text>
-                  <Text variant="caption" style={{ color: canManageRoster ? colors.accent : colors.textDim }}>
-                    {canManageRoster ? 'Manage team roster' : 'View roster'}
-                  </Text>
-                  {visiblePlayers.map(player => (
-                    <Pressable
-                      key={player.playerId}
-                      onPress={() => router.push({
-                        pathname: '/wricket/player/[id]',
-                        params: { id: player.playerId },
-                      })}
-                    >
-                      <Text variant="caption" style={{ color: colors.accent }}>{player.name}</Text>
-                    </Pressable>
-                  ))}
-                  {players.length > visiblePlayers.length && (
-                    <Text variant="caption" tone="dim">+{players.length - visiblePlayers.length} more</Text>
-                  )}
+                  <Text variant="h3">{item.name}</Text>
+                  <View style={styles.teamRecordRow}>{special ? <Text variant="caption" style={{ color: colors.gold }}>{special}</Text> : null}<Text variant="caption" tone={record?.won ? 'accent' : 'muted'}>{record ? `${record.won}W – ${record.lost}L` : '0W – 0L'}</Text></View>
                 </View>
-                {canManage && (
-                  <Pressable hitSlop={8} onPress={() => removeTeam(item)}>
-                    <MaterialCommunityIcons name="delete-outline" size={22} color={colors.danger} />
-                  </Pressable>
-                )}
+                <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textDim} />
               </View>
             </Card>
             );
@@ -986,6 +1280,19 @@ function TeamsView({
       )}
     </View>
   );
+}
+
+function fixtureWinLoss(teamId: string, matches: GeneratedFixtureSetup['matches']): { played: number; won: number; lost: number } {
+  return matches.reduce((record, match) => {
+    if ((match.status !== 'COMPLETED' && match.status !== 'WALKOVER') || (match.teamA !== teamId && match.teamB !== teamId)) {
+      return record;
+    }
+    const winnerId = match.result && (match.result.winnerTeamId ?? match.result.winner_team_id);
+    if (typeof winnerId !== 'string') return { ...record, played: record.played + 1 };
+    return winnerId === teamId
+      ? { ...record, played: record.played + 1, won: record.won + 1 }
+      : { ...record, played: record.played + 1, lost: record.lost + 1 };
+  }, { played: 0, won: 0, lost: 0 });
 }
 
 function TournamentStatsView({ stats }: { stats: TournamentStats }) {
@@ -1114,20 +1421,34 @@ function AddTeamModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const auth = useAuth();
   const [name, setName] = useState('');
   const [shortName, setShortName] = useState('');
   const [color, setColor] = useState<string>(palette.team[0]);
   const [saving, setSaving] = useState(false);
+  const [logoUri, setLogoUri] = useState<string>();
 
   const reset = () => {
     setName('');
     setShortName('');
     setColor(palette.team[0]);
+    setLogoUri(undefined);
+  };
+
+  const pickLogo = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return Alert.alert('Photo permission needed', 'Allow photo access to choose a team logo.');
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+    if (!result.canceled) setLogoUri(result.assets[0].uri);
   };
 
   const onSave = async () => {
     if (!name.trim() || !shortName.trim()) {
       Alert.alert('Missing info', 'Name and short name are required.');
+      return;
+    }
+    if (!auth.session || tournament.organizerProfileId !== auth.session.user.id) {
+      Alert.alert('Owner access required', 'Only the tournament owner can add teams.');
       return;
     }
     setSaving(true);
@@ -1137,6 +1458,8 @@ function AddTeamModal({
         name: name.trim(),
         shortName: shortName.trim().toUpperCase().slice(0, 4),
         colorHex: color,
+        logoLocalUri: logoUri,
+        userId: auth.session.user.id,
       });
       reset();
       onSaved();
@@ -1157,6 +1480,11 @@ function AddTeamModal({
               <MaterialCommunityIcons name="close" size={24} color={colors.text} />
             </Pressable>
           </View>
+
+          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>TEAM LOGO (OPTIONAL)</Text>
+          <Pressable onPress={() => void pickLogo()} style={[styles.teamLogoPicker, { backgroundColor: color }]}>
+            {logoUri ? <Image source={{ uri: logoUri }} style={styles.teamLogoPreview} /> : <><MaterialCommunityIcons name="image-plus" size={26} color={palette.black} /><Text variant="caption" style={{ color: palette.black }}>CHOOSE LOGO</Text></>}
+          </Pressable>
 
           <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>TEAM NAME</Text>
           <TextInput
@@ -1201,29 +1529,47 @@ function AddTeamModal({
 }
 
 const styles = StyleSheet.create({
+  headerAction: { width: 40, height: 40, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  quickActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  quickAction: { flex: 1, minHeight: 42, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, flexDirection: 'row', gap: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   banner: {
     width: '100%',
     height: 112,
     backgroundColor: colors.surface,
   },
+  pageScroll: { flex: 1 },
   overview: {
-    flex: 1,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   overviewContent: {
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.xxxl,
   },
   header: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
   },
+  hero: { height: 150, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surface, position: 'relative' },
+  heroImage: { ...StyleSheet.absoluteFillObject, width: undefined, height: undefined, opacity: 0.58 },
+  heroFallback: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated },
+  pitchStripeOne: { position: 'absolute', top: 0, bottom: 0, left: '18%', width: '18%', backgroundColor: 'rgba(95, 227, 138, 0.035)' },
+  pitchStripeTwo: { position: 'absolute', top: 0, bottom: 0, right: '18%', width: '18%', backgroundColor: 'rgba(95, 227, 138, 0.035)' },
+  pitchSeam: { height: 112, width: 18, borderLeftWidth: 2, borderRightWidth: 2, borderColor: 'rgba(232, 196, 104, 0.36)', alignItems: 'center', justifyContent: 'space-around' },
+  pitchStitch: { width: 9, height: 2, transform: [{ rotate: '-25deg' }], backgroundColor: 'rgba(232, 196, 104, 0.6)' },
+  heroCopy: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md },
+  infoCard: { padding: 0, marginTop: spacing.md, overflow: 'hidden' },
+  infoRow: { minHeight: 48, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  infoRowLast: { borderBottomWidth: 0 },
+  infoAction: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.accentMuted },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
+  heroMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, marginBottom: spacing.xs },
+  statusPill: { position: 'absolute', top: spacing.sm, right: spacing.sm, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3, backgroundColor: colors.accentMuted },
+  statusPillComplete: { backgroundColor: colors.surfaceElevated },
   logo: {
     width: 64,
     height: 64,
@@ -1238,6 +1584,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
   },
+  momentsPreview: { marginTop: spacing.md, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
+  momentsPreviewTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  momentsIcon: { width: 36, height: 36, borderRadius: radius.sm, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
   mapImage: { width: '100%', height: 72 },
   mapFallback: { height: 72, alignItems: 'center', justifyContent: 'center' },
   mapCaption: {
@@ -1247,48 +1596,29 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   tabBarShell: {
+    position: 'relative',
+    zIndex: 10,
+    elevation: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.bg,
-  },
-  tabWorkspace: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.bg,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: colors.borderStrong,
-    overflow: 'hidden',
     shadowColor: palette.black,
-    shadowOffset: { width: 0, height: -4 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 12,
+    shadowRadius: 6,
   },
-  sheetHandleArea: {
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  sheetHandle: {
-    width: 44,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderStrong,
-  },
+  stickyGapCover: { position: 'absolute', left: 0, right: 0, top: -10, height: 10, backgroundColor: colors.bg },
   tabContent: {
-    flex: 1,
     paddingHorizontal: spacing.lg,
   },
   tabBar: {
     paddingHorizontal: spacing.md,
+    paddingRight: 54,
     gap: spacing.xs,
   },
+  tabFadeEdge: { position: 'absolute', top: 0, right: 0, bottom: 0, width: 48, alignItems: 'flex-end', paddingRight: spacing.sm, justifyContent: 'center', backgroundColor: 'rgba(11, 14, 12, 0.94)' },
   tab: {
     minWidth: 92,
     alignItems: 'center',
@@ -1312,6 +1642,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  teamListSwatch: { width: 46, height: 46, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  teamLogo: { width: '100%', height: '100%', borderRadius: radius.md },
+  teamRecordRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
   livePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1321,6 +1654,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceElevated,
     borderRadius: radius.pill,
   },
+  liveScoreStrip: { marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.accentMuted, borderWidth: 1, borderColor: 'rgba(95, 227, 138, 0.28)', flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   liveDot: {
     width: 6,
     height: 6,
@@ -1339,6 +1673,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md,
   },
+  insightsLink: { marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, alignItems: 'flex-end' },
   fixtureTabs: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
@@ -1374,15 +1709,22 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   publicTables: { gap: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xxxl },
-  bracketRound: { gap: spacing.sm, paddingTop: spacing.md },
+  bracketRail: { alignItems: 'center', paddingBottom: spacing.md },
+  bracketColumn: { width: 210, gap: spacing.sm },
+  bracketMatches: { flex: 1, justifyContent: 'space-around', gap: spacing.lg, minHeight: 170 },
   bracketMatch: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
     padding: spacing.sm,
     backgroundColor: colors.surfaceElevated,
     borderRadius: radius.md,
   },
+  bracketScoreRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  bracketTeamDivider: { height: 1, backgroundColor: colors.border },
+  bracketResult: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, textAlign: 'center' },
+  bracketFinal: { borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.goldMuted },
+  bracketConnector: { width: 28, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+  bracketConnectorFork: { position: 'absolute', height: '58%', width: 14, left: 0, borderTopWidth: 2, borderBottomWidth: 2, borderRightWidth: 2, borderColor: colors.borderStrong },
+  bracketConnectorLine: { width: 28, height: 2, backgroundColor: colors.borderStrong },
+  championColumn: { width: 108, minHeight: 170, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
   statsEmpty: {
     flex: 1,
     alignItems: 'center',
@@ -1392,7 +1734,6 @@ const styles = StyleSheet.create({
   statsContent: {
     gap: spacing.md,
   },
-  statsPanel: { flex: 1 },
   statsPanelContent: {
     gap: spacing.md,
     paddingTop: spacing.md,
@@ -1416,6 +1757,26 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingTop: spacing.md,
   },
+  scorerHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  scorerIcon: { width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
+  scorerSearch: { marginTop: spacing.md, minHeight: 46, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.bg, color: colors.text, paddingHorizontal: spacing.md, fontSize: 15 },
+  scorerMessage: { marginTop: spacing.sm },
+  scorerDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
+  scorerRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  scorerAvatar: { width: 38, height: 38, borderRadius: 19 },
+  scorerAvatarFallback: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
+  scorerAction: { minWidth: 64, minHeight: 34, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
+  scorerActionDisabled: { opacity: 0.45 },
+  dangerZone: { borderColor: 'rgba(239, 83, 80, 0.42)', backgroundColor: 'rgba(239, 83, 80, 0.055)' },
+  dangerHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  deleteConfirmationInput: { minHeight: 46, borderRadius: radius.md, borderWidth: 1, borderColor: 'rgba(239, 83, 80, 0.5)', backgroundColor: colors.bg, color: colors.text, paddingHorizontal: spacing.md, fontSize: 15 },
+  brandingRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
+  brandingItem: { flex: 1, gap: spacing.xs },
+  brandingLogo: { height: 82, borderRadius: radius.md, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.border },
+  brandingBanner: { height: 82, borderRadius: radius.md, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.border },
+  brandingImage: { width: '100%', height: '100%' },
+  settingsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  detailsForm: { gap: spacing.md, marginTop: spacing.lg },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1448,4 +1809,6 @@ const styles = StyleSheet.create({
   colorDotActive: {
     borderColor: colors.text,
   },
+  teamLogoPicker: { width: 92, height: 92, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: spacing.xs, overflow: 'hidden' },
+  teamLogoPreview: { width: '100%', height: '100%' },
 });

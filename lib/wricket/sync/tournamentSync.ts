@@ -130,6 +130,7 @@ export async function syncTournamentData(
       name: item.name,
       shortName: item.short_name,
       colorHex: item.color_hex,
+      logoUrl: item.logo_url ?? undefined,
       createdAt: Date.parse(item.created_at),
     });
     summary.downloaded += 1;

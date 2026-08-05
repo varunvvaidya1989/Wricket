@@ -1,6 +1,6 @@
-import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { usePathname, useRouter } from 'expo-router';
 import type { Href } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
@@ -8,6 +8,10 @@ import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { colors, palette } from '@/lib/theme/colors';
 import { spacing, radius } from '@/lib/theme/spacing';
+import { AppHeader } from '@/components/ui/AppHeader';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { Button } from '@/components/ui/Button';
+import { SportStageLogo } from '@/components/branding/SportStageLogo';
 
 interface SportApp {
   id: string;
@@ -31,56 +35,57 @@ const sportApps: SportApp[] = [
     enabled: true,
     route: '/wricket' as Href,
   },
-  {
-    id: 'football',
-    name: 'Football',
-    status: 'Planned',
-    description: 'Match clock, goals, cards, substitutions and league tables.',
-    icon: 'soccer',
-    accent: '#5B8DEF',
-    enabled: false,
-  },
-  {
-    id: 'basketball',
-    name: 'Basketball',
-    status: 'Planned',
-    description: 'Periods, fouls, timeouts, shot scoring and player stats.',
-    icon: 'basketball',
-    accent: '#FF6A3D',
-    enabled: false,
-  },
 ];
 
 export default function SportStageDashboard() {
+  const auth = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const nested = pathname !== '/';
+  const [signingOut, setSigningOut] = useState(false);
+  const cricketEnabled = auth.profile?.primarySport?.code === 'CRICKET'
+    && auth.profile.primarySport.accessStatus === 'ACTIVE';
+  const selectedSport = auth.profile?.primarySport;
+
+  const signOut = async () => {
+    setSigningOut(true);
+    try {
+      await auth.signOut();
+    } catch (cause) {
+      Alert.alert('Could not sign out', cause instanceof Error ? cause.message : 'Please try again.');
+    } finally {
+      setSigningOut(false);
+    }
+  };
 
   return (
-    <Screen scroll>
-      <View style={styles.header}>
-        <View style={styles.brandMark}>
-          <MaterialCommunityIcons name="stadium" size={30} color={colors.accentInk} />
-        </View>
+    <Screen scroll padded={!nested}>
+      {nested ? <AppHeader title="SportStage apps" back /> : null}
+      <View style={[styles.header, nested && styles.nestedSection]}>
+        <SportStageLogo size={60} />
         <Text variant="overline" tone="muted" style={{ marginTop: spacing.lg }}>
           SportStage
         </Text>
-        <Text variant="h1" style={styles.title}>
-          Choose your scoring app
-        </Text>
+        {!nested ? <Text variant="h1" style={styles.title}>{cricketEnabled ? 'Your cricket stage' : `${selectedSport?.name ?? 'Your sport'} is coming soon`}</Text> : null}
         <Text variant="body" tone="muted" style={styles.subtitle}>
-          One stage for multiple sports. Start with Wricket today and add more scoring apps as the platform grows.
+          {cricketEnabled
+            ? 'Follow tournaments, manage teams and score every ball with Wricket.'
+            : 'Your SportStage account is ready. Tournament discovery, team management, live scoring and role-based access will unlock here when your sport launches.'}
         </Text>
       </View>
 
-      <View style={styles.grid}>
-        {sportApps.map(app => (
+      <View style={[styles.grid, nested && styles.nestedSection]}>
+        {sportApps.map(app => {
+          const enabled = app.enabled && cricketEnabled;
+          return (
           <Pressable
             key={app.id}
-            disabled={!app.enabled || !app.route}
+            disabled={!enabled || !app.route}
             onPress={() => app.route && router.push(app.route)}
             style={({ pressed }) => [
               styles.appCard,
               { borderTopColor: app.accent },
-              !app.enabled && styles.appCardDisabled,
+              !enabled && styles.appCardDisabled,
               pressed && { opacity: 0.85 },
             ]}
           >
@@ -89,18 +94,18 @@ export default function SportStageDashboard() {
                 <MaterialCommunityIcons
                   name={app.icon}
                   size={28}
-                  color={app.enabled ? colors.accentInk : palette.black}
+                  color={enabled ? colors.accentInk : palette.black}
                 />
               </View>
-              <View style={[styles.statusPill, app.enabled && styles.statusPillReady]}>
+              <View style={[styles.statusPill, enabled && styles.statusPillReady]}>
                 <Text
                   variant="caption"
                   style={{
-                    color: app.enabled ? colors.accentInk : colors.textMuted,
+                    color: enabled ? colors.accentInk : colors.textMuted,
                     fontWeight: '700',
                   }}
                 >
-                  {app.status}
+                  {enabled ? app.status : 'Unavailable'}
                 </Text>
               </View>
             </View>
@@ -113,16 +118,40 @@ export default function SportStageDashboard() {
             </Text>
 
             <View style={styles.cardFooter}>
-              <Text variant="bodyStrong" tone={app.enabled ? 'accent' : 'dim'}>
-                {app.enabled ? 'Open app' : 'Coming later'}
+              <Text variant="bodyStrong" tone={enabled ? 'accent' : 'dim'}>
+                {enabled ? 'Open app' : 'Available to Cricket accounts'}
               </Text>
-              {app.enabled && (
+              {enabled && (
                 <MaterialCommunityIcons name="arrow-right" size={20} color={colors.accent} />
               )}
             </View>
           </Pressable>
-        ))}
+          );
+        })}
       </View>
+
+      {!cricketEnabled && !nested ? (
+        <View style={styles.accountActions}>
+          <Text variant="overline" tone="muted">ACCOUNT</Text>
+          <Text variant="caption" tone="muted">
+            You can switch your primary sport whenever you want. Selecting Cricket unlocks Wricket immediately.
+          </Text>
+          <Button
+            title="Change primary sport"
+            variant="secondary"
+            onPress={() => router.push('/account')}
+            disabled={signingOut}
+            fullWidth
+          />
+          <Button
+            title="Sign out"
+            variant="ghost"
+            onPress={() => void signOut()}
+            loading={signingOut}
+            fullWidth
+          />
+        </View>
+      ) : null}
     </Screen>
   );
 }
@@ -131,14 +160,6 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
-  },
-  brandMark: {
-    width: 60,
-    height: 60,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   title: {
     marginTop: spacing.sm,
@@ -153,6 +174,14 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingBottom: spacing.xxxl,
   },
+  accountActions: {
+    gap: spacing.sm,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxxl,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  nestedSection: { paddingHorizontal: spacing.lg },
   appCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,

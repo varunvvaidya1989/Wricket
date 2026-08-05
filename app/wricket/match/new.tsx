@@ -315,6 +315,8 @@ export default function NewMatchScreen() {
             playersB={playersB}
             tossWinnerName={tossWinnerId === teamAId ? teamA.name : teamB.name}
             tossChoice={tossChoice}
+            venue={venue}
+            scheduledAt={scheduledAt}
           />
         )}
 
@@ -535,24 +537,28 @@ function TeamPicker({
     <View>
       <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>{label}</Text>
       <View style={{ gap: spacing.sm }}>
-        {teams.filter(t => t.id !== excludeId).map(t => (
+        {teams.map(t => {
+          const locked = t.id === excludeId;
+          return (
           <Pressable
             key={t.id}
+            disabled={locked}
             onPress={() => onSelect(t.id)}
             style={[
               styles.teamRow,
               selectedId === t.id && styles.teamRowActive,
+              locked && styles.teamRowLocked,
             ]}
           >
             <View style={[styles.teamSwatch, { backgroundColor: t.colorHex }]}>
               <Text variant="bodyStrong" style={{ color: palette.black }}>{t.shortName}</Text>
             </View>
             <Text variant="bodyStrong" style={{ flex: 1 }}>{t.name}</Text>
-            {selectedId === t.id && (
+            {locked ? <Text variant="caption" tone="dim">OTHER TEAM</Text> : selectedId === t.id && (
               <MaterialCommunityIcons name="check-circle" size={22} color={colors.accent} />
             )}
           </Pressable>
-        ))}
+        );})}
       </View>
     </View>
   );
@@ -568,22 +574,24 @@ function PlayersStep({
   onChange: () => void;
   maxPerSide: number;
 }) {
+  const [query, setQuery] = useState('');
+  const filter = (players: User[]) => players.filter(player => player.name.toLowerCase().includes(query.trim().toLowerCase()));
   return (
     <View style={{ gap: spacing.lg }}>
-      <Text variant="caption" tone="muted">
-        Up to {maxPerSide} players per side. Tap a slot to add.
-      </Text>
-      <TeamPlayersBlock team={teamA} players={playersA} max={maxPerSide} onChange={onChange} />
-      <TeamPlayersBlock team={teamB} players={playersB} max={maxPerSide} onChange={onChange} />
+      <TextInput value={query} onChangeText={setQuery} placeholder="Search players…" placeholderTextColor={colors.textDim} style={styles.searchInput} />
+      <Text variant="caption" tone="muted">Review the searchable rosters before continuing.</Text>
+      <TeamPlayersBlock team={teamA} players={filter(playersA)} total={playersA.length} max={maxPerSide} onChange={onChange} />
+      <TeamPlayersBlock team={teamB} players={filter(playersB)} total={playersB.length} max={maxPerSide} onChange={onChange} />
     </View>
   );
 }
 
 function TeamPlayersBlock({
-  team, players, max,
+  team, players, total, max,
 }: {
   team: Team;
   players: User[];
+  total: number;
   max: number;
   onChange: () => void;
 }) {
@@ -596,7 +604,7 @@ function TeamPlayersBlock({
           <Text variant="caption" style={{ color: palette.black, fontWeight: '800' }}>{team.shortName}</Text>
         </View>
         <Text variant="bodyStrong" style={{ flex: 1 }}>{team.name}</Text>
-        <Text variant="caption" tone="muted">{players.length}/{max}</Text>
+        <Text variant="caption" tone={total >= max ? 'accent' : 'muted'}>{total}/{max}</Text>
       </View>
 
       <Card>
@@ -610,7 +618,7 @@ function TeamPlayersBlock({
           </View>
         ))}
 
-        {team.cloudId && players.length < max && (
+        {team.cloudId && total < max && (
           <Pressable
             onPress={() => router.push({ pathname: '/wricket/team/[id]', params: { id: team.cloudId! } })}
             style={styles.addRow}
@@ -782,7 +790,7 @@ function TossDecision({
 }
 
 function ReviewStep({
-  format, teamA, teamB, playersA, playersB, tossWinnerName, tossChoice,
+  format, teamA, teamB, playersA, playersB, tossWinnerName, tossChoice, venue, scheduledAt,
 }: {
   format: MatchFormat;
   teamA: Team;
@@ -791,6 +799,8 @@ function ReviewStep({
   playersB: User[];
   tossWinnerName: string;
   tossChoice: TossChoice;
+  venue: string;
+  scheduledAt: string;
 }) {
   const r = DEFAULT_RULES[format];
   return (
@@ -802,6 +812,12 @@ function ReviewStep({
           {r.oversPerInnings} overs · {r.inningsPerTeam} innings · {r.playersPerSide}-a-side
           {r.followOnEnabled ? ` · follow-on @ ${r.followOnThreshold}` : ''}
         </Text>
+      </Card>
+
+      <Card>
+        <Text variant="caption" tone="muted">WHEN & WHERE</Text>
+        <Text variant="h3" style={{ marginTop: 4 }}>{new Date(scheduledAt).toLocaleString()}</Text>
+        <Text variant="caption" tone="dim" style={{ marginTop: 4 }}>{venue.trim() || 'Venue not set'}</Text>
       </Card>
 
       <Card>
@@ -823,6 +839,8 @@ function ReviewStep({
 }
 
 const styles = StyleSheet.create({
+  searchInput: { minHeight: 46, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: spacing.md, fontSize: 15 },
+  teamRowLocked: { opacity: 0.4 },
   chip: {
     backgroundColor: colors.surface,
     borderColor: colors.border,

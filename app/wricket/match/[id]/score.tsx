@@ -706,8 +706,6 @@ export default function ScoreScreen() {
         await recordBall({ runs: a.runs, extra: null, isWicket: false });
       } else if (a.kind === 'WICKET') {
         setWicketOpen(true);
-      } else if (a.kind === 'EXTRA') {
-        setExtraOpen(true);
       } else if (a.kind === 'UNDO') {
         if (!innings) return;
         Alert.alert('Undo last ball?', undefined, [

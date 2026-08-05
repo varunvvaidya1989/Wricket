@@ -1,5 +1,6 @@
 import * as Linking from 'expo-linking';
 
+import { updateTeamLogoByCloudId } from '@/lib/wricket/db/repo';
 import { getSupabaseClient } from './client';
 
 export type TeamRole = 'CAPTAIN' | 'PLAYER';
@@ -19,6 +20,9 @@ export interface TeamRosterMember {
   role: TeamRole;
   status: 'ACTIVE' | 'REMOVED';
   joinedAt: string;
+  jerseyNo?: number;
+  playerRole?: 'BAT' | 'BOWL' | 'AR' | 'WK';
+  isKeeper?: boolean;
 }
 
 export interface TeamInvitation {
@@ -40,6 +44,40 @@ export interface RegisteredPlayerSearchResult {
 }
 
 export const teamManagementApi = {
+  async updateLogo(teamId: string, localUri: string, userId: string): Promise<string> {
+    const client = getSupabaseClient();
+    const response = await fetch(localUri);
+    if (!response.ok) throw new Error('Could not read the selected team logo');
+    const extension = imageExtension(localUri);
+    const storagePath = `${userId}/teams/${teamId}/logo-${Date.now()}.${extension}`;
+    const { error: uploadError } = await client.storage.from('tournament-media').upload(
+      storagePath,
+      await response.arrayBuffer(),
+      { contentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`, cacheControl: '3600' },
+    );
+    if (uploadError) throw uploadError;
+    const logoUrl = client.storage.from('tournament-media').getPublicUrl(storagePath).data.publicUrl;
+    const { error: updateError } = await client.rpc('update_team_logo', {
+      p_team_id: teamId,
+      p_logo_url: logoUrl,
+    });
+    if (updateError) {
+      await client.storage.from('tournament-media').remove([storagePath]);
+      throw updateError;
+    }
+    await updateTeamLogoByCloudId(teamId, logoUrl);
+    return logoUrl;
+  },
+
+  async listTeamLogos(teamIds: string[]): Promise<Map<string, string | undefined>> {
+    if (teamIds.length === 0) return new Map();
+    const { data, error } = await getSupabaseClient().from('teams')
+      .select('id, logo_url')
+      .in('id', teamIds);
+    if (error) throw error;
+    return new Map((data ?? []).map(team => [team.id, team.logo_url ?? undefined]));
+  },
+
   async createInvitation(input: {
     teamId: string;
     role: TeamRole;
@@ -87,14 +125,14 @@ export const teamManagementApi = {
   async listRoster(teamId: string): Promise<TeamRosterMember[]> {
     const client = getSupabaseClient();
     const { data: roster, error } = await client.from('team_players')
-      .select('player_id, is_captain, created_at')
+      .select('player_id, jersey_no, is_captain, is_keeper, created_at')
       .eq('team_id', teamId)
       .order('created_at');
     if (error) throw error;
     const playerIds = roster.map(member => member.player_id);
     const [{ data: players, error: playerError }, { data: accounts, error: accountError }] = await Promise.all([
       playerIds.length
-        ? client.from('players').select('id, profile_id, display_name').in('id', playerIds)
+        ? client.from('players').select('id, profile_id, display_name, role').in('id', playerIds)
         : Promise.resolve({ data: [], error: null }),
       client.from('team_account_members')
         .select('account_id, player_id, status')
@@ -114,6 +152,9 @@ export const teamManagementApi = {
       role: member.is_captain ? 'CAPTAIN' : 'PLAYER',
       status: 'ACTIVE',
       joinedAt: member.created_at,
+      jerseyNo: member.jersey_no ?? undefined,
+      playerRole: normalizePlayerRole(playerById.get(member.player_id)?.role),
+      isKeeper: Boolean(member.is_keeper),
     }));
   },
 
@@ -181,3 +222,14 @@ export const teamManagementApi = {
     if (error) throw error;
   },
 };
+
+function normalizePlayerRole(role: unknown): TeamRosterMember['playerRole'] {
+  if (role === 'BAT' || role === 'BOWL' || role === 'AR' || role === 'WK') return role;
+  return undefined;
+}
+
+function imageExtension(uri: string): 'jpg' | 'png' | 'webp' {
+  const value = uri.split('?')[0].split('.').pop()?.toLowerCase();
+  if (value === 'png' || value === 'webp') return value;
+  return 'jpg';
+}

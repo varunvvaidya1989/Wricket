@@ -183,6 +183,7 @@ ALTER TABLE teams ADD COLUMN cloud_id TEXT;
 ALTER TABLE teams ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL';
 ALTER TABLE teams ADD COLUMN sync_error TEXT;
 ALTER TABLE teams ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE teams ADD COLUMN logo_url TEXT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tournaments_cloud_id ON tournaments(cloud_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_cloud_id ON teams(cloud_id);
@@ -299,6 +300,16 @@ CREATE TABLE IF NOT EXISTS match_mvp_calculations (
 );
 `;
 
+// Migration 3 originally shipped without this column. Keep the repair as a
+// separate migration so databases that already recorded version 3 are fixed.
+const TEAM_LOGO_URL_REPAIR_SQL = `
+ALTER TABLE teams ADD COLUMN logo_url TEXT;
+`;
+
+const TOURNAMENT_REWARDS_SQL = `
+ALTER TABLE tournaments ADD COLUMN rewards TEXT;
+`;
+
 export const MIGRATIONS: SqlMigration[] = [
   {
     version: 1,
@@ -350,6 +361,16 @@ export const MIGRATIONS: SqlMigration[] = [
     name: 'mvp_results',
     sql: MVP_RESULTS_SQL,
   },
+  {
+    version: 11,
+    name: 'repair_team_logo_url',
+    sql: TEAM_LOGO_URL_REPAIR_SQL,
+  },
+  {
+    version: 12,
+    name: 'tournament_rewards',
+    sql: TOURNAMENT_REWARDS_SQL,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
@@ -380,11 +401,18 @@ export async function runMigrations(db: MigrationDatabase): Promise<void> {
   const appliedVersion = row?.version ?? 0;
 
   for (const migration of getPendingMigrations(appliedVersion)) {
-    const alreadyApplied = migration.version === 8
+    const guardedColumn = migration.version === 8
+      ? { table: 'balls', column: 'assistant_fielder_id' }
+      : migration.version === 11
+        ? { table: 'teams', column: 'logo_url' }
+        : migration.version === 12
+          ? { table: 'tournaments', column: 'rewards' }
+        : null;
+    const alreadyApplied = guardedColumn
       ? await db.getFirstAsync<{ count: number }>(
           `SELECT COUNT(*) AS count
-           FROM pragma_table_info('balls')
-           WHERE name = 'assistant_fielder_id'`,
+           FROM pragma_table_info('${guardedColumn.table}')
+           WHERE name = '${guardedColumn.column}'`,
         )
       : null;
     if (!alreadyApplied?.count) {

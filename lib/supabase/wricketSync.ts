@@ -70,7 +70,12 @@ export async function createCloudTeam(input: {
   name: string;
   shortName: string;
   colorHex: string;
-}): Promise<{ cloudId: string; createdAt: number }> {
+  logoLocalUri?: string;
+  userId: string;
+}): Promise<{ cloudId: string; createdAt: number; logoUrl?: string }> {
+  const logoUrl = input.logoLocalUri
+    ? await uploadTournamentMedia(input.logoLocalUri, input.userId, `teams/${Date.now()}`, 'logo')
+    : undefined;
   const { data, error } = await getSupabaseClient()
     .from('teams')
     .insert({
@@ -78,11 +83,12 @@ export async function createCloudTeam(input: {
       name: input.name,
       short_name: input.shortName,
       color_hex: input.colorHex,
+      logo_url: logoUrl ?? null,
     })
     .select('id, created_at')
     .single();
   if (error) throw error;
-  return { cloudId: data.id, createdAt: Date.parse(data.created_at) };
+  return { cloudId: data.id, createdAt: Date.parse(data.created_at), logoUrl };
 }
 
 export async function deleteCloudTeam(teamId: string): Promise<void> {
@@ -226,7 +232,7 @@ export async function listCloudTournaments() {
 export async function listCloudTeams() {
   const { data, error } = await getSupabaseClient()
     .from('teams')
-    .select('id, source_local_id, tournament_id, name, short_name, color_hex, created_at')
+    .select('id, source_local_id, tournament_id, name, short_name, color_hex, logo_url, created_at')
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data;

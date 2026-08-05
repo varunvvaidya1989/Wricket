@@ -36,9 +36,9 @@ export interface FixtureMatch {
   scoreB?: number;
   scheduledAt?: string;
   venue?: string;
-  liveScore?: { runs: number; wickets: number; legalBalls: number };
+  liveScore?: { runs: number; wickets: number; legalBalls: number; battingTeamId?: string; target?: number };
   result?: Record<string, unknown>;
-  teamInningsStats?: Record<string, { runs: number; legalBalls: number }>;
+  teamInningsStats?: Record<string, { runs: number; wickets: number; legalBalls: number }>;
 }
 
 export interface PairingConfig {

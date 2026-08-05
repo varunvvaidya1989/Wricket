@@ -4,7 +4,7 @@
     "slug": "sportstage",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/sportstage-app-icon-v2.png",
+    "icon": "./assets/sportstage/logo/sportstage-icon-1024.png",
     "scheme": "sportstage",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -16,24 +16,27 @@
     "android": {
       "package": "com.vcreativestudio.sportstage",
       "versionCode": 1,
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#0E1014",
-        "foregroundImage": "./assets/images/sportstage-app-icon-v2.png"
+        "foregroundImage": "./assets/sportstage/logo/sportstage-icon-1024.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/sportstage-app-icon-v2.png"
+      "favicon": "./assets/sportstage/logo/sportstage-icon-32.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/sportstage-splash.png",
-          "imageWidth": 200,
+          "image": "./assets/sportstage/logo/sportstage-mark-rounded-512.png",
+          "imageWidth": 180,
           "resizeMode": "contain",
           "backgroundColor": "#0E1014",
           "dark": {
@@ -42,6 +45,13 @@
         }
       ],
       "expo-sqlite",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-1107614471405385~7780496634",
+          "delayAppMeasurementInit": true
+        }
+      ],
       "@react-native-community/datetimepicker",
       [
         "expo-image-picker",

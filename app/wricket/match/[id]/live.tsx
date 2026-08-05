@@ -124,14 +124,16 @@ export default function CloudLiveMatchScreen() {
           <Text variant="overline" tone="muted">{battingTeam.shortName} · INNINGS {match.innings?.sequence ?? 1}</Text>
           <Text style={styles.score}>{match.score.runs}/{match.score.wickets}</Text>
           <Text variant="h3" tone="muted">{formatOver(match.score.legalBalls)} overs</Text>
-          {match.innings?.target != null && <Text variant="bodyStrong" style={{ marginTop: spacing.sm }}>
+          {match.status === 'COMPLETED' ? <Text variant="h3" tone="accent" style={{ marginTop: spacing.sm }}>
+            {matchResultText(match)}
+          </Text> : match.innings?.target != null && <Text variant="bodyStrong" style={{ marginTop: spacing.sm }}>
             Target {match.innings.target} · Need {Math.max(0, match.innings.target - match.score.runs)} runs
           </Text>}
-          <View style={styles.quickStats}>
+          {match.status !== 'COMPLETED' && <View style={styles.quickStats}>
             <MiniStat label="CRR" value={insights.crr.toFixed(2)} />
             <MiniStat label="RRR" value={insights.rrr == null ? '—' : insights.rrr.toFixed(2)} />
             <MiniStat label="WIN%" value={`${insights.battingWinProbability}%`} />
-          </View>
+          </View>}
         </Card>
 
         <View style={styles.tabs}>
@@ -452,6 +454,22 @@ function buildCompleteScorecard(match: CloudLiveMatch): CompleteScorecardData {
 function Insights({ match, insights }: { match: CloudLiveMatch; insights: MatchInsights }) {
   const batting = match.innings?.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
   const bowling = batting.id === match.teamA.id ? match.teamB : match.teamA;
+  if (match.status === 'COMPLETED') {
+    const teamATotal = matchTotal(match, match.teamA.id);
+    const teamBTotal = matchTotal(match, match.teamB.id);
+    return <View style={styles.section}>
+      <Card style={styles.resultCard}>
+        <MaterialCommunityIcons name="trophy" size={32} color={colors.gold} />
+        <Text variant="overline" style={{ color: colors.gold }}>FINAL RESULT</Text>
+        <Text variant="h2" style={{ textAlign: 'center' }}>{matchResultText(match)}</Text>
+      </Card>
+      <View style={styles.insightGrid}>
+        <InsightCard label={match.teamA.shortName} value={formatMatchTotal(teamATotal)} />
+        <InsightCard label={match.teamB.shortName} value={formatMatchTotal(teamBTotal)} />
+      </View>
+      <Card><Text variant="overline" tone="muted">MATCH STATUS</Text><Text variant="h3" tone="accent" style={{ marginTop: spacing.sm }}>Complete</Text></Card>
+    </View>;
+  }
   return <View style={styles.section}>
     <View style={styles.insightGrid}>
       <InsightCard label="CURRENT RATE" value={insights.crr.toFixed(2)} />
@@ -691,10 +709,50 @@ function ballLabel(event: CloudMatchEvent) {
   return `${Number(event.payload.over_no ?? 0)}.${Number(event.payload.legal_ball_in_over ?? 0)}`;
 }
 function situationText(match: CloudLiveMatch, insights: MatchInsights) {
+  if (match.status === 'COMPLETED') return matchResultText(match);
   if (match.innings?.target != null) {
     return `${Math.max(0, match.innings.target - match.score.runs)} runs needed from ${insights.ballsRemaining} balls`;
   }
   return `Projected score ${insights.projectedScore} at the current rate`;
+}
+
+function matchResultText(match: CloudLiveMatch): string {
+  const kind = String(match.result?.kind ?? match.result?.resultKind ?? match.result?.result_kind ?? '');
+  if (kind === 'TIE') return 'Match tied';
+  if (kind === 'NO_RESULT') return 'No result';
+  const winnerId = stringValue(match.result?.winnerTeamId) ?? stringValue(match.result?.winner_team_id);
+  const winner = winnerId === match.teamA.id ? match.teamA.name : winnerId === match.teamB.id ? match.teamB.name : undefined;
+  const marginValue = match.result?.margin;
+  const margin = typeof marginValue === 'number' ? marginValue : Number(marginValue);
+  const unitValue = match.result?.marginUnit ?? match.result?.margin_unit;
+  if (winner && Number.isFinite(margin) && typeof unitValue === 'string') {
+    const normalized = unitValue.toLowerCase();
+    const unit = margin === 1 ? normalized.replace(/s$/, '') : normalized;
+    return kind === 'WIN_BY_INNINGS'
+      ? `${winner} won by an innings and ${margin} ${unit}`
+      : `${winner} won by ${margin} ${unit}`;
+  }
+  return winner ? `${winner} won the match` : inferCompletedResult(match);
+}
+
+function matchTotal(match: CloudLiveMatch, teamId: string) {
+  return match.allInnings.filter(innings => innings.battingTeamId === teamId).reduce((total, innings) => ({
+    runs: total.runs + innings.totalRuns,
+    wickets: total.wickets + innings.totalWickets,
+    balls: total.balls + innings.totalBalls,
+  }), { runs: 0, wickets: 0, balls: 0 });
+}
+
+function formatMatchTotal(total: { runs: number; wickets: number; balls: number }): string {
+  return `${total.runs}/${total.wickets}`;
+}
+
+function inferCompletedResult(match: CloudLiveMatch): string {
+  const a = matchTotal(match, match.teamA.id);
+  const b = matchTotal(match, match.teamB.id);
+  if (a.runs === b.runs) return 'Match tied';
+  const winner = a.runs > b.runs ? match.teamA.name : match.teamB.name;
+  return `${winner} won the match`;
 }
 function MiniStat({ label, value }: { label: string; value: string }) {
   return <View style={{ flex: 1, alignItems: 'center' }}><Text variant="caption" tone="dim">{label}</Text><Text variant="h3">{value}</Text></View>;
@@ -739,6 +797,7 @@ const styles = StyleSheet.create({
   tab: { flex: 1, alignItems: 'center', paddingVertical: spacing.md, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: colors.accent },
   section: { gap: spacing.md },
+  resultCard: { alignItems: 'center', gap: spacing.sm, borderColor: colors.gold, backgroundColor: colors.goldMuted },
   commentaryRow: { flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   commentaryDetail: { marginTop: spacing.xs, lineHeight: 18 },
   ballBadge: { minWidth: 45, height: 34, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
