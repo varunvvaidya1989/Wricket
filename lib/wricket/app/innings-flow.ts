@@ -299,15 +299,38 @@ export async function startNextInnings(
   await setMatchStatus(matchId, 'IN_PROGRESS');
 }
 
-export async function abandonMatchLifecycle(matchId: string, inningsId: string): Promise<void> {
+export type MatchAbandonmentResolution = 'WALKOVER' | 'NO_RESULT' | 'CANCELLED';
+
+export async function resolveAbandonedMatchLifecycle(
+  matchId: string,
+  inningsId: string,
+  resolution: MatchAbandonmentResolution,
+  winnerTeamId?: string,
+): Promise<void> {
+  if (resolution === 'WALKOVER' && !winnerTeamId) {
+    throw new Error('Select the team receiving the walkover.');
+  }
+  const result: MatchResult = resolution === 'WALKOVER'
+    ? { kind: 'WALKOVER', winnerTeamId }
+    : { kind: resolution };
+  const cloudResult = await toCloudResult(result);
   if (isUuid(matchId) && isUuid(inningsId)) {
     await queueCloudScoringEvent({
-      clientEventId: `abandon-${matchId}`,
+      clientEventId: `resolve-${resolution.toLowerCase()}-${matchId}`,
       matchId,
       inningsId,
       kind: 'MATCH_ABANDONED',
-      payload: { innings_id: inningsId, reason: 'ORGANISER_ABANDONED' },
+      payload: {
+        innings_id: inningsId,
+        reason: 'ORGANISER_ENDED_MATCH',
+        result: cloudResult as unknown as Record<string, unknown>,
+      },
     });
   }
-  await setMatchStatus(matchId, 'ABANDONED');
+  await setMatchResult(matchId, result);
+  if (resolution !== 'WALKOVER') await setMatchStatus(matchId, 'ABANDONED');
+}
+
+export async function abandonMatchLifecycle(matchId: string, inningsId: string): Promise<void> {
+  await resolveAbandonedMatchLifecycle(matchId, inningsId, 'NO_RESULT');
 }

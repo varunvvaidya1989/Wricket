@@ -72,6 +72,16 @@ describe('StandingsCalculator', () => {
     expect(rows.every(row => row.unresolved)).toBe(true);
     expect(rows[0].tiebreakerTrace.at(-1)).toContain('UNRESOLVED');
   });
+
+  it('does not count a cancelled fixture as played or award points', () => {
+    const cancelled: FixtureMatch = {
+      ...result('a', 'b', 0, 0),
+      result: { kind: 'CANCELLED' },
+    };
+    const rows = new StandingsCalculator().calculate(group(['a', 'b']), [cancelled]);
+
+    expect(rows.every(row => row.played === 0 && row.points === 0)).toBe(true);
+  });
 });
 
 describe('CustomFormatBuilder', () => {

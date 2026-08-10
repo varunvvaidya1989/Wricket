@@ -40,9 +40,18 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="search"
+        options={{
+          title: 'Search',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="magnify" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="stats"
         options={{
-          title: 'My Stats',
+          title: 'Performance',
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="chart-line" size={size} color={color} />
           ),
@@ -51,7 +60,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="me"
         options={{
-          title: 'Me',
+          title: 'Cricket',
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account-circle-outline" size={size} color={color} />
           ),

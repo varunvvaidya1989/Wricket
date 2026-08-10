@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Text } from '@/components/ui/Text';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
+import { authErrorMessage } from '@/lib/supabase/authErrors';
 
 export default function ResetPasswordScreen() {
   const auth = useAuth();
@@ -25,7 +26,7 @@ export default function ResetPasswordScreen() {
       Alert.alert('Password updated', 'You can now use your new password.');
       router.replace('/');
     } catch (cause) {
-      Alert.alert('Could not update password', cause instanceof Error ? cause.message : 'Please request a new reset link.');
+      Alert.alert('Could not update password', authErrorMessage(cause, 'Please request a new reset link and try again.'));
     } finally { setSaving(false); }
   };
 

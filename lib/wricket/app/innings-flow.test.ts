@@ -32,7 +32,7 @@ vi.mock('../db/client', () => ({
 
 // Mocks must be declared before this module is evaluated.
 // eslint-disable-next-line import/first
-import { startNextInnings } from './innings-flow';
+import { resolveAbandonedMatchLifecycle, startNextInnings } from './innings-flow';
 
 describe('startNextInnings', () => {
   beforeEach(() => {
@@ -84,5 +84,43 @@ describe('startNextInnings', () => {
       '11111111-1111-4111-8111-111111111111',
       'IN_PROGRESS',
     );
+  });
+});
+
+describe('resolveAbandonedMatchLifecycle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('records cancellation without a winner and keeps the match abandoned', async () => {
+    await resolveAbandonedMatchLifecycle('local-match', 'local-innings', 'CANCELLED');
+
+    expect(mocks.setMatchResult).toHaveBeenCalledWith('local-match', { kind: 'CANCELLED' });
+    expect(mocks.setMatchStatus).toHaveBeenCalledWith('local-match', 'ABANDONED');
+    expect(mocks.queueCloudScoringEvent).not.toHaveBeenCalled();
+  });
+
+  it('records a walkover winner and leaves the completed status set by the result', async () => {
+    await resolveAbandonedMatchLifecycle('local-match', 'local-innings', 'WALKOVER', 'team-a');
+
+    expect(mocks.setMatchResult).toHaveBeenCalledWith('local-match', { kind: 'WALKOVER', winnerTeamId: 'team-a' });
+    expect(mocks.setMatchStatus).not.toHaveBeenCalled();
+  });
+
+  it('queues the cloud walkover with the synced winner id', async () => {
+    mocks.getTeam.mockResolvedValue({ id: 'team-a', cloudId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' });
+    await resolveAbandonedMatchLifecycle(
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      'WALKOVER',
+      'team-a',
+    );
+
+    expect(mocks.queueCloudScoringEvent).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'MATCH_ABANDONED',
+      payload: expect.objectContaining({
+        result: { kind: 'WALKOVER', winnerTeamId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+      }),
+    }));
   });
 });

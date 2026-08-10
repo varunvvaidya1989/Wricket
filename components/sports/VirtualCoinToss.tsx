@@ -1,6 +1,7 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as Haptics from 'expo-haptics';
-import React, { useRef, useState } from 'react';
+import { useAudioPlayer } from 'expo-audio';
+import React, { useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
@@ -14,6 +15,7 @@ import {
 } from '@/lib/sports/toss';
 import { colors, palette } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
+import { createCoinFlipSoundUri } from '@/lib/sports/coinFlipSound';
 
 export interface VirtualCoinTossParticipant extends CoinTossParticipant {
   /** Short code shown inside the caller swatch, e.g. a team code. */
@@ -59,6 +61,8 @@ export function VirtualCoinToss({
   const [calledSide, setCalledSide] = useState<CoinSide>();
   const [result, setResult] = useState<CoinTossResult>();
   const [flipping, setFlipping] = useState(false);
+  const coinSoundUri = useMemo(createCoinFlipSoundUri, []);
+  const coinSound = useAudioPlayer(coinSoundUri);
 
   // rotation holds rotateX in degrees; lift drives the toss arc and shadow.
   const rotation = useRef(new Animated.Value(REST_DEGREES.HEADS)).current;
@@ -99,6 +103,7 @@ export function VirtualCoinToss({
     setFlipping(true);
     clearResult();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    void coinSound.seekTo(0).then(() => coinSound.play()).catch(() => undefined);
 
     // Spin a fixed number of full turns, then pad the target so the coin
     // settles exactly on the face the engine landed.

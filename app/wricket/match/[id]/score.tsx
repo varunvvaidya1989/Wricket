@@ -8,6 +8,7 @@ import {
   Alert,
   BackHandler,
   AppState,
+  Platform,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -47,9 +48,10 @@ import {
   MatchXIPlayer,
 } from '@/lib/wricket/db/repo';
 import {
-  abandonMatchLifecycle,
   closeAndAdvance,
   planNextStep,
+  resolveAbandonedMatchLifecycle,
+  MatchAbandonmentResolution,
   startNextInnings,
 } from '@/lib/wricket/app/innings-flow';
 import { deriveScoringStateFromHistory, restoreScoringState } from '@/lib/wricket/app/scoring-session';
@@ -143,6 +145,17 @@ export default function ScoreScreen() {
     pending: 0,
   });
   const lastShownSyncErrorRef = useRef<string | null>(null);
+  const confirmLeaveScoring = useCallback(() => {
+    const leave = () => router.back();
+    if (Platform.OS === 'web') {
+      if (globalThis.confirm('Leave scoring?\n\nYour recorded deliveries are saved and you can return from the Live tab.')) leave();
+      return;
+    }
+    Alert.alert('Leave scoring?', 'Your recorded deliveries are saved and you can return from the Live tab.', [
+      { text: 'Stay', style: 'cancel' },
+      { text: 'Leave', style: 'destructive', onPress: leave },
+    ]);
+  }, [router]);
 
   // score flash animation
   const scoreFlash = useSharedValue(0);
@@ -179,6 +192,13 @@ export default function ScoreScreen() {
     setTeamB(b);
 
     let innList = await listInningsForMatch(m.id);
+    // Tournament sync can create the local match shell before downloading its
+    // scoring history. Restore the authoritative innings/XI/event log when a
+    // scorer opens that shell on another device.
+    if (innList.length === 0 && isUuid(m.id) && ['IN_PROGRESS', 'INNINGS_BREAK', 'FOLLOW_ON_DECISION'].includes(m.status)) {
+      await hydrateScoringMatch(m.id);
+      innList = await listInningsForMatch(m.id);
+    }
     let open = innList.find(i => !i.isClosed);
     if (!open && m.status === 'INNINGS_BREAK') {
       const step = await planNextStep(m.id);
@@ -207,8 +227,13 @@ export default function ScoreScreen() {
     setAdjustments(adjustmentList);
     setRetirements(retirementList);
 
-    const xiBatList = await getMatchXI(m.id, open.battingTeamId);
-    const xiBowlList = await getMatchXI(m.id, open.bowlingTeamId);
+    let xiBatList = await getMatchXI(m.id, open.battingTeamId);
+    let xiBowlList = await getMatchXI(m.id, open.bowlingTeamId);
+    if ((xiBatList.length === 0 || xiBowlList.length === 0) && isUuid(m.id)) {
+      await hydrateScoringMatch(m.id);
+      xiBatList = await getMatchXI(m.id, open.battingTeamId);
+      xiBowlList = await getMatchXI(m.id, open.bowlingTeamId);
+    }
     if (xiBatList.length === 0 || xiBowlList.length === 0) {
       throw new Error('The playing XI is missing for this match.');
     }
@@ -309,14 +334,11 @@ export default function ScoreScreen() {
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      Alert.alert('Leave scoring?', 'You can return from the Live tab.', [
-        { text: 'Stay', style: 'cancel' },
-        { text: 'Leave', onPress: () => router.back() },
-      ]);
+      confirmLeaveScoring();
       return true;
     });
     return () => sub.remove();
-  }, [router]);
+  }, [confirmLeaveScoring]);
 
   const battingTeam = innings && (innings.battingTeamId === teamA?.id ? teamA : teamB);
   const bowlingTeam = innings && (innings.bowlingTeamId === teamA?.id ? teamA : teamB);
@@ -825,24 +847,36 @@ export default function ScoreScreen() {
     }
   }, [match, innings, loadFromDb, router]);
 
-  const abandonMatch = useCallback(() => {
+  const finishExceptionalMatch = useCallback(async (
+    resolution: MatchAbandonmentResolution,
+    winnerTeamId?: string,
+  ) => {
     if (!match || !innings) return;
-    Alert.alert('Abandon match?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Abandon',
-        style: 'destructive',
-        onPress: async () => {
-          await clearScoringSession(match.id);
-          await abandonMatchLifecycle(match.id, innings.id);
-          router.replace({
-            pathname: '/wricket/match/[id]/scorecard',
-            params: { id: match.id },
-          });
-        },
-      },
-    ]);
+    try {
+      await clearScoringSession(match.id);
+      await resolveAbandonedMatchLifecycle(match.id, innings.id, resolution, winnerTeamId);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.replace({ pathname: '/wricket/match/[id]/scorecard', params: { id: match.id } });
+    } catch (cause) {
+      Alert.alert('Could not end match', cause instanceof Error ? cause.message : 'Please try again.');
+    }
   }, [innings, match, router]);
+
+  const abandonMatch = useCallback(() => {
+    if (!match || !teamA || !teamB) return;
+    Alert.alert('End match', 'Choose how this match should be recorded.', [
+      {
+        text: 'Walkover to?',
+        onPress: () => Alert.alert('Walkover to?', 'Select the team that receives the win.', [
+          { text: teamA.name, onPress: () => void finishExceptionalMatch('WALKOVER', teamA.id) },
+          { text: teamB.name, onPress: () => void finishExceptionalMatch('WALKOVER', teamB.id) },
+          { text: 'Back', style: 'cancel' },
+        ]),
+      },
+      { text: 'No Result', onPress: () => void finishExceptionalMatch('NO_RESULT') },
+      { text: 'Cancelled', style: 'destructive', onPress: () => void finishExceptionalMatch('CANCELLED') },
+    ], { cancelable: true });
+  }, [finishExceptionalMatch, match, teamA, teamB]);
 
   if (!match || !innings || !live || !battingTeam || !bowlingTeam) {
     return (
@@ -875,7 +909,7 @@ export default function ScoreScreen() {
     <Screen padded={false}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Leave scoring" onPress={confirmLeaveScoring}>
           <MaterialCommunityIcons name="chevron-left" size={28} color={colors.text} />
         </Pressable>
         <Text variant="caption" tone="muted">
@@ -1252,7 +1286,7 @@ function InningsSettingsPage({
           <Card>
             <Text variant="h3">Match control</Text>
             <Text variant="caption" tone="muted" style={styles.settingsDescription}>
-              Abandoning the match records a no-result and cannot be undone.
+              End the match by walkover, no result, or cancellation. This cannot be undone.
             </Text>
             <Button title="Abandon match" variant="danger" onPress={onAbandon} fullWidth />
           </Card>

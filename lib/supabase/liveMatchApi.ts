@@ -42,6 +42,30 @@ export interface CloudLiveMatch {
   eligibilityReason?: 'OWNER' | 'MY_TEAM' | 'TOURNAMENT_MEMBER' | 'FOLLOWING';
 }
 
+export interface CloudMatchSquadPlayer {
+  id: string;
+  teamId: string;
+  name: string;
+  role: 'BAT' | 'BOWL' | 'ALL' | 'WK';
+  battingOrder: number;
+  jerseyNo?: number;
+  isCaptain: boolean;
+  isKeeper: boolean;
+}
+
+export interface CloudHeadToHeadMatch {
+  id: string;
+  winnerTeamId?: string;
+  teamARuns: number;
+  teamBRuns: number;
+}
+
+export interface CloudMatchContext {
+  squads: CloudMatchSquadPlayer[];
+  meetings: CloudHeadToHeadMatch[];
+  playerOfMatch?: { id: string; name: string; reason: string };
+}
+
 export interface LiveMatchCursor { updatedAt: string; id: string }
 export interface LiveMatchPage { matches: CloudLiveMatch[]; nextCursor?: LiveMatchCursor; hasMore: boolean }
 
@@ -149,6 +173,98 @@ export const liveMatchApi = {
     return (await loadRelated([match], true))[0] ?? null;
   },
 
+  async getContext(matchId: string): Promise<CloudMatchContext> {
+    const client = getSupabaseClient();
+    const { data: match, error: matchError } = await client.from('matches')
+      .select('id, tournament_id, team_a_id, team_b_id')
+      .eq('id', matchId)
+      .maybeSingle();
+    if (matchError) throw matchError;
+    if (!match) return { squads: [], meetings: [] };
+
+    const [{ data: xis, error: xiError }, { data: previous, error: previousError }, { data: award, error: awardError }] = await Promise.all([
+      client.from('match_xis')
+        .select('team_id, player_id, batting_order, is_captain, is_keeper')
+        .eq('match_id', matchId)
+        .order('batting_order'),
+      client.from('matches')
+        .select('id, team_a_id, team_b_id, result, scheduled_at')
+        .eq('status', 'COMPLETED')
+        .neq('id', matchId)
+        .or(`and(team_a_id.eq.${match.team_a_id},team_b_id.eq.${match.team_b_id}),and(team_a_id.eq.${match.team_b_id},team_b_id.eq.${match.team_a_id})`)
+        .order('scheduled_at', { ascending: false })
+        .limit(20),
+      client.from('match_mvp_results')
+        .select('player_id, batting_points, bowling_points, fielding_points, players(display_name)')
+        .eq('match_id', matchId)
+        .eq('is_player_of_match', true)
+        .maybeSingle(),
+    ]);
+    if (xiError) throw xiError;
+    if (previousError) throw previousError;
+    if (awardError) throw awardError;
+
+    const playerIds = (xis ?? []).map(item => item.player_id);
+    const previousIds = (previous ?? []).map(item => item.id);
+    const [{ data: players, error: playerError }, { data: memberships, error: membershipError }, { data: innings, error: inningsError }] = await Promise.all([
+      playerIds.length
+        ? client.from('players').select('id, display_name, role').in('id', playerIds)
+        : Promise.resolve({ data: [], error: null }),
+      playerIds.length
+        ? client.from('team_players').select('team_id, player_id, jersey_no').in('team_id', [match.team_a_id, match.team_b_id]).in('player_id', playerIds)
+        : Promise.resolve({ data: [], error: null }),
+      previousIds.length
+        ? client.from('match_innings').select('match_id, batting_team_id, total_runs').in('match_id', previousIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (playerError) throw playerError;
+    if (membershipError) throw membershipError;
+    if (inningsError) throw inningsError;
+
+    const playerById = new Map((players ?? []).map(player => [player.id, player]));
+    const jerseyByPlayer = new Map((memberships ?? []).map(item => [`${item.team_id}:${item.player_id}`, item.jersey_no]));
+    const squads = (xis ?? []).map(item => {
+      const player = playerById.get(item.player_id);
+      return {
+        id: item.player_id,
+        teamId: item.team_id,
+        name: player?.display_name ?? 'Unknown player',
+        role: normalizeSquadRole(player?.role),
+        battingOrder: Number(item.batting_order),
+        jerseyNo: jerseyByPlayer.get(`${item.team_id}:${item.player_id}`) ?? undefined,
+        isCaptain: Boolean(item.is_captain),
+        isKeeper: Boolean(item.is_keeper),
+      } satisfies CloudMatchSquadPlayer;
+    });
+    const meetings = (previous ?? []).map(item => {
+      const totals = (innings ?? []).filter(row => row.match_id === item.id);
+      const totalFor = (teamId: string) => totals
+        .filter(row => row.batting_team_id === teamId)
+        .reduce((sum, row) => sum + Number(row.total_runs ?? 0), 0);
+      return {
+        id: item.id,
+        winnerTeamId: resultWinnerId(item.result),
+        teamARuns: totalFor(match.team_a_id),
+        teamBRuns: totalFor(match.team_b_id),
+      } satisfies CloudHeadToHeadMatch;
+    });
+    const awardPlayer = relationOne<{ display_name?: string }>((award as any)?.players);
+    const dimensions = award ? [
+      { label: 'batting impact', value: Number(award.batting_points ?? 0) },
+      { label: 'bowling impact', value: Number(award.bowling_points ?? 0) },
+      { label: 'fielding impact', value: Number(award.fielding_points ?? 0) },
+    ].sort((a, b) => b.value - a.value) : [];
+    return {
+      squads,
+      meetings,
+      playerOfMatch: award ? {
+        id: award.player_id,
+        name: awardPlayer?.display_name ?? 'Player of the Match',
+        reason: `Led the match for ${dimensions[0]?.label ?? 'overall impact'}.`,
+      } : undefined,
+    };
+  },
+
   subscribe(matchId: string, onChange: () => void, onError?: (message: string) => void) {
     const client = getSupabaseClient();
     const instance = (globalWithChannelCounter[CHANNEL_COUNTER_KEY] ?? 0) + 1;
@@ -222,6 +338,22 @@ export const liveMatchApi = {
     return () => { void client.removeChannel(channel); };
   },
 };
+
+function normalizeSquadRole(value: unknown): CloudMatchSquadPlayer['role'] {
+  if (value === 'BAT' || value === 'BOWL' || value === 'WK') return value;
+  return 'ALL';
+}
+
+function resultWinnerId(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const result = value as Record<string, unknown>;
+  const id = result.winnerTeamId ?? result.winner_team_id;
+  return typeof id === 'string' ? id : undefined;
+}
+
+function relationOne<T>(value: T | T[] | null | undefined): T | undefined {
+  return Array.isArray(value) ? value[0] : value ?? undefined;
+}
 
 async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLiveMatch[]> {
   if (matches.length === 0) return [];

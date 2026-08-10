@@ -45,6 +45,7 @@ export default function NewTournamentScreen() {
   const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
   const [teamCount, setTeamCount] = useState('8');
   const [playersPerTeam, setPlayersPerTeam] = useState('11');
+  const [oversPerMatch, setOversPerMatch] = useState('10');
   const [description, setDescription] = useState('');
   const [socialMediaUrl, setSocialMediaUrl] = useState('');
   const [organizerPhone, setOrganizerPhone] = useState('');
@@ -62,6 +63,7 @@ export default function NewTournamentScreen() {
   const selectFormat = (nextFormat: MatchFormat) => {
     setFormat(nextFormat);
     setPlayersPerTeam(String(DEFAULT_RULES[nextFormat].playersPerSide));
+    setOversPerMatch(String(DEFAULT_RULES[nextFormat].oversPerInnings));
   };
 
   const pickImage = async (kind: 'banner' | 'logo') => {
@@ -136,6 +138,7 @@ export default function NewTournamentScreen() {
     }
     const teams = Number(teamCount);
     const players = Number(playersPerTeam);
+    const overs = Number(oversPerMatch);
     const link = socialMediaUrl.trim();
     if (name.trim().length < 2) {
       Alert.alert('Name needed', 'Give your tournament a name.');
@@ -147,6 +150,10 @@ export default function NewTournamentScreen() {
     }
     if (!Number.isInteger(players) || players < 2 || players > 25) {
       Alert.alert('Invalid squad size', 'Choose between 2 and 25 players per team.');
+      return;
+    }
+    if (!Number.isInteger(overs) || overs < 1 || overs > 100) {
+      Alert.alert('Invalid overs', 'Choose between 1 and 100 overs per match.');
       return;
     }
     if (organizerPhone.replace(/\D/g, '').length < 7) {
@@ -176,6 +183,7 @@ export default function NewTournamentScreen() {
         googleMapsUrl,
         plannedTeamCount: teams,
         playersPerTeam: players,
+        oversPerMatch: overs,
         description: description.trim() || undefined,
         socialMediaUrl: link || undefined,
         bannerLocalUri: bannerUri,
@@ -289,6 +297,7 @@ export default function NewTournamentScreen() {
           <Field label="NUMBER OF TEAMS" value={teamCount} onChangeText={setTeamCount} keyboardType="number-pad" containerStyle={styles.flexField} />
           <Field label="PLAYERS PER TEAM" value={playersPerTeam} onChangeText={setPlayersPerTeam} keyboardType="number-pad" containerStyle={styles.flexField} />
         </View>
+        <Field label="OVERS PER MATCH" value={oversPerMatch} onChangeText={setOversPerMatch} keyboardType="number-pad" />
 
         <Field label="ORGANISER NUMBER" value={organizerPhone} onChangeText={setOrganizerPhone} keyboardType="phone-pad" placeholder="+91 98765 43210" />
         <Field label="DESCRIPTION" value={description} onChangeText={setDescription} placeholder="Tell players about the tournament…" multiline />

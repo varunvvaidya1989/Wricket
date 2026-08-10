@@ -16,8 +16,9 @@ const tabs: {
 }[] = [
   { label: 'Home', route: '/wricket/live', icon: 'home-variant-outline', isActive: path => path === '/wricket/live' },
   { label: 'Tournaments', route: '/wricket', icon: 'trophy-outline', isActive: path => path === '/wricket' || path.startsWith('/wricket/tournament') || path.startsWith('/wricket/team') || path.startsWith('/wricket/match') },
-  { label: 'My Stats', route: '/wricket/stats', icon: 'chart-line', isActive: path => path === '/wricket/stats' || path.startsWith('/wricket/player') },
-  { label: 'Me', route: '/wricket/me', icon: 'account-circle-outline', isActive: path => path === '/wricket/me' || path === '/wricket/apps' },
+  { label: 'Search', route: '/wricket/search', icon: 'magnify', isActive: path => path === '/wricket/search' || path.startsWith('/wricket/user') },
+  { label: 'Performance', route: '/wricket/stats', icon: 'chart-line', isActive: path => path === '/wricket/stats' || path.startsWith('/wricket/player') },
+  { label: 'Cricket', route: '/wricket/me', icon: 'account-circle-outline', isActive: path => path === '/wricket/me' },
 ];
 
 export function WricketTabBar() {
@@ -63,7 +64,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 2, position: 'relative' },
-  label: { fontSize: 11 },
+  label: { fontSize: 10 },
   indicator: { position: 'absolute', top: -spacing.sm, width: 28, height: 2, backgroundColor: colors.accent, borderRadius: 1 },
   pressed: { opacity: 0.72 },
 });

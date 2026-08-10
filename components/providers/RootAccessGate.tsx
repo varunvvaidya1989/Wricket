@@ -30,8 +30,7 @@ export function RootAccessGate({ children }: { children: React.ReactNode }) {
       router.replace('/');
       return;
     }
-    const cricketAccess = auth.profile?.primarySport?.code === 'CRICKET'
-      && auth.profile.primarySport.accessStatus === 'ACTIVE';
+    const cricketAccess = auth.profile?.connectedSports.some(sport => sport.code === 'CRICKET' && sport.accessStatus === 'ACTIVE');
     if (root === 'wricket' && !cricketAccess) router.replace('/');
   }, [auth.authLinkError, auth.loading, auth.profile, auth.session, root, router]);
 

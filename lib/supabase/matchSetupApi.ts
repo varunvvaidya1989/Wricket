@@ -1,5 +1,5 @@
 import { getSupabaseClient } from './client';
-import type { MatchFormat, TossChoice } from '@/lib/wricket/domain/types';
+import type { FormatRules, MatchFormat, TossChoice } from '@/lib/wricket/domain/types';
 
 interface PlayingXIEntry {
   playerId: string;
@@ -22,6 +22,7 @@ export const matchSetupApi = {
     teamAId: string;
     teamBId: string;
     format: MatchFormat;
+    rules?: FormatRules;
     scheduledAt?: string;
     venue?: string;
   }): Promise<string> {
@@ -35,7 +36,7 @@ export const matchSetupApi = {
       format: input.format,
       status: 'SETUP',
       visibility: 'PRIVATE',
-      rules: {},
+      rules: input.rules ?? {},
       created_by: authData.user.id,
       scheduled_at: input.scheduledAt ?? null,
       venue: input.venue?.trim() || null,
@@ -47,10 +48,12 @@ export const matchSetupApi = {
   async updateMatchDetails(matchId: string, input: {
     scheduledAt?: string;
     venue?: string;
+    rules?: FormatRules;
   }): Promise<void> {
     const { error } = await getSupabaseClient().from('matches').update({
       scheduled_at: input.scheduledAt ?? null,
       venue: input.venue?.trim() || null,
+      ...(input.rules ? { rules: input.rules } : {}),
       updated_at: new Date().toISOString(),
     }).eq('id', matchId);
     if (error) throw error;

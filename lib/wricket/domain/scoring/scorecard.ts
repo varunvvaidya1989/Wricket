@@ -76,6 +76,7 @@ export function scorecardForEvents(
   initialState: InningsState,
   events: readonly ScoringEvent[],
   rules: ScoringRules,
+  playerName: (playerId: string) => string = shortId,
 ): CanonicalScorecard {
   const replay = rebuildInningsState(initialState, events, rules);
   if (!replay.ok) {
@@ -96,7 +97,7 @@ export function scorecardForEvents(
 
   for (const event of events) {
     if (event.type === 'DELIVERY') {
-      applyDeliveryToScorecard(event, batters, bowlers, extras);
+      applyDeliveryToScorecard(event, batters, bowlers, extras, playerName);
     }
     if (event.type === 'ADJUSTMENT') {
       if (event.kind === 'PENALTY') extras.penalties += event.runs;
@@ -168,6 +169,7 @@ function applyDeliveryToScorecard(
   batters: Map<string, MutableBatterLine>,
   bowlers: Map<string, MutableBowlerLine>,
   extras: MutableExtrasBreakdown,
+  playerName: (playerId: string) => string,
 ): void {
   const batter = ensureBatter(batters, event.strikerId);
   const bowler = ensureBowler(bowlers, event.bowlerId);
@@ -196,7 +198,7 @@ function applyDeliveryToScorecard(
   if (event.wicket) {
     const outBatter = ensureBatter(batters, event.wicket.outPlayerId);
     outBatter.isOut = true;
-    outBatter.dismissalText = dismissalTextFor(event);
+    outBatter.dismissalText = dismissalTextFor(event, playerName);
     if (event.wicket.creditedToBowler) bowler.wickets += 1;
   }
 }
@@ -246,23 +248,23 @@ function finalizeBowlerLine(line: MutableBowlerLine, ballsPerOver: number): Cano
   };
 }
 
-function dismissalTextFor(event: DeliveryEvent): string {
+function dismissalTextFor(event: DeliveryEvent, playerName: (playerId: string) => string): string {
   if (!event.wicket) return '';
   switch (event.wicket.kind) {
     case 'BOWLED':
-      return `b ${shortId(event.bowlerId)}`;
+      return `b ${playerName(event.bowlerId)}`;
     case 'CAUGHT':
-      return `c ${shortId(event.wicket.fielderId ?? '')} b ${shortId(event.bowlerId)}`;
+      return `c ${playerName(event.wicket.fielderId ?? '')} b ${playerName(event.bowlerId)}`;
     case 'LBW':
-      return `lbw b ${shortId(event.bowlerId)}`;
+      return `lbw b ${playerName(event.bowlerId)}`;
     case 'RUN_OUT':
       return event.wicket.assistantFielderId
-        ? `run out (${shortId(event.wicket.assistantFielderId)} / ${shortId(event.wicket.fielderId ?? '')})`
-        : `run out (${shortId(event.wicket.fielderId ?? '')})`;
+        ? `run out (${playerName(event.wicket.assistantFielderId)} / ${playerName(event.wicket.fielderId ?? '')})`
+        : `run out (${playerName(event.wicket.fielderId ?? '')})`;
     case 'STUMPED':
-      return `st ${shortId(event.wicket.fielderId ?? '')} b ${shortId(event.bowlerId)}`;
+      return `st ${playerName(event.wicket.fielderId ?? '')} b ${playerName(event.bowlerId)}`;
     case 'HIT_WICKET':
-      return `hit wicket b ${shortId(event.bowlerId)}`;
+      return `hit wicket b ${playerName(event.bowlerId)}`;
     case 'RETIRED_OUT':
       return 'retired out';
   }

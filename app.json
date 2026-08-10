@@ -2,7 +2,7 @@
   "expo": {
     "name": "SportStage",
     "slug": "sportstage",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/sportstage/logo/sportstage-icon-1024.png",
     "scheme": "sportstage",
@@ -15,7 +15,7 @@
     },
     "android": {
       "package": "com.vcreativestudio.sportstage",
-      "versionCode": 1,
+      "versionCode": 4,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO"
       ],
@@ -59,7 +59,8 @@
           "photosPermission": "Allow SportStage to select tournament logos and banners."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-audio"
     ],
     "updates": {
       "enabled": false

@@ -1,9 +1,8 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Image, Linking, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
@@ -12,15 +11,18 @@ import { colors } from '@/lib/theme/colors';
 import { spacing } from '@/lib/theme/spacing';
 import { getUser } from '@/lib/wricket/db/repo';
 import { User } from '@/lib/wricket/domain/types';
+import { PersonalStats, personalStatsApi } from '@/lib/supabase/personalStatsApi';
+import { PerformanceTeaser } from '@/components/wricket/performance/PerformanceTeaser';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 interface CloudPlayer {
   id: string;
+  profile_id?: string | null;
   display_name: string;
   role?: User['role'] | null;
   batting_hand?: string | null;
   bowling_style?: string | null;
   image_url?: string | null;
-  cricheroes_url?: string | null;
   source_system?: string | null;
   source_metadata?: {
     auction_yodha?: {
@@ -33,8 +35,11 @@ interface CloudPlayer {
 
 export default function PlayerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const auth = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [cloudPlayer, setCloudPlayer] = useState<CloudPlayer | null>(null);
+  const [career, setCareer] = useState<PersonalStats>();
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(useCallback(() => {
@@ -42,22 +47,25 @@ export default function PlayerScreen() {
     void (async () => {
       if (!id) return;
       setLoading(true);
-      const [localPlayer, cloudResult] = await Promise.all([
+      const [localPlayer, cloudResult, playerCareer] = await Promise.all([
         getUser(id),
         getSupabaseClient().from('players')
-          .select('id, display_name, role, batting_hand, bowling_style, image_url, cricheroes_url, source_system, source_metadata')
+          .select('id, profile_id, display_name, role, batting_hand, bowling_style, image_url, source_system, source_metadata')
           .eq('id', id)
           .maybeSingle(),
+        personalStatsApi.getForPlayerIds([id]),
       ]);
       if (cloudResult.error) throw cloudResult.error;
       if (active) {
         setUser(localPlayer);
         setCloudPlayer(cloudResult.data as CloudPlayer | null);
+        setCareer(playerCareer);
       }
     })().catch(() => {
       if (active) {
         setUser(null);
         setCloudPlayer(null);
+        setCareer(undefined);
       }
     }).finally(() => {
       if (active) setLoading(false);
@@ -71,6 +79,8 @@ export default function PlayerScreen() {
   const name = cloudPlayer?.display_name ?? user!.name;
   const role = cloudPlayer?.role ?? user?.role ?? 'AR';
   const legacyStats = cloudPlayer?.source_metadata?.auction_yodha;
+  const displayedStats = career?.matches ? career : legacyStats;
+  const ownProfile = cloudPlayer?.profile_id === auth.session?.user.id;
 
   return (
     <Screen scroll>
@@ -93,19 +103,7 @@ export default function PlayerScreen() {
           )}
         </View>
 
-        <Card>
-          <Text variant="overline" tone="muted">CAREER</Text>
-          <View style={styles.stats}>
-            <Stat label="MATCHES" value={legacyStats?.matches ?? 0} />
-            <Stat label="RUNS" value={legacyStats?.runs ?? 0} />
-            <Stat label="WICKETS" value={legacyStats?.wickets ?? 0} />
-          </View>
-          {!legacyStats && (
-            <Text variant="caption" tone="dim" style={styles.emptyStats}>
-              Stats appear once this player has been part of matches.
-            </Text>
-          )}
-        </Card>
+        <PerformanceTeaser own={ownProfile} stats={displayedStats} onPress={() => ownProfile ? router.push('/wricket/stats') : router.push({ pathname: '/wricket/stats', params: { playerId: id, playerName: name } })} />
 
         {(cloudPlayer?.batting_hand || cloudPlayer?.bowling_style) && (
           <Card>
@@ -115,25 +113,8 @@ export default function PlayerScreen() {
           </Card>
         )}
 
-        {cloudPlayer?.cricheroes_url && (
-          <Button
-            title="Open CricHeroes profile"
-            variant="secondary"
-            onPress={() => void Linking.openURL(cloudPlayer.cricheroes_url!)}
-            fullWidth
-          />
-        )}
       </View>
     </Screen>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <View style={styles.stat}>
-      <Text variant="h2">{value}</Text>
-      <Text variant="overline" tone="muted">{label}</Text>
-    </View>
   );
 }
 
@@ -151,8 +132,5 @@ const styles = StyleSheet.create({
   },
   avatarImage: { width: 96, height: 96, borderRadius: 48, marginBottom: spacing.md },
   source: { marginTop: spacing.xs },
-  stats: { flexDirection: 'row', marginTop: spacing.md },
-  stat: { flex: 1, alignItems: 'center' },
-  emptyStats: { marginTop: spacing.sm },
   styleLine: { marginTop: spacing.sm },
 });

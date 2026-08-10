@@ -37,6 +37,13 @@ const liveSnapshotMigration = readFileSync(
   ),
   'utf8',
 );
+const abandonmentResolutionMigration = readFileSync(
+  resolve(
+    __dirname,
+    '../../../supabase/migrations/20260810101306_add_match_abandonment_resolutions.sql',
+  ),
+  'utf8',
+);
 
 describe('scoring event pipeline migration', () => {
   it('enforces one device lease and ordered idempotent events', () => {
@@ -94,5 +101,12 @@ describe('scoring event pipeline migration', () => {
       'alter publication supabase_realtime add table public.match_snapshots',
     );
     expect(liveSnapshotMigration).toContain("tablename = 'match_snapshots'");
+  });
+
+  it('persists walkover, no-result, and cancelled abandonment resolutions', () => {
+    expect(abandonmentResolutionMigration).toContain("('WALKOVER', 'NO_RESULT', 'CANCELLED')");
+    expect(abandonmentResolutionMigration).toContain("result_kind = 'WALKOVER'");
+    expect(abandonmentResolutionMigration).toContain('result = result_payload');
+    expect(abandonmentResolutionMigration).toContain('apply_match_abandonment_resolution');
   });
 });

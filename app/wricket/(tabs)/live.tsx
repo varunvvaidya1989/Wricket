@@ -15,6 +15,8 @@ import { radius, spacing } from '@/lib/theme/spacing';
 import { listTournaments } from '@/lib/wricket/db/repo';
 import { Tournament } from '@/lib/wricket/domain/types';
 import { tournamentDiscoveryApi } from '@/lib/supabase/tournamentDiscoveryApi';
+import { PersonalStats, personalStatsApi } from '@/lib/supabase/personalStatsApi';
+import { PerformanceSnapshot } from '@/components/wricket/performance/PerformanceSnapshot';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -22,6 +24,7 @@ export default function HomeScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const [matches, setMatches] = useState<CloudLiveMatch[]>([]);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [performance, setPerformance] = useState<PersonalStats>();
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -33,15 +36,17 @@ export default function HomeScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [livePage, local, relevantIds] = await Promise.all([
+      const [livePage, local, relevantIds, personalPerformance] = await Promise.all([
         liveMatchApi.listPage(),
         listTournaments(),
         auth.session ? tournamentDiscoveryApi.listRelevantIds() : Promise.resolve<Set<string> | null>(null),
+        auth.session ? personalStatsApi.get(auth.session.user.id).catch(() => undefined) : Promise.resolve(undefined),
       ]);
       setMatches(livePage.matches);
       setNextCursor(livePage.nextCursor);
       setHasMore(livePage.hasMore);
       setTournaments(relevantIds ? local.filter(item => !item.cloudId || relevantIds.has(item.cloudId)) : local);
+      setPerformance(personalPerformance);
       setError(undefined);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not refresh Home');
@@ -117,6 +122,15 @@ export default function HomeScreen() {
       {error ? <Pressable onPress={() => void load()}><Text variant="caption" tone="danger" style={styles.error}>{error} · Tap to retry</Text></Pressable> : null}
 
       <SportStageBannerAd />
+
+      {auth.session && performance ? <>
+        <View style={styles.section}><SectionLabel>Your performance</SectionLabel></View>
+        <PerformanceSnapshot
+          name={auth.profile?.displayName ?? auth.session.user.email?.split('@')[0] ?? 'Player'}
+          stats={performance}
+          onPress={() => router.navigate('/wricket/stats')}
+        />
+      </> : null}
 
       <View style={styles.section}><SectionLabel>Your tournaments</SectionLabel><Pressable onPress={() => router.navigate('/wricket')}><Text variant="caption" tone="accent">VIEW ALL</Text></Pressable></View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>

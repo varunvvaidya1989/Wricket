@@ -198,6 +198,15 @@ export const teamManagementApi = {
     if (error) throw error;
   },
 
+  async setWicketKeeper(teamId: string, playerId: string, isKeeper: boolean): Promise<void> {
+    const { error } = await getSupabaseClient().rpc('set_team_player_keeper', {
+      p_team_id: teamId,
+      p_player_id: playerId,
+      p_is_keeper: isKeeper,
+    });
+    if (error) throw error;
+  },
+
   async listInvitations(teamId: string): Promise<TeamInvitation[]> {
     const { data, error } = await getSupabaseClient().from('team_invitations')
       .select('id, role, invited_email, use_count, max_uses, expires_at, revoked_at')

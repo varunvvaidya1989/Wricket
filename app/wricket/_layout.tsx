@@ -1,10 +1,12 @@
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { View } from 'react-native';
 
 import { WricketTabBar } from '@/components/wricket/navigation/WricketTabBar';
 import { colors } from '@/lib/theme/colors';
 
 export default function WricketLayout() {
+  const pathname = usePathname();
+  const isScoring = /^\/wricket\/match\/[^/]+\/score$/.test(pathname);
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Stack
@@ -25,8 +27,10 @@ export default function WricketLayout() {
         <Stack.Screen name="match/[id]/live" options={{ title: 'Live score' }} />
         <Stack.Screen name="match/[id]/scorecard" options={{ title: 'Scorecard' }} />
         <Stack.Screen name="player/[id]" options={{ title: '' }} />
+        <Stack.Screen name="user/[id]" options={{ title: '' }} />
+        <Stack.Screen name="ay-profile-link" options={{ title: 'Connect player profile' }} />
       </Stack>
-      <WricketTabBar />
+      {!isScoring ? <WricketTabBar /> : null}
     </View>
   );
 }

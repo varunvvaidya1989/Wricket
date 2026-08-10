@@ -270,6 +270,7 @@ export function MatchMoments({
         const canRemove = canModerate || moment.authorId === profileId;
         return (
           <Card key={moment.id} style={styles.momentCard}>
+            {moment.systemType && <TournamentResultBanner moment={moment} />}
             <View style={styles.momentHeader}>
               <View style={styles.avatar}>
                 <Text variant="bodyStrong">{moment.authorName.slice(0, 1).toUpperCase()}</Text>
@@ -289,7 +290,7 @@ export function MatchMoments({
                 />
               </Pressable>
             </View>
-            <Text variant="body" style={{ marginTop: spacing.md }}>{moment.caption}</Text>
+            {!moment.systemType && <Text variant="body" style={{ marginTop: spacing.md }}>{moment.caption}</Text>}
             {moment.imageUrl && (isPlaceholderImage(moment.imageUrl)
               ? <MomentPhotoPlaceholder author={moment.authorName} />
               : <Image source={{ uri: moment.imageUrl }} style={styles.momentImage} />)}
@@ -385,6 +386,27 @@ function ReactionButton({
   );
 }
 
+function TournamentResultBanner({ moment }: { moment: MatchMoment }) {
+  const champion = moment.systemType === 'TOURNAMENT_CHAMPION';
+  return (
+    <View style={[styles.resultBanner, champion ? styles.championBanner : styles.runnerUpBanner]}>
+      <View style={styles.resultGlow} />
+      {moment.featuredTeamLogoUrl ? (
+        <Image source={{ uri: moment.featuredTeamLogoUrl }} style={styles.resultLogo} />
+      ) : (
+        <View style={styles.resultLogoFallback}>
+          <MaterialCommunityIcons name={champion ? 'trophy' : 'medal-outline'} size={34} color={palette.white} />
+        </View>
+      )}
+      <Text variant="caption" style={styles.resultEyebrow}>
+        {champion ? 'TOURNAMENT CHAMPIONS' : 'TOURNAMENT RUNNERS-UP'}
+      </Text>
+      <Text variant="h2" style={styles.resultTeam}>{moment.featuredTeamName}</Text>
+      <Text variant="caption" style={styles.resultCaption}>{moment.caption}</Text>
+    </View>
+  );
+}
+
 function PickerOption({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
   return (
     <Pressable style={styles.pickerOption} onPress={onPress}>
@@ -450,6 +472,30 @@ const styles = StyleSheet.create({
   previewImage: { width: '100%', height: 180, borderRadius: radius.md },
   removePhoto: { position: 'absolute', right: spacing.sm, top: spacing.sm },
   momentCard: { gap: spacing.xs },
+  resultBanner: {
+    minHeight: 220,
+    marginBottom: spacing.md,
+    padding: spacing.xl,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  championBanner: { backgroundColor: '#8A5B08' },
+  runnerUpBanner: { backgroundColor: '#485563' },
+  resultGlow: {
+    position: 'absolute', width: 240, height: 240, borderRadius: 120,
+    backgroundColor: 'rgba(255,255,255,0.10)', top: -130,
+  },
+  resultLogo: { width: 72, height: 72, borderRadius: 36, backgroundColor: palette.white },
+  resultLogoFallback: {
+    width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)',
+  },
+  resultEyebrow: { color: palette.white, letterSpacing: 1.8 },
+  resultTeam: { color: palette.white, textAlign: 'center' },
+  resultCaption: { color: 'rgba(255,255,255,0.82)', textAlign: 'center' },
   momentHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   avatar: {
     width: 38,

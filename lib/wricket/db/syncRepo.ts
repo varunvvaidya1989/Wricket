@@ -142,6 +142,7 @@ export async function mergeCloudTournament(input: {
   googleMapsUrl?: string;
   plannedTeamCount: number;
   playersPerTeam: number;
+  oversPerMatch: number;
   description?: string;
   socialMediaUrl?: string;
   bannerUrl?: string;
@@ -159,9 +160,9 @@ export async function mergeCloudTournament(input: {
        (id, name, format, start_date, end_date, points_win, points_tie, points_loss,
         points_no_result, status, created_at, cloud_id, sync_status, sync_error, updated_at,
         organizer_profile_id, organizer_phone, location, latitude, longitude, google_place_id,
-        google_maps_url, planned_team_count, players_per_team,
+        google_maps_url, planned_team_count, players_per_team, overs_per_match,
         description, social_media_url, banner_url, logo_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, 'SYNCED', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, 'SYNCED', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET name=excluded.name, format=excluded.format,
        start_date=excluded.start_date, end_date=excluded.end_date,
        points_win=excluded.points_win, points_tie=excluded.points_tie,
@@ -171,6 +172,7 @@ export async function mergeCloudTournament(input: {
        location=excluded.location, latitude=excluded.latitude, longitude=excluded.longitude,
        google_place_id=excluded.google_place_id, google_maps_url=excluded.google_maps_url,
        planned_team_count=excluded.planned_team_count, players_per_team=excluded.players_per_team,
+       overs_per_match=excluded.overs_per_match,
        description=excluded.description, social_media_url=excluded.social_media_url,
        banner_url=excluded.banner_url, logo_url=excluded.logo_url`,
     id, input.name, input.format, input.startDate, input.endDate ?? null,
@@ -178,7 +180,7 @@ export async function mergeCloudTournament(input: {
     input.createdAt, input.cloudId, Date.now(), input.organizerProfileId ?? null,
     input.organizerPhone ?? null, input.location ?? null, input.latitude ?? null, input.longitude ?? null,
     input.googlePlaceId ?? null, input.googleMapsUrl ?? null,
-    input.plannedTeamCount, input.playersPerTeam,
+    input.plannedTeamCount, input.playersPerTeam, input.oversPerMatch,
     input.description ?? null, input.socialMediaUrl ?? null,
     input.bannerUrl ?? null, input.logoUrl ?? null,
   );

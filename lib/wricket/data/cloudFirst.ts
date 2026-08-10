@@ -41,6 +41,7 @@ export async function createOnlineTournament(
     googleMapsUrl: input.googleMapsUrl,
     plannedTeamCount: input.plannedTeamCount,
     playersPerTeam: input.playersPerTeam,
+    oversPerMatch: input.oversPerMatch,
     description: input.description,
     socialMediaUrl: input.socialMediaUrl,
     bannerUrl: cloud.bannerUrl,

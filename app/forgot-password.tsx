@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Text } from '@/components/ui/Text';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
+import { authErrorMessage } from '@/lib/supabase/authErrors';
 
 export default function ForgotPasswordScreen() {
   const auth = useAuth();
@@ -22,7 +23,7 @@ export default function ForgotPasswordScreen() {
       Alert.alert('Check your email', 'If an account exists, a password reset link has been sent.');
       router.replace('/auth');
     } catch (cause) {
-      Alert.alert('Could not send reset link', cause instanceof Error ? cause.message : 'Please try again.');
+      Alert.alert('Could not send reset link', authErrorMessage(cause, 'Could not send a reset link. Please try again.'));
     } finally { setSaving(false); }
   };
 

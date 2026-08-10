@@ -29,8 +29,9 @@ import {
   createInnings,
   setMatchStatus,
 } from '@/lib/wricket/db/repo';
-import { Team, User, MatchFormat, FORMAT_LABEL, DEFAULT_RULES, TossChoice } from '@/lib/wricket/domain/types';
+import { Team, User, MatchFormat, FORMAT_LABEL, DEFAULT_RULES, TossChoice, FormatRules } from '@/lib/wricket/domain/types';
 import { matchSetupApi } from '@/lib/supabase/matchSetupApi';
+import { teamManagementApi } from '@/lib/supabase/teamManagementApi';
 import { fixturesApi } from '@/lib/supabase/fixturesApi';
 import { googleStaticMapUrl } from '@/lib/maps/googlePlaces';
 import { VirtualCoinToss } from '@/components/sports/VirtualCoinToss';
@@ -69,6 +70,14 @@ export default function NewMatchScreen() {
   const [teamBId, setTeamBId] = useState<string | null>(initialTeamBId ?? null);
   const [playersA, setPlayersA] = useState<User[]>([]);
   const [playersB, setPlayersB] = useState<User[]>([]);
+  const [selectedAIds, setSelectedAIds] = useState<string[]>([]);
+  const [selectedBIds, setSelectedBIds] = useState<string[]>([]);
+  const [matchCaptainAId, setMatchCaptainAId] = useState<string>();
+  const [matchCaptainBId, setMatchCaptainBId] = useState<string>();
+  const [captainCloudIdA, setCaptainCloudIdA] = useState<string>();
+  const [captainCloudIdB, setCaptainCloudIdB] = useState<string>();
+  const [oversInput, setOversInput] = useState(String(DEFAULT_RULES[format].oversPerInnings));
+  const [playingCountInput, setPlayingCountInput] = useState(String(Math.min(11, DEFAULT_RULES[format].playersPerSide)));
   const [tossWinnerId, setTossWinnerId] = useState<string | null>(null);
   const [tossChoice, setTossChoice] = useState<TossChoice | null>(null);
   const [saving, setSaving] = useState(false);
@@ -80,6 +89,8 @@ export default function NewMatchScreen() {
   );
   const [isTournamentMatch, setIsTournamentMatch] = useState(Boolean(tournamentId));
   const [selectedTournament, setSelectedTournament] = useState<Awaited<ReturnType<typeof getTournament>>>(null);
+  const teamA = allTeams.find(t => t.id === teamAId);
+  const teamB = allTeams.find(t => t.id === teamBId);
 
   useEffect(() => {
     (async () => {
@@ -91,6 +102,8 @@ export default function NewMatchScreen() {
       if (tournament) {
         setSelectedTournament(tournament);
         setFormat(tournament.format);
+        setOversInput(String(tournament.oversPerMatch));
+        setPlayingCountInput(String(Math.min(11, tournament.playersPerTeam)));
         // Tournament fixtures always inherit the canonical tournament venue.
         setVenue(tournament.location ?? '');
         setIsTournamentMatch(true);
@@ -112,13 +125,34 @@ export default function NewMatchScreen() {
     })();
   }, [teamBId]);
 
-  const teamA = allTeams.find(t => t.id === teamAId);
-  const teamB = allTeams.find(t => t.id === teamBId);
-  const rules = DEFAULT_RULES[format];
+  useEffect(() => {
+    const loadEligibility = async () => {
+      if (!teamA?.cloudId || !teamB?.cloudId) return;
+      const [rosterA, rosterB] = await Promise.all([
+        teamManagementApi.listRoster(teamA.cloudId),
+        teamManagementApi.listRoster(teamB.cloudId),
+      ]);
+      setCaptainCloudIdA(rosterA.find(member => member.role === 'CAPTAIN')?.playerId);
+      setCaptainCloudIdB(rosterB.find(member => member.role === 'CAPTAIN')?.playerId);
+    };
+    void loadEligibility().catch(cause => Alert.alert('Could not load roster roles', cause instanceof Error ? cause.message : 'Please try again.'));
+  }, [teamA?.cloudId, teamB?.cloudId]);
+
+  const playingCount = Number(playingCountInput);
+  const oversPerInnings = Number(oversInput);
+  const rules = {
+    ...DEFAULT_RULES[format],
+    playersPerSide: Number.isInteger(playingCount) ? playingCount : 0,
+    oversPerInnings: Number.isInteger(oversPerInnings) ? oversPerInnings : 0,
+  };
 
   const canProceedTeams = teamAId && teamBId && teamAId !== teamBId;
-  const canProceedPlayers =
-    playersA.length >= rules.playersPerSide && playersB.length >= rules.playersPerSide;
+  const canProceedPlayers = rules.playersPerSide > 0 && rules.playersPerSide <= 11
+    && rules.playersPerSide <= playersA.length && rules.playersPerSide <= playersB.length
+    && rules.oversPerInnings > 0 && rules.oversPerInnings <= 100
+    && selectedAIds.length === rules.playersPerSide && selectedBIds.length === rules.playersPerSide
+    && Boolean(matchCaptainAId && selectedAIds.includes(matchCaptainAId))
+    && Boolean(matchCaptainBId && selectedBIds.includes(matchCaptainBId));
   const canProceedToss = !!tossWinnerId && !!tossChoice;
 
   const onStart = async () => {
@@ -133,8 +167,8 @@ export default function NewMatchScreen() {
       if (!teamA.cloudId || !teamB.cloudId) {
         throw new Error('Both teams must be available online before starting the match');
       }
-      const selectedPlayersA = playersA.slice(0, rules.playersPerSide);
-      const selectedPlayersB = playersB.slice(0, rules.playersPerSide);
+      const selectedPlayersA = selectedAIds.map(id => playersA.find(player => player.id === id)).filter(Boolean) as User[];
+      const selectedPlayersB = selectedBIds.map(id => playersB.find(player => player.id === id)).filter(Boolean) as User[];
       if (selectedPlayersA.some(player => !player.cloudId) || selectedPlayersB.some(player => !player.cloudId)) {
         throw new Error('Every selected player must be available online before starting the match');
       }
@@ -148,24 +182,25 @@ export default function NewMatchScreen() {
           teamAId: teamA.cloudId,
           teamBId: teamB.cloudId,
           format,
+          rules,
           scheduledAt,
           venue,
         });
       }
-      await matchSetupApi.updateMatchDetails(cloudMatchId, { scheduledAt, venue });
+      await matchSetupApi.updateMatchDetails(cloudMatchId, { scheduledAt, venue, rules });
       const cloudTossWinnerId = tossWinnerId === teamAId ? teamA.cloudId : teamB.cloudId;
       const cloudSetup = await matchSetupApi.startMatch({
         matchId: cloudMatchId,
         teamAXI: selectedPlayersA.map((player, index) => ({
           playerId: player.cloudId!,
           battingOrder: index + 1,
-          isCaptain: index === 0,
+          isCaptain: player.id === matchCaptainAId,
           isKeeper: false,
         })),
         teamBXI: selectedPlayersB.map((player, index) => ({
           playerId: player.cloudId!,
           battingOrder: index + 1,
-          isCaptain: index === 0,
+          isCaptain: player.id === matchCaptainBId,
           isKeeper: false,
         })),
         tossWinnerTeamId: cloudTossWinnerId,
@@ -176,6 +211,7 @@ export default function NewMatchScreen() {
         id: cloudMatchId,
         tournamentId: tournamentId ?? null,
         format,
+        rules,
         teamAId,
         teamBId,
         venue: venue.trim() || undefined,
@@ -183,25 +219,23 @@ export default function NewMatchScreen() {
       });
       await setMatchToss(match.id, tossWinnerId, tossChoice);
 
-      // Set XIs from current rosters (max playersPerSide)
-      const max = rules.playersPerSide;
       await setMatchXI(
         match.id,
         teamAId,
-        playersA.slice(0, max).map((p, i) => ({
+        selectedPlayersA.map((p, i) => ({
           userId: p.id,
           battingOrder: i + 1,
-          isCaptain: i === 0,
+          isCaptain: p.id === matchCaptainAId,
           isKeeper: false,
         })),
       );
       await setMatchXI(
         match.id,
         teamBId,
-        playersB.slice(0, max).map((p, i) => ({
+        selectedPlayersB.map((p, i) => ({
           userId: p.id,
           battingOrder: i + 1,
-          isCaptain: i === 0,
+          isCaptain: p.id === matchCaptainBId,
           isKeeper: false,
         })),
       );
@@ -292,6 +326,20 @@ export default function NewMatchScreen() {
               if (teamBId) setPlayersB(await listTeamPlayers(teamBId));
             }}
             maxPerSide={rules.playersPerSide}
+            oversInput={oversInput}
+            setOversInput={setOversInput}
+            playingCountInput={playingCountInput}
+            setPlayingCountInput={setPlayingCountInput}
+            selectedAIds={selectedAIds}
+            selectedBIds={selectedBIds}
+            setSelectedAIds={setSelectedAIds}
+            setSelectedBIds={setSelectedBIds}
+            captainCloudIdA={captainCloudIdA}
+            captainCloudIdB={captainCloudIdB}
+            matchCaptainAId={matchCaptainAId}
+            matchCaptainBId={matchCaptainBId}
+            setMatchCaptainAId={setMatchCaptainAId}
+            setMatchCaptainBId={setMatchCaptainBId}
           />
         )}
 
@@ -311,8 +359,9 @@ export default function NewMatchScreen() {
             format={format}
             teamA={teamA}
             teamB={teamB}
-            playersA={playersA}
-            playersB={playersB}
+            playersA={selectedAIds.map(id => playersA.find(player => player.id === id)).filter(Boolean) as User[]}
+            playersB={selectedBIds.map(id => playersB.find(player => player.id === id)).filter(Boolean) as User[]}
+            rules={rules}
             tossWinnerName={tossWinnerId === teamAId ? teamA.name : teamB.name}
             tossChoice={tossChoice}
             venue={venue}
@@ -341,8 +390,8 @@ export default function NewMatchScreen() {
                 }
                 if (step === 'players' && !canProceedPlayers) {
                   Alert.alert(
-                    'Add players',
-                    `Each team needs ${rules.playersPerSide} players for ${FORMAT_LABEL[format]}.`,
+                    'Playing XI incomplete',
+                    `Select exactly ${rules.playersPerSide} players and one match captain for each team.`,
                   );
                   return;
                 }
@@ -375,7 +424,7 @@ function prevStep(s: Step): Step {
 
 function StepBadge({ step }: { step: Step }) {
   const stepNum = { teams: 1, players: 2, toss: 3, review: 4 }[step];
-  const title = { teams: 'Teams & format', players: 'Players', toss: 'Toss', review: 'Review' }[step];
+  const title = { teams: 'Teams & format', players: 'Match rules & Playing XI', toss: 'Toss', review: 'Review' }[step];
   return (
     <View>
       <Text variant="overline" tone="muted">Step {stepNum} of 4</Text>
@@ -565,37 +614,75 @@ function TeamPicker({
 }
 
 function PlayersStep({
-  teamA, teamB, playersA, playersB, onChange, maxPerSide,
+  teamA, teamB, playersA, playersB, maxPerSide, oversInput, setOversInput,
+  playingCountInput, setPlayingCountInput, selectedAIds, selectedBIds,
+  setSelectedAIds, setSelectedBIds,
+  captainCloudIdA, captainCloudIdB,
+  matchCaptainAId, matchCaptainBId, setMatchCaptainAId, setMatchCaptainBId,
 }: {
-  teamA: Team;
-  teamB: Team;
-  playersA: User[];
-  playersB: User[];
-  onChange: () => void;
-  maxPerSide: number;
+  teamA: Team; teamB: Team; playersA: User[]; playersB: User[]; onChange: () => void;
+  maxPerSide: number; oversInput: string; setOversInput: (value: string) => void;
+  playingCountInput: string; setPlayingCountInput: (value: string) => void;
+  selectedAIds: string[]; selectedBIds: string[];
+  setSelectedAIds: React.Dispatch<React.SetStateAction<string[]>>;
+  setSelectedBIds: React.Dispatch<React.SetStateAction<string[]>>;
+  captainCloudIdA?: string; captainCloudIdB?: string;
+  matchCaptainAId?: string; matchCaptainBId?: string;
+  setMatchCaptainAId: (value?: string) => void; setMatchCaptainBId: (value?: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const filter = (players: User[]) => players.filter(player => player.name.toLowerCase().includes(query.trim().toLowerCase()));
+  useEffect(() => {
+    setSelectedAIds(current => fitPlayingSelection(current, playersA, maxPerSide, captainCloudIdA));
+    setSelectedBIds(current => fitPlayingSelection(current, playersB, maxPerSide, captainCloudIdB));
+  }, [captainCloudIdA, captainCloudIdB, maxPerSide, playersA, playersB, setSelectedAIds, setSelectedBIds]);
+  useEffect(() => {
+    const squadCaptainA = playersA.find(player => player.cloudId === captainCloudIdA);
+    const squadCaptainB = playersB.find(player => player.cloudId === captainCloudIdB);
+    if (!matchCaptainAId && squadCaptainA && selectedAIds.includes(squadCaptainA.id)) setMatchCaptainAId(squadCaptainA.id);
+    if (!matchCaptainBId && squadCaptainB && selectedBIds.includes(squadCaptainB.id)) setMatchCaptainBId(squadCaptainB.id);
+  }, [captainCloudIdA, captainCloudIdB, matchCaptainAId, matchCaptainBId, playersA, playersB, selectedAIds, selectedBIds, setMatchCaptainAId, setMatchCaptainBId]);
+  useEffect(() => {
+    if (matchCaptainAId && !selectedAIds.includes(matchCaptainAId)) setMatchCaptainAId(undefined);
+    if (matchCaptainBId && !selectedBIds.includes(matchCaptainBId)) setMatchCaptainBId(undefined);
+  }, [matchCaptainAId, matchCaptainBId, selectedAIds, selectedBIds, setMatchCaptainAId, setMatchCaptainBId]);
   return (
     <View style={{ gap: spacing.lg }}>
+      <Card style={styles.rulesCard}>
+        <Text variant="h3">Match rules</Text>
+        <Text variant="caption" tone="muted">These values apply to this match only.</Text>
+        <View style={styles.ruleInputs}>
+          <View style={{ flex: 1 }}><Text variant="caption" tone="muted">OVERS</Text><TextInput value={oversInput} onChangeText={setOversInput} keyboardType="number-pad" style={styles.input} /></View>
+          <View style={{ flex: 1 }}><Text variant="caption" tone="muted">PLAYERS PER SIDE</Text><TextInput value={playingCountInput} onChangeText={setPlayingCountInput} keyboardType="number-pad" style={styles.input} /></View>
+        </View>
+      </Card>
       <TextInput value={query} onChangeText={setQuery} placeholder="Search players…" placeholderTextColor={colors.textDim} style={styles.searchInput} />
-      <Text variant="caption" tone="muted">Review the searchable rosters before continuing.</Text>
-      <TeamPlayersBlock team={teamA} players={filter(playersA)} total={playersA.length} max={maxPerSide} onChange={onChange} />
-      <TeamPlayersBlock team={teamB} players={filter(playersB)} total={playersB.length} max={maxPerSide} onChange={onChange} />
+      <Text variant="caption" tone="muted">Select the Playing XI and one match captain for each team.</Text>
+      <TeamPlayersBlock team={teamA} players={filter(playersA)} selectedIds={selectedAIds} max={maxPerSide} setSelectedIds={setSelectedAIds} captainId={matchCaptainAId} setCaptainId={setMatchCaptainAId} />
+      <TeamPlayersBlock team={teamB} players={filter(playersB)} selectedIds={selectedBIds} max={maxPerSide} setSelectedIds={setSelectedBIds} captainId={matchCaptainBId} setCaptainId={setMatchCaptainBId} />
     </View>
   );
 }
 
 function TeamPlayersBlock({
-  team, players, total, max,
+  team, players, selectedIds, max, setSelectedIds, captainId, setCaptainId,
 }: {
-  team: Team;
-  players: User[];
-  total: number;
-  max: number;
-  onChange: () => void;
+  team: Team; players: User[]; selectedIds: string[]; max: number;
+  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
+  captainId?: string; setCaptainId: (value?: string) => void;
 }) {
   const router = useRouter();
+  const togglePlayer = (player: User) => setSelectedIds(current => {
+    if (current.includes(player.id)) {
+      if (captainId === player.id) {
+        setCaptainId(undefined);
+        Alert.alert('Select a new match captain', `${player.name} was removed from the Playing XI. Choose another selected player as captain.`);
+      }
+      return current.filter(id => id !== player.id);
+    }
+    if (current.length >= max) return current;
+    return [...current, player.id];
+  });
 
   return (
     <View>
@@ -604,21 +691,27 @@ function TeamPlayersBlock({
           <Text variant="caption" style={{ color: palette.black, fontWeight: '800' }}>{team.shortName}</Text>
         </View>
         <Text variant="bodyStrong" style={{ flex: 1 }}>{team.name}</Text>
-        <Text variant="caption" tone={total >= max ? 'accent' : 'muted'}>{total}/{max}</Text>
+        <Text variant="caption" tone={selectedIds.length === max ? 'accent' : 'muted'}>{selectedIds.length}/{max} selected</Text>
       </View>
 
       <Card>
         {players.length === 0 && (
           <Text variant="caption" tone="muted">No signed-in players have joined this team yet.</Text>
         )}
-        {players.map((p, i) => (
-          <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm }}>
+        {players.map((p, i) => {
+          const selected = selectedIds.includes(p.id);
+          return <Pressable key={p.id} onPress={() => togglePlayer(p)} style={[styles.xiPlayerRow, selected && styles.xiPlayerRowSelected]}>
             <Text variant="caption" tone="muted" style={{ width: 24 }}>{i + 1}</Text>
+            <MaterialCommunityIcons name={selected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} size={21} color={selected ? colors.accent : colors.textDim} />
             <Text variant="body" style={{ flex: 1 }}>{p.name}</Text>
-          </View>
-        ))}
+            {selected ? <Pressable onPress={event => { event.stopPropagation(); setCaptainId(p.id); }} style={[styles.captainChip, captainId === p.id && styles.captainChipActive]}>
+              <MaterialCommunityIcons name="account-star" size={16} color={captainId === p.id ? colors.accentInk : colors.textMuted} />
+              <Text variant="caption" style={{ color: captainId === p.id ? colors.accentInk : colors.textMuted }}>{captainId === p.id ? 'CAPTAIN' : 'C'}</Text>
+            </Pressable> : null}
+          </Pressable>;
+        })}
 
-        {team.cloudId && total < max && (
+        {team.cloudId && players.length < max && (
           <Pressable
             onPress={() => router.push({ pathname: '/wricket/team/[id]', params: { id: team.cloudId! } })}
             style={styles.addRow}
@@ -630,6 +723,19 @@ function TeamPlayersBlock({
       </Card>
     </View>
   );
+}
+
+function fitPlayingSelection(current: string[], players: User[], count: number, captainCloudId?: string): string[] {
+  if (!Number.isInteger(count) || count < 1) return [];
+  const available = new Set(players.map(player => player.id));
+  const captain = players.find(player => player.cloudId === captainCloudId);
+  const kept = current.filter(id => available.has(id)).slice(0, count);
+  if (captain && !kept.includes(captain.id)) {
+    if (kept.length === count) kept.pop();
+    kept.unshift(captain.id);
+  }
+  const remaining = players.filter(player => !kept.includes(player.id)).slice(0, count - kept.length);
+  return [...kept, ...remaining.map(player => player.id)];
 }
 
 function TossStep({
@@ -790,19 +896,20 @@ function TossDecision({
 }
 
 function ReviewStep({
-  format, teamA, teamB, playersA, playersB, tossWinnerName, tossChoice, venue, scheduledAt,
+  format, teamA, teamB, playersA, playersB, rules, tossWinnerName, tossChoice, venue, scheduledAt,
 }: {
   format: MatchFormat;
   teamA: Team;
   teamB: Team;
   playersA: User[];
   playersB: User[];
+  rules: FormatRules;
   tossWinnerName: string;
   tossChoice: TossChoice;
   venue: string;
   scheduledAt: string;
 }) {
-  const r = DEFAULT_RULES[format];
+  const r = rules;
   return (
     <View style={{ gap: spacing.md }}>
       <Card>
@@ -840,6 +947,12 @@ function ReviewStep({
 
 const styles = StyleSheet.create({
   searchInput: { minHeight: 46, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: spacing.md, fontSize: 15 },
+  rulesCard: { gap: spacing.sm },
+  ruleInputs: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
+  xiPlayerRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  xiPlayerRowSelected: { backgroundColor: colors.surfaceElevated },
+  captainChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+  captainChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   teamRowLocked: { opacity: 0.4 },
   chip: {
     backgroundColor: colors.surface,

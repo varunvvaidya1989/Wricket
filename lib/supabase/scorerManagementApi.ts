@@ -20,6 +20,17 @@ export interface TournamentScorer {
 }
 
 export const scorerManagementApi = {
+  async canScoreTournament(tournamentId: string, accountId: string): Promise<boolean> {
+    const { data, error } = await getSupabaseClient().from('tournament_members')
+      .select('role, status')
+      .eq('tournament_id', tournamentId)
+      .eq('account_id', accountId)
+      .eq('status', 'ACTIVE')
+      .maybeSingle();
+    if (error) throw error;
+    return data?.role === 'OWNER' || data?.role === 'ADMIN' || data?.role === 'SCORER';
+  },
+
   async list(tournamentId: string): Promise<TournamentScorer[]> {
     const { data, error } = await getSupabaseClient().rpc('list_tournament_scorers', {
       p_tournament_id: tournamentId,

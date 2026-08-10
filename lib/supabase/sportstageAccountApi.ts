@@ -25,10 +25,11 @@ export const sportstageAccountApi = {
     }));
   },
 
-  async completeOnboarding(displayName: string, sportCode: string): Promise<void> {
-    const { error } = await getSupabaseClient().rpc('complete_sportstage_onboarding', {
+  async saveSports(displayName: string, sportCodes: string[], primarySportCode: string): Promise<void> {
+    const { error } = await getSupabaseClient().rpc('save_my_sports', {
       p_display_name: displayName.trim(),
-      p_sport_code: sportCode,
+      p_sport_codes: sportCodes,
+      p_primary_sport_code: primarySportCode,
     });
     if (error) throw error;
   },

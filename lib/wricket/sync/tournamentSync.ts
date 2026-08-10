@@ -111,6 +111,7 @@ export async function syncTournamentData(
       googleMapsUrl: item.google_maps_url ?? undefined,
       plannedTeamCount: item.planned_team_count ?? 2,
       playersPerTeam: item.players_per_team ?? 11,
+      oversPerMatch: item.overs_per_match ?? 20,
       description: item.description ?? undefined,
       socialMediaUrl: item.social_media_url ?? undefined,
       bannerUrl: item.banner_url ?? undefined,

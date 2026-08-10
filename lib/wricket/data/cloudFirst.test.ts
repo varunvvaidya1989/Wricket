@@ -34,6 +34,7 @@ describe('cloud-first entity creation', () => {
       startDate: createdAt,
       plannedTeamCount: 8,
       playersPerTeam: 11,
+      oversPerMatch: 20,
     };
     const cached = {
       id: 'cloud-tournament-id',

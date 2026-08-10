@@ -14,6 +14,7 @@ export interface CloudTournamentCreateInput {
   googleMapsUrl?: string;
   plannedTeamCount: number;
   playersPerTeam: number;
+  oversPerMatch: number;
   description?: string;
   socialMediaUrl?: string;
   bannerLocalUri?: string;
@@ -43,6 +44,7 @@ export async function createCloudTournament(
       end_date: input.endDate ? dateOnly(input.endDate) : null,
       planned_team_count: input.plannedTeamCount,
       players_per_team: input.playersPerTeam,
+      overs_per_match: input.oversPerMatch,
       description: input.description ?? null,
       social_media_url: input.socialMediaUrl ?? null,
       organizer_phone: input.organizerPhone ?? null,
@@ -140,6 +142,7 @@ export async function upsertCloudTournament(
       end_date: tournament.endDate ? dateOnly(tournament.endDate) : null,
       planned_team_count: tournament.plannedTeamCount,
       players_per_team: tournament.playersPerTeam,
+      overs_per_match: tournament.oversPerMatch,
       description: tournament.description ?? null,
       social_media_url: tournament.socialMediaUrl ?? null,
       organizer_phone: tournament.organizerPhone ?? null,
@@ -223,7 +226,7 @@ export async function upsertCloudTeamPlayer(input: {
 export async function listCloudTournaments() {
   const { data, error } = await getSupabaseClient()
     .from('tournaments')
-    .select('id, created_by, source_local_id, name, format, start_date, start_at, end_date, planned_team_count, players_per_team, description, social_media_url, organizer_phone, location, latitude, longitude, google_place_id, google_maps_url, banner_url, logo_url, points_win, points_tie, points_loss, points_no_result, created_at')
+    .select('id, created_by, source_local_id, name, format, start_date, start_at, end_date, planned_team_count, players_per_team, overs_per_match, description, social_media_url, organizer_phone, location, latitude, longitude, google_place_id, google_maps_url, banner_url, logo_url, points_win, points_tie, points_loss, points_no_result, created_at')
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data;

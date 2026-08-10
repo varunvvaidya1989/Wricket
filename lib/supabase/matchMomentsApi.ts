@@ -5,6 +5,7 @@ const MOMENTS_BUCKET = 'match-moments';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export type MomentReactionType = 'LIKE' | 'FIRE' | 'CLAP';
+export type SystemMomentType = 'TOURNAMENT_CHAMPION' | 'TOURNAMENT_RUNNER_UP';
 
 export interface MomentComment {
   id: string;
@@ -25,6 +26,9 @@ export interface MatchMoment {
   imageUrl?: string;
   createdAt: string;
   pinned: boolean;
+  systemType?: SystemMomentType;
+  featuredTeamName?: string;
+  featuredTeamLogoUrl?: string;
   reactions: Record<MomentReactionType, number>;
   myReactions: MomentReactionType[];
   comments: MomentComment[];
@@ -48,8 +52,9 @@ export const matchMomentsApi = {
     const client = getSupabaseClient();
     const { data: moments, error } = await client.from('match_moments')
       .select(`
-        id, tournament_id, match_id, author_id, caption, pinned_at, created_at,
+        id, tournament_id, match_id, author_id, caption, pinned_at, created_at, system_type,
         author:profiles!match_moments_author_id_fkey(display_name),
+        featured_team:teams!match_moments_featured_team_id_fkey(name, logo_url),
         media:moment_media(id, storage_path, processing_status)
       `)
       .eq('tournament_id', tournamentId)
@@ -136,6 +141,9 @@ export const matchMomentsApi = {
         imageUrl,
         createdAt: moment.created_at,
         pinned: Boolean(moment.pinned_at),
+        systemType: moment.system_type ?? undefined,
+        featuredTeamName: relationOne(moment.featured_team)?.name,
+        featuredTeamLogoUrl: relationOne(moment.featured_team)?.logo_url ?? undefined,
         reactions: reaction.counts,
         myReactions: reaction.mine,
         comments: commentsByMoment.get(moment.id) ?? [],

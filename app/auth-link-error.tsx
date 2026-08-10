@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Text } from '@/components/ui/Text';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
+import { authErrorMessage } from '@/lib/supabase/authErrors';
 
 export default function AuthLinkErrorScreen() {
   const auth = useAuth();
@@ -31,7 +32,7 @@ export default function AuthLinkErrorScreen() {
       else await auth.requestPasswordReset(email);
       Alert.alert('New email sent', 'Check your inbox and use the newest SportStage link.');
     } catch (cause) {
-      Alert.alert('Could not send email', cause instanceof Error ? cause.message : 'Wait a moment and try again.');
+      Alert.alert('Could not send email', authErrorMessage(cause, 'Wait a moment and try again.'));
     } finally { setSaving(null); }
   };
 

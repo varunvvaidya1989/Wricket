@@ -9,6 +9,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
+import { authErrorMessage } from '@/lib/supabase/authErrors';
 
 export default function ChangePasswordScreen() {
   const auth = useAuth();
@@ -29,7 +30,7 @@ export default function ChangePasswordScreen() {
       Alert.alert('Password changed', 'Your SportStage password has been updated.');
       router.back();
     } catch (cause) {
-      Alert.alert('Could not change password', cause instanceof Error ? cause.message : 'Please try again.');
+      Alert.alert('Could not change password', authErrorMessage(cause, 'Could not change your password. Please try again.'));
     } finally { setSaving(false); }
   };
 

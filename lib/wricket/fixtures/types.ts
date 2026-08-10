@@ -9,7 +9,7 @@ export type PairingAlgorithm =
   | 'SWISS'
   | 'RANDOM_PAIRS';
 export type Tiebreaker = 'HEAD_TO_HEAD' | 'GOAL_DIFF' | 'GOALS_FOR';
-export type KOSeeding = 'TOP_VS_BOTTOM' | 'GROUP_WINNERS_PROTECTED' | 'RANDOM' | 'MANUAL';
+export type KOSeeding = 'TOP_VS_BOTTOM' | 'GROUP_WINNERS_PROTECTED' | 'RANDOM' | 'MANUAL' | 'SIX_TEAM_CROSSOVER';
 export type KORoundName = 'R128' | 'R64' | 'R32' | 'R16' | 'QF' | 'SF' | 'F' | '3RD_PLACE' | string;
 
 export interface FixtureGroup {
@@ -65,6 +65,7 @@ export interface StandingRow {
   played: number;
   won: number;
   drawn: number;
+  noResult: number;
   lost: number;
   points: number;
   goalsFor: number;

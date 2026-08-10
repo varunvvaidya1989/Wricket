@@ -15,7 +15,7 @@ export const tournamentManagementApi = {
 
   async updateDetails(input: {
     cloudTournamentId: string; localTournamentId: string; name: string; startDate: number;
-    location?: string; plannedTeamCount: number; playersPerTeam: number; organizerPhone?: string;
+    location?: string; plannedTeamCount: number; playersPerTeam: number; oversPerMatch: number; organizerPhone?: string;
     description?: string; socialMediaUrl?: string; rewards?: string;
   }): Promise<void> {
     const client = getSupabaseClient();
@@ -25,6 +25,7 @@ export const tournamentManagementApi = {
       name: input.name.trim(), start_date: new Date(input.startDate).toISOString().slice(0, 10),
       start_at: new Date(input.startDate).toISOString(), location: input.location?.trim() || null,
       planned_team_count: input.plannedTeamCount, players_per_team: input.playersPerTeam,
+      overs_per_match: input.oversPerMatch,
       organizer_phone: input.organizerPhone?.trim() || null, description: input.description?.trim() || null,
       social_media_url: input.socialMediaUrl?.trim() || null,
       settings: { ...(current.settings ?? {}), rewards: input.rewards?.trim() || null },

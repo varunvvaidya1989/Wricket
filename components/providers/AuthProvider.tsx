@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { CloudProfile, getCloudProfile, saveCloudProfile } from '@/lib/supabase/profiles';
+import { resetDb } from '@/lib/wricket/db/client';
 
 interface AuthContextValue {
   session: Session | null;
@@ -13,15 +14,18 @@ interface AuthContextValue {
   authLinkError: { code: string; message: string } | null;
   clearAuthLinkError(): void;
   signIn(email: string, password: string): Promise<void>;
-  signUp(email: string, password: string, draft?: { displayName: string; sportCode: string }): Promise<boolean>;
-  signOut(): Promise<void>;
+  signUp(email: string, password: string, draft?: { displayName: string; sportCodes: string[]; primarySportCode: string; phoneE164: string }): Promise<boolean>;
+  signOutCurrentDevice(): Promise<void>;
   saveProfile(displayName: string): Promise<void>;
   refreshProfile(): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
   updatePassword(password: string, currentPassword?: string): Promise<void>;
   updateEmail(email: string): Promise<void>;
+  updateMobile(phone: string | null): Promise<void>;
   resendSignupConfirmation(email: string): Promise<void>;
   sendMagicLink(email: string): Promise<void>;
+  clearDeviceData(): Promise<void>;
+  deleteAccount(confirmation: string): Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -120,14 +124,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password,
         options: {
           emailRedirectTo: Linking.createURL('onboarding'),
-          ...(draft ? { data: { display_name: draft.displayName.trim(), primary_sport_code: draft.sportCode } } : {}),
+          ...(draft ? { data: {
+            display_name: draft.displayName.trim(),
+            primary_sport_code: draft.primarySportCode,
+            sport_codes: draft.sportCodes,
+            mobile_e164: draft.phoneE164,
+          } } : {}),
         },
       });
       if (error) throw error;
       return Boolean(data.session);
     },
-    async signOut() {
-      const { error } = await getSupabaseClient().auth.signOut();
+    async signOutCurrentDevice() {
+      const { error } = await getSupabaseClient().auth.signOut({ scope: 'local' });
       if (error) throw error;
     },
     async saveProfile(displayName) {
@@ -158,6 +167,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
       if (error) throw error;
     },
+    async updateMobile(phone) {
+      const { error } = await getSupabaseClient().auth.updateUser({
+        data: { mobile_e164: phone, pending_phone_e164: null },
+      });
+      if (error) throw error;
+    },
     async resendSignupConfirmation(email) {
       const { error } = await getSupabaseClient().auth.resend({
         type: 'signup',
@@ -175,6 +190,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
       if (error) throw error;
+    },
+    async clearDeviceData() {
+      await resetDb();
+    },
+    async deleteAccount(confirmation) {
+      const client = getSupabaseClient();
+      const { error: deleteError } = await client.rpc('delete_my_sportstage_account', { p_confirmation: confirmation });
+      if (deleteError) throw deleteError;
+      await resetDb();
+      await client.auth.signOut({ scope: 'local' });
+      setSession(null);
+      setProfile(null);
     },
   }), [authLinkError, error, loading, profile, session]);
 

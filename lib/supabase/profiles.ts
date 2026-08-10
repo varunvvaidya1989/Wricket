@@ -2,19 +2,23 @@ import type { User } from '@supabase/supabase-js';
 
 import { getSupabaseClient } from './client';
 
+export interface CloudSport {
+  id: string;
+  code: string;
+  name: string;
+  status: 'AVAILABLE' | 'COMING_SOON' | 'HIDDEN';
+  appRoute?: string;
+  accessStatus: 'ACTIVE' | 'COMING_SOON' | 'SUSPENDED';
+  isPrimary: boolean;
+}
+
 export interface CloudProfile {
   id: string;
   displayName: string;
   avatarUrl: string | null;
   onboardingStatus: 'PROFILE_REQUIRED' | 'SPORT_REQUIRED' | 'COMPLETED';
-  primarySport?: {
-    id: string;
-    code: string;
-    name: string;
-    status: 'AVAILABLE' | 'COMING_SOON' | 'HIDDEN';
-    appRoute?: string;
-    accessStatus: 'ACTIVE' | 'COMING_SOON' | 'SUSPENDED';
-  };
+  primarySport?: CloudSport;
+  connectedSports: CloudSport[];
 }
 
 export async function getCloudProfile(userId: string): Promise<CloudProfile | null> {
@@ -25,24 +29,31 @@ export async function getCloudProfile(userId: string): Promise<CloudProfile | nu
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  let primarySport: CloudProfile['primarySport'];
-  if (data.primary_sport_id) {
-    const [{ data: sport, error: sportError }, { data: access, error: accessError }] = await Promise.all([
-      getSupabaseClient().from('sports').select('id, code, name, availability_status, app_route').eq('id', data.primary_sport_id).single(),
-      getSupabaseClient().from('account_sports').select('access_status').eq('account_id', userId).eq('sport_id', data.primary_sport_id).maybeSingle(),
-    ]);
-    if (sportError) throw sportError;
-    if (accessError) throw accessError;
-    primarySport = {
+  const { data: relationships, error: relationshipError } = await getSupabaseClient()
+    .from('account_sports')
+    .select('sport_id, access_status, is_primary')
+    .eq('account_id', userId);
+  if (relationshipError) throw relationshipError;
+  const sportIds = (relationships ?? []).map(item => item.sport_id);
+  const { data: sports, error: sportError } = sportIds.length
+    ? await getSupabaseClient().from('sports').select('id, code, name, availability_status, app_route, display_order').in('id', sportIds).order('display_order')
+    : { data: [], error: null };
+  if (sportError) throw sportError;
+  const relationshipBySport = new Map((relationships ?? []).map(item => [item.sport_id, item]));
+  const connectedSports: CloudSport[] = (sports ?? []).map(sport => {
+    const relationship = relationshipBySport.get(sport.id)!;
+    return {
       id: sport.id,
       code: sport.code,
       name: sport.name,
       status: sport.availability_status,
       appRoute: sport.app_route ?? undefined,
-      accessStatus: access?.access_status ?? 'COMING_SOON',
+      accessStatus: relationship.access_status,
+      isPrimary: relationship.is_primary || sport.id === data.primary_sport_id,
     };
-  }
-  return { id: data.id, displayName: data.display_name, avatarUrl: data.avatar_url, onboardingStatus: data.onboarding_status, primarySport };
+  });
+  const primarySport = connectedSports.find(sport => sport.id === data.primary_sport_id || sport.isPrimary);
+  return { id: data.id, displayName: data.display_name, avatarUrl: data.avatar_url, onboardingStatus: data.onboarding_status, primarySport, connectedSports };
 }
 
 export async function saveCloudProfile(user: User, displayName: string): Promise<CloudProfile> {
@@ -55,5 +66,5 @@ export async function saveCloudProfile(user: User, displayName: string): Promise
     .select('id, display_name, avatar_url')
     .single();
   if (error) throw error;
-  return { id: data.id, displayName: data.display_name, avatarUrl: data.avatar_url, onboardingStatus: 'SPORT_REQUIRED' };
+  return { id: data.id, displayName: data.display_name, avatarUrl: data.avatar_url, onboardingStatus: 'SPORT_REQUIRED', connectedSports: [] };
 }

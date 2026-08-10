@@ -183,6 +183,16 @@ export default function TeamManagementScreen() {
     );
   };
 
+  const toggleKeeper = async (member: TeamRosterMember) => {
+    if (!id || (!isOwner && !isCaptain)) return;
+    try {
+      await teamManagementApi.setWicketKeeper(id, member.playerId, !member.isKeeper);
+      await load();
+    } catch (cause) {
+      showError(cause);
+    }
+  };
+
   const chooseTeamLogo = async () => {
     if (!id || !auth.session || (!isOwner && !isCaptain)) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -321,7 +331,18 @@ export default function TeamManagementScreen() {
                 >
                   <View style={styles.jerseyBadge}><Text variant="caption">{member.jerseyNo ?? index + 1}</Text></View>
                   <View style={{ flex: 1 }}><Text variant="bodyStrong">{member.name}</Text>{member.role === 'CAPTAIN' ? <Text variant="caption" tone="accent">CAPTAIN</Text> : null}</View>
-                  <Text variant="caption" tone="muted">{rosterRole(member)}</Text>
+                  {(isOwner || isCaptain) ? (
+                    <Pressable
+                      hitSlop={8}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: Boolean(member.isKeeper) }}
+                      onPress={event => { event.stopPropagation(); void toggleKeeper(member); }}
+                      style={[styles.keeperChip, member.isKeeper && styles.keeperChipActive]}
+                    >
+                      <MaterialCommunityIcons name="shield-account-outline" size={15} color={member.isKeeper ? colors.accentInk : colors.textMuted} />
+                      <Text variant="caption" style={{ color: member.isKeeper ? colors.accentInk : colors.textMuted }}>WK</Text>
+                    </Pressable>
+                  ) : <Text variant="caption" tone="muted">{rosterRole(member)}</Text>}
                   <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textDim} />
                     {((isOwner && member.role === 'CAPTAIN') || (isCaptain && member.role === 'PLAYER')) && (
                       <Pressable hitSlop={8} accessibilityLabel={`Remove ${member.name}`} onPress={event => { event.stopPropagation(); removeMember(member); }}><MaterialCommunityIcons name="close-circle-outline" size={20} color={colors.danger} /></Pressable>
@@ -413,5 +434,7 @@ const styles = StyleSheet.create({
   playerList: { marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   playerRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   jerseyBadge: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  keeperChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceElevated },
+  keeperChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   member: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
 });

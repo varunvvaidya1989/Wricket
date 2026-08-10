@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import React from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import type { Href } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -12,6 +12,7 @@ import { AppHeader } from '@/components/ui/AppHeader';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/Button';
 import { SportStageLogo } from '@/components/branding/SportStageLogo';
+import { SportStageSignOutActions } from '@/components/auth/SportStageSignOutActions';
 
 interface SportApp {
   id: string;
@@ -42,21 +43,8 @@ export default function SportStageDashboard() {
   const router = useRouter();
   const pathname = usePathname();
   const nested = pathname !== '/';
-  const [signingOut, setSigningOut] = useState(false);
-  const cricketEnabled = auth.profile?.primarySport?.code === 'CRICKET'
-    && auth.profile.primarySport.accessStatus === 'ACTIVE';
+  const cricketEnabled = auth.profile?.connectedSports.some(sport => sport.code === 'CRICKET' && sport.accessStatus === 'ACTIVE') ?? false;
   const selectedSport = auth.profile?.primarySport;
-
-  const signOut = async () => {
-    setSigningOut(true);
-    try {
-      await auth.signOut();
-    } catch (cause) {
-      Alert.alert('Could not sign out', cause instanceof Error ? cause.message : 'Please try again.');
-    } finally {
-      setSigningOut(false);
-    }
-  };
 
   return (
     <Screen scroll padded={!nested}>
@@ -69,10 +57,16 @@ export default function SportStageDashboard() {
         {!nested ? <Text variant="h1" style={styles.title}>{cricketEnabled ? 'Your cricket stage' : `${selectedSport?.name ?? 'Your sport'} is coming soon`}</Text> : null}
         <Text variant="body" tone="muted" style={styles.subtitle}>
           {cricketEnabled
-            ? 'Follow tournaments, manage teams and score every ball with Wricket.'
-            : 'Your SportStage account is ready. Tournament discovery, team management, live scoring and role-based access will unlock here when your sport launches.'}
+            ? `${auth.profile?.connectedSports.length ?? 1} sport${auth.profile?.connectedSports.length === 1 ? '' : 's'} connected. Wricket is ready now.`
+            : 'Your SportStage account is ready. Selected sports will unlock here as their apps launch.'}
         </Text>
       </View>
+
+      {!nested && auth.session ? <Pressable onPress={() => router.push('/profile')} style={({ pressed }) => [styles.profileCard, pressed && { opacity: 0.78 }]}>
+        <View style={styles.profileAvatar}><Text variant="h3" tone="accent">{initials(auth.profile?.displayName ?? 'SportStage member')}</Text></View>
+        <View style={{ flex: 1, minWidth: 0 }}><Text variant="overline" tone="muted">GLOBAL PROFILE</Text><Text variant="h3" numberOfLines={1}>{auth.profile?.displayName ?? 'SportStage member'}</Text><Text variant="caption" tone="dim">{auth.profile?.connectedSports.length ?? 0} connected sport{auth.profile?.connectedSports.length === 1 ? '' : 's'}</Text></View>
+        <MaterialCommunityIcons name="chevron-right" size={23} color={colors.textDim} />
+      </Pressable> : null}
 
       <View style={[styles.grid, nested && styles.nestedSection]}>
         {sportApps.map(app => {
@@ -134,22 +128,15 @@ export default function SportStageDashboard() {
         <View style={styles.accountActions}>
           <Text variant="overline" tone="muted">ACCOUNT</Text>
           <Text variant="caption" tone="muted">
-            You can switch your primary sport whenever you want. Selecting Cricket unlocks Wricket immediately.
+            You can connect multiple sports and choose which one is primary. Available sport apps remain accessible even when they are not primary.
           </Text>
           <Button
-            title="Change primary sport"
+            title="Manage my sports"
             variant="secondary"
             onPress={() => router.push('/account')}
-            disabled={signingOut}
             fullWidth
           />
-          <Button
-            title="Sign out"
-            variant="ghost"
-            onPress={() => void signOut()}
-            loading={signingOut}
-            fullWidth
-          />
+          <SportStageSignOutActions />
         </View>
       ) : null}
     </Screen>
@@ -182,6 +169,8 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   nestedSection: { paddingHorizontal: spacing.lg },
+  profileCard: { marginBottom: spacing.xl, minHeight: 78, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  profileAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
   appCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -225,3 +214,5 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
 });
+
+function initials(name: string) { return name.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'S'; }

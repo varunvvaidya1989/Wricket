@@ -11,12 +11,17 @@ export class StandingsCalculator {
     const completed = matches.filter(match =>
       match.groupId === group.id &&
       (match.status === 'COMPLETED' || match.status === 'WALKOVER') &&
-      match.teamB && match.scoreA != null && match.scoreB != null,
+      !isCancelled(match) &&
+      match.teamB && (isNoResult(match) || (match.scoreA != null && match.scoreB != null)),
     );
     for (const match of completed) {
       const a = rows.get(match.teamA)!;
       const b = rows.get(match.teamB!)!;
       a.played += 1; b.played += 1;
+      if (isNoResult(match)) {
+        a.noResult += 1; b.noResult += 1; a.points += 1; b.points += 1;
+        continue;
+      }
       a.goalsFor += match.scoreA!; a.goalsAgainst += match.scoreB!;
       b.goalsFor += match.scoreB!; b.goalsAgainst += match.scoreA!;
       if (match.scoreA! > match.scoreB!) {
@@ -86,9 +91,18 @@ export class StandingsCalculator {
 
 function emptyRow(teamId: string): StandingRow {
   return {
-    teamId, played: 0, won: 0, drawn: 0, lost: 0, points: 0,
+    teamId, played: 0, won: 0, drawn: 0, noResult: 0, lost: 0, points: 0,
     goalsFor: 0, goalsAgainst: 0, goalDifference: 0, rank: 0,
     unresolved: false, tiebreakerTrace: [],
   };
 }
 
+function isNoResult(match: FixtureMatch): boolean {
+  const kind = String(match.result?.kind ?? match.result?.result_kind ?? '');
+  return kind === 'NO_RESULT' || kind === 'ABANDONED';
+}
+
+function isCancelled(match: FixtureMatch): boolean {
+  const kind = String(match.result?.kind ?? match.result?.result_kind ?? '');
+  return kind === 'CANCELLED';
+}

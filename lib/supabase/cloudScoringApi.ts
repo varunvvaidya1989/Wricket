@@ -9,6 +9,7 @@ import {
 } from '@/lib/wricket/db/scoringEventOutbox';
 import type { PendingScoringEvent } from '@/lib/wricket/db/scoringEventOutbox';
 import { getTeam } from '@/lib/wricket/db/repo';
+import { fixturesApi } from './fixturesApi';
 
 const DEVICE_ID_KEY = 'wricket.scoring-device-id';
 const activeFlushes = new Map<string, Promise<void>>();
@@ -161,6 +162,11 @@ async function runFlush(matchId: string): Promise<void> {
         }
         if (!data.duplicate) expectedSequence = Number(data.sequence);
         await markScoringEventSent(event.clientEventId);
+        if (event.kind === 'MATCH_COMPLETED') {
+          // Advancement is idempotent. Run it at the authoritative completion
+          // boundary instead of depending on an organiser opening the fixture screen.
+          void advanceCompletedTournament(matchId);
+        }
         setSyncState(matchId, {
           status: 'SYNCING',
           pending: Math.max(0, pending.length - index - 1),
@@ -175,6 +181,19 @@ async function runFlush(matchId: string): Promise<void> {
       pending: pending.length,
       error: describeSupabaseError(cause),
     });
+  }
+}
+
+async function advanceCompletedTournament(matchId: string): Promise<void> {
+  try {
+    const { data, error } = await getSupabaseClient().from('matches')
+      .select('tournament_id').eq('id', matchId).single();
+    if (error) throw error;
+    if (data.tournament_id) await fixturesApi.advanceTournamentIfReady(data.tournament_id);
+  } catch (cause) {
+    // Match completion remains authoritative. Owners get another idempotent
+    // advancement attempt from tournament Realtime/focus if this caller lacks permission.
+    console.warn('[Wricket fixture advancement]', describeSupabaseError(cause));
   }
 }
 

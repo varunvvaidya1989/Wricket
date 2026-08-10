@@ -114,6 +114,7 @@ export async function createTournament(input: {
   googleMapsUrl?: string;
   plannedTeamCount: number;
   playersPerTeam: number;
+  oversPerMatch: number;
   description?: string;
   socialMediaUrl?: string;
   bannerLocalUri?: string;
@@ -141,6 +142,7 @@ export async function createTournament(input: {
     googleMapsUrl: input.googleMapsUrl,
     plannedTeamCount: input.plannedTeamCount,
     playersPerTeam: input.playersPerTeam,
+    oversPerMatch: input.oversPerMatch,
     description: input.description,
     socialMediaUrl: input.socialMediaUrl,
     bannerLocalUri: input.bannerLocalUri,
@@ -185,6 +187,7 @@ export async function createTournament(input: {
     null,
     null,
     );
+    await db.runAsync('UPDATE tournaments SET overs_per_match = ? WHERE id = ?', t.oversPerMatch, t.id);
     await enqueueSyncInDb(db, 'TOURNAMENT', t.id);
   });
   return t;
@@ -225,15 +228,15 @@ export async function updateTournamentMediaLocally(
 
 export async function updateTournamentDetailsLocally(tournamentId: string, input: {
   name: string; startDate: number; location?: string; plannedTeamCount: number;
-  playersPerTeam: number; organizerPhone?: string; description?: string;
+  playersPerTeam: number; oversPerMatch: number; organizerPhone?: string; description?: string;
   socialMediaUrl?: string; rewards?: string;
 }): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `UPDATE tournaments SET name = ?, start_date = ?, location = ?, planned_team_count = ?,
-      players_per_team = ?, organizer_phone = ?, description = ?, social_media_url = ?, rewards = ?, sync_status = ? WHERE id = ?`,
+      players_per_team = ?, overs_per_match = ?, organizer_phone = ?, description = ?, social_media_url = ?, rewards = ?, sync_status = ? WHERE id = ?`,
     input.name, input.startDate, input.location ?? null, input.plannedTeamCount, input.playersPerTeam,
-    input.organizerPhone ?? null, input.description ?? null, input.socialMediaUrl ?? null,
+    input.oversPerMatch, input.organizerPhone ?? null, input.description ?? null, input.socialMediaUrl ?? null,
     input.rewards ?? null, 'SYNCED', tournamentId,
   );
 }
@@ -278,6 +281,7 @@ function rowToTournament(row: any): Tournament {
     googleMapsUrl: row.google_maps_url ?? undefined,
     plannedTeamCount: row.planned_team_count ?? 2,
     playersPerTeam: row.players_per_team ?? 11,
+    oversPerMatch: row.overs_per_match ?? DEFAULT_RULES[row.format as MatchFormat]?.oversPerInnings ?? 20,
     description: row.description ?? undefined,
     rewards: row.rewards ?? undefined,
     socialMediaUrl: row.social_media_url ?? undefined,

@@ -5,6 +5,16 @@ export interface TournamentPlayerStat {
   name: string;
   runs: number;
   wickets: number;
+  matches: number;
+  innings: number;
+  ballsFaced: number;
+  dismissals: number;
+  bowlingBalls: number;
+  runsConceded: number;
+  catches: number;
+  stumpings: number;
+  recentScores: number[];
+  recentWickets: number[];
 }
 
 export interface TournamentCloudStats {
@@ -26,10 +36,10 @@ export const tournamentStatsApi = {
     if (!matches.length) return emptyStats();
 
     const matchIds = matches.map(match => match.id);
-    const events: Array<{ kind: string; payload: Record<string, unknown> | null }> = [];
+    const events: Array<{ match_id: string; kind: string; payload: Record<string, unknown> | null }> = [];
     for (let from = 0; ; from += 1000) {
       const { data, error } = await client.from('match_events')
-        .select('kind, payload')
+        .select('match_id, kind, payload')
         .in('match_id', matchIds)
         .order('sequence')
         .range(from, from + 999);
@@ -61,31 +71,71 @@ export const tournamentStatsApi = {
     const player = (id: string) => {
       const existing = players.get(id);
       if (existing) return existing;
-      const next = { id, name: names.get(id) ?? 'Unknown player', runs: 0, wickets: 0 };
+      const next: TournamentPlayerStat = {
+        id, name: names.get(id) ?? 'Unknown player', runs: 0, wickets: 0, matches: 0, innings: 0,
+        ballsFaced: 0, dismissals: 0, bowlingBalls: 0, runsConceded: 0, catches: 0, stumpings: 0,
+        recentScores: [], recentWickets: [],
+      };
       players.set(id, next);
       return next;
     };
     let balls = 0;
     let runs = 0;
     let wickets = 0;
+    const perMatch = new Map<string, Map<string, { runs: number; wickets: number; batted: boolean; bowled: boolean }>>();
     for (const event of events) {
       if (event.kind !== 'BALL_RECORDED') continue;
       const payload = event.payload ?? {};
       balls += 1;
       runs += Number(payload.runs_bat ?? 0) + Number(payload.runs_extra ?? 0);
       const strikerId = payload.striker_id;
-      if (typeof strikerId === 'string') player(strikerId).runs += Number(payload.runs_bat ?? 0);
+      const matchId = event.match_id;
+      const matchPlayer = (id: string) => {
+        const byPlayer = perMatch.get(matchId) ?? new Map();
+        perMatch.set(matchId, byPlayer);
+        const row = byPlayer.get(id) ?? { runs: 0, wickets: 0, batted: false, bowled: false };
+        byPlayer.set(id, row);
+        return row;
+      };
+      if (typeof strikerId === 'string') {
+        const current = player(strikerId);
+        const batRuns = Number(payload.runs_bat ?? 0);
+        current.runs += batRuns;
+        if (payload.extra_kind !== 'WIDE') current.ballsFaced += 1;
+        const form = matchPlayer(strikerId); form.runs += batRuns; form.batted = true;
+      }
+      const bowlerId = payload.bowler_id;
+      if (typeof bowlerId === 'string') {
+        const current = player(bowlerId);
+        if (payload.is_legal) current.bowlingBalls += 1;
+        current.runsConceded += Number(payload.runs_bat ?? 0) +
+          (['BYE', 'LEG_BYE'].includes(String(payload.extra_kind ?? '')) ? 0 : Number(payload.runs_extra ?? 0));
+        matchPlayer(bowlerId).bowled = true;
+      }
       if (payload.is_wicket) {
         wickets += 1;
-        const bowlerId = payload.bowler_id;
         const dismissal = String(payload.dismissal_kind ?? '');
+        const outId = payload.out_player_id;
+        if (typeof outId === 'string') player(outId).dismissals += 1;
+        const fielderId = payload.fielder_id;
+        if (typeof fielderId === 'string' && dismissal === 'CAUGHT') player(fielderId).catches += 1;
+        if (typeof fielderId === 'string' && dismissal === 'STUMPED') player(fielderId).stumpings += 1;
         if (
           typeof bowlerId === 'string' &&
           ['BOWLED', 'CAUGHT', 'LBW', 'STUMPED', 'HIT_WICKET'].includes(dismissal)
         ) {
           player(bowlerId).wickets += 1;
+          matchPlayer(bowlerId).wickets += 1;
         }
       }
+    }
+
+    for (const [playerId, current] of players) {
+      const form = [...perMatch.values()].flatMap(byPlayer => byPlayer.get(playerId) ? [byPlayer.get(playerId)!] : []);
+      current.matches = form.length;
+      current.innings = form.filter(row => row.batted).length;
+      current.recentScores = form.filter(row => row.batted).map(row => row.runs).slice(-5).reverse();
+      current.recentWickets = form.filter(row => row.bowled).map(row => row.wickets).slice(-5).reverse();
     }
 
     return {

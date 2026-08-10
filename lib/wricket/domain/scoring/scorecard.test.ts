@@ -125,6 +125,14 @@ describe('canonical scorecard integration', () => {
     expect(reconciledTotal(scorecard)).toBe(scorecard.innings.totalRuns);
   });
 
+  it('formats dismissals with cricket-style player names when supplied', () => {
+    const scorecard = scorecardForEvents(initial, [
+      ball(1, 'batter-1', 'batter-2', 'bowler-1', { extraKind: null, bat: 0, extras: 0 },
+        { kind: 'CAUGHT', outPlayerId: 'batter-1', fielderId: 'fielder-1', creditedToBowler: true }),
+    ], rules, id => ({ 'fielder-1': 'Rohan Mehta', 'bowler-1': 'Arjun Singh' }[id] ?? id));
+    expect(scorecard.batters[0].dismissalText).toBe('c Rohan Mehta b Arjun Singh');
+  });
+
   it.each([
     ['dot ball', [ball(1, 'batter-1', 'batter-2', 'bowler-1', { extraKind: null, bat: 0, extras: 0 })], 0, 0, 1],
     ['single', [ball(1, 'batter-1', 'batter-2', 'bowler-1', { extraKind: null, bat: 1, extras: 0 })], 1, 0, 1],

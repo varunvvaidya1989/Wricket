@@ -25,6 +25,7 @@ export interface BowlerLine {
 export function batsmanLineFor(
   userId: string,
   balls: Ball[],
+  playerName: (playerId: string) => string = shortId,
 ): BatsmanLine {
   let runs = 0,
     facedBalls = 0,
@@ -43,7 +44,7 @@ export function batsmanLineFor(
     }
     if (b.isWicket && b.dismissal?.outPlayerId === userId) {
       isOut = true;
-      dismissalText = describeDismissal(b);
+      dismissalText = describeDismissal(b, playerName);
     }
   }
 
@@ -100,23 +101,23 @@ export function bowlerLineFor(userId: string, balls: Ball[]): BowlerLine {
   };
 }
 
-export function describeDismissal(b: Ball): string {
+export function describeDismissal(b: Ball, playerName: (playerId: string) => string = shortId): string {
   if (!b.dismissal) return '';
   switch (b.dismissal.kind) {
     case 'BOWLED':
-      return `b ${shortId(b.bowlerId)}`;
+      return `b ${playerName(b.bowlerId)}`;
     case 'CAUGHT':
-      return `c ${shortId(b.dismissal.fielderId ?? '')} b ${shortId(b.bowlerId)}`;
+      return `c ${playerName(b.dismissal.fielderId ?? '')} b ${playerName(b.bowlerId)}`;
     case 'LBW':
-      return `lbw b ${shortId(b.bowlerId)}`;
+      return `lbw b ${playerName(b.bowlerId)}`;
     case 'RUN_OUT':
       return b.dismissal.assistantFielderId
-        ? `run out (${shortId(b.dismissal.assistantFielderId)} / ${shortId(b.dismissal.fielderId ?? '')})`
-        : `run out (${shortId(b.dismissal.fielderId ?? '')})`;
+        ? `run out (${playerName(b.dismissal.assistantFielderId)} / ${playerName(b.dismissal.fielderId ?? '')})`
+        : `run out (${playerName(b.dismissal.fielderId ?? '')})`;
     case 'STUMPED':
-      return `st ${shortId(b.dismissal.fielderId ?? '')} b ${shortId(b.bowlerId)}`;
+      return `st ${playerName(b.dismissal.fielderId ?? '')} b ${playerName(b.bowlerId)}`;
     case 'HIT_WICKET':
-      return `hit wicket b ${shortId(b.bowlerId)}`;
+      return `hit wicket b ${playerName(b.bowlerId)}`;
     case 'RETIRED_OUT':
       return 'retired out';
   }

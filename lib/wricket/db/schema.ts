@@ -234,6 +234,10 @@ const TOURNAMENT_LOCATION_SQL = `
 ALTER TABLE tournaments ADD COLUMN location TEXT;
 `;
 
+const TOURNAMENT_OVERS_SQL = `
+ALTER TABLE tournaments ADD COLUMN overs_per_match INTEGER NOT NULL DEFAULT 20;
+`;
+
 const SCORING_EVENT_OUTBOX_SQL = `
 CREATE TABLE IF NOT EXISTS scoring_event_outbox (
   client_event_id TEXT PRIMARY KEY,
@@ -371,6 +375,11 @@ export const MIGRATIONS: SqlMigration[] = [
     name: 'tournament_rewards',
     sql: TOURNAMENT_REWARDS_SQL,
   },
+  {
+    version: 13,
+    name: 'tournament_overs_per_match',
+    sql: TOURNAMENT_OVERS_SQL,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
@@ -407,6 +416,8 @@ export async function runMigrations(db: MigrationDatabase): Promise<void> {
         ? { table: 'teams', column: 'logo_url' }
         : migration.version === 12
           ? { table: 'tournaments', column: 'rewards' }
+        : migration.version === 13
+          ? { table: 'tournaments', column: 'overs_per_match' }
         : null;
     const alreadyApplied = guardedColumn
       ? await db.getFirstAsync<{ count: number }>(

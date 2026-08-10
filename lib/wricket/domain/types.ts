@@ -27,7 +27,10 @@ export type ResultKind =
   | 'WIN_BY_WICKETS'
   | 'WIN_BY_INNINGS'
   | 'TIE'
-  | 'NO_RESULT';
+  | 'DRAW'
+  | 'NO_RESULT'
+  | 'WALKOVER'
+  | 'CANCELLED';
 
 export type TossChoice = 'BAT' | 'BOWL';
 
@@ -67,6 +70,7 @@ export interface Tournament {
   googleMapsUrl?: string;
   plannedTeamCount: number;
   playersPerTeam: number;
+  oversPerMatch: number;
   description?: string;
   rewards?: string;
   socialMediaUrl?: string;

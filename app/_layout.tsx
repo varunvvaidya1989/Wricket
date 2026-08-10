@@ -85,6 +85,7 @@ export default function RootLayout() {
                 <Stack.Screen name="reset-password" options={{ headerShown: false }} />
                 <Stack.Screen name="onboarding" options={{ headerShown: false }} />
                 <Stack.Screen name="account" options={{ headerShown: false }} />
+                <Stack.Screen name="profile" options={{ headerShown: false }} />
                 <Stack.Screen name="change-password" options={{ headerShown: false }} />
                 <Stack.Screen name="wricket" options={{ headerShown: false }} />
               </Stack>

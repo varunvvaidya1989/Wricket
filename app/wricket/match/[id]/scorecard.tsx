@@ -147,6 +147,7 @@ function InningsSection({ view }: { view: InningsView }) {
   const { innings, balls, adjustments, retirements, batters, bowlers, battingTeam } = view;
   const batterMap = new Map(batters.map(b => [b.userId, b.name]));
   const bowlerMap = new Map(bowlers.map(b => [b.userId, b.name]));
+  const playerMap = new Map([...batters, ...bowlers].map(player => [player.userId, player.name]));
   const retirementMap = new Map(retirements.map(r => [r.playerId, r]));
 
   // Compute per-batter lines (only those who batted)
@@ -181,7 +182,7 @@ function InningsSection({ view }: { view: InningsView }) {
           <Text variant="caption" tone="muted" style={[styles.colNum, { width: 50 }]}>SR</Text>
         </View>
         {battedIds.map(id => {
-          const line = batsmanLineFor(id, balls);
+          const line = batsmanLineFor(id, balls, playerId => playerMap.get(playerId) ?? 'Unknown player');
           const retirement = retirementMap.get(id);
           const dismissalText = retirement
             ? retirement.kind === 'RETIRED_OUT'
@@ -257,7 +258,9 @@ function formatResult(
 ): string {
   if (result.kind === 'TIE') return 'Match tied';
   if (result.kind === 'NO_RESULT') return 'No result';
+  if (result.kind === 'CANCELLED') return 'Match cancelled';
   const winner = result.winnerTeamId === teamA.id ? teamA : teamB;
+  if (result.kind === 'WALKOVER') return `${winner.name} won by walkover`;
   if (result.kind === 'WIN_BY_RUNS')
     return `${winner.name} won by ${result.margin} runs`;
   if (result.kind === 'WIN_BY_WICKETS')

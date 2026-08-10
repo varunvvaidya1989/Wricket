@@ -13,9 +13,11 @@ import { spacing } from '@/lib/theme/spacing';
 export function TournamentMvpLeaderboard({
   tournamentId,
   cloudTournamentId,
+  completedMatches = 0,
 }: {
   tournamentId: string;
   cloudTournamentId?: string;
+  completedMatches?: number;
 }) {
   const [rows, setRows] = useState<TournamentMvpRow[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
@@ -56,7 +58,7 @@ export function TournamentMvpLeaderboard({
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [cloudTournamentId, tournamentId]);
+  }, [cloudTournamentId, completedMatches, tournamentId]);
   if (loading) return <Card><Text tone="muted">Loading Tournament MVP…</Text></Card>;
   if (error) return <Card><Text variant="h3">Tournament MVP</Text><Text tone="muted">{error}</Text></Card>;
   if (!rows.length) return (
@@ -71,7 +73,7 @@ export function TournamentMvpLeaderboard({
     <Card>
       <Text variant="h3">Tournament MVP</Text>
       <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
-        Batting, bowling and fielding contribution across eligible completed matches.
+        Progressive standings through {completedMatches} completed match{completedMatches === 1 ? '' : 'es'}.
       </Text>
       <View style={[styles.row, styles.header]}>
         <Text variant="caption" tone="dim" style={styles.rank}>#</Text>
