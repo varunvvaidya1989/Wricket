@@ -1,0 +1,35 @@
+{
+  "name": "Wricket Mobile",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm",
+  "onCreateCommand": "npm install --global npm@10.8.2",
+  "postCreateCommand": "npm ci",
+  "forwardPorts": [8081],
+  "portsAttributes": {
+    "8081": {
+      "label": "Expo development server",
+      "onAutoForward": "notify"
+    }
+  },
+  "containerEnv": {
+    "APP_ENV": "development",
+    "EXPO_NO_TELEMETRY": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "expo.vscode-expo-tools",
+        "dbaeumer.vscode-eslint",
+        "openai.chatgpt"
+      ],
+      "settings": {
+        "editor.codeActionsOnSave": {
+          "source.fixAll": "explicit",
+          "source.organizeImports": "explicit",
+          "source.sortMembers": "explicit"
+        },
+        "eslint.useFlatConfig": true,
+        "typescript.tsdk": "node_modules/typescript/lib"
+      }
+    }
+  }
+}
