@@ -17,12 +17,14 @@ export interface CloudLiveMatch {
     sequence: number;
     battingTeamId: string;
     target?: number;
+    isFollowOn: boolean;
   } | null;
   allInnings: Array<{
     id: string;
     sequence: number;
     battingTeamId: string;
     target?: number;
+    isFollowOn: boolean;
     status: string;
     totalRuns: number;
     totalWickets: number;
@@ -373,7 +375,7 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
   ] = await Promise.all([
     client.from('teams').select('id, name, short_name').in('id', teamIds),
     client.from('match_innings')
-      .select('id, match_id, sequence, batting_team_id, target, status, total_runs, total_wickets, total_balls')
+      .select('id, match_id, sequence, batting_team_id, target, is_follow_on, status, total_runs, total_wickets, total_balls')
       .in('match_id', matchIds)
       .order('sequence'),
     client.from('match_snapshots')
@@ -451,12 +453,14 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
         sequence: currentInnings.sequence,
         battingTeamId: currentInnings.batting_team_id,
         target: currentInnings.target ?? undefined,
+        isFollowOn: Boolean(currentInnings.is_follow_on),
       } : null,
       allInnings: matchInnings.map(item => ({
         id: item.id,
         sequence: item.sequence,
         battingTeamId: item.batting_team_id,
         target: item.target ?? undefined,
+        isFollowOn: Boolean(item.is_follow_on),
         status: item.status,
         totalRuns: Number(item.total_runs ?? 0),
         totalWickets: Number(item.total_wickets ?? 0),

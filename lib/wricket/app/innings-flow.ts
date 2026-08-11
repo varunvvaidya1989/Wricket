@@ -10,6 +10,7 @@ import {
 import { newId, newUuid } from '../db/client';
 import { Innings, Match, MatchResult } from '../domain/types';
 import { queueCloudScoringEvent } from '@/lib/supabase/cloudScoringApi';
+import { canEnforceFollowOn, followOnThresholdForOvers } from '../domain/test-match';
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -95,10 +96,8 @@ export async function planNextStep(matchId: string): Promise<NextStep> {
   if (innings.length === 2) {
     // After 2 innings, check follow-on availability
     const teamA = innings[0].battingTeamId;
-    const teamARuns = innings[0].totalRuns;
-    const teamBRuns = innings[1].totalRuns;
-    const deficit = teamARuns - teamBRuns;
-    if (rules.followOnEnabled && deficit >= rules.followOnThreshold) {
+    const followOnThreshold = followOnThresholdForOvers(rules.oversPerInnings);
+    if (rules.followOnEnabled && canEnforceFollowOn(innings[0].totalRuns, innings[1].totalRuns, followOnThreshold)) {
       return { kind: 'FOLLOW_ON_DECISION' };
     }
     // Normal: team A bats again

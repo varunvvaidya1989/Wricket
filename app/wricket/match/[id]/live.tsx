@@ -11,6 +11,7 @@ import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { DEFAULT_RULES, MatchFormat } from '@/lib/wricket/domain/types';
 import { formatOver } from '@/lib/wricket/domain/scoring';
+import { scoreAtLegalBalls, testMatchSituation } from '@/lib/wricket/domain/test-match';
 
 type FeedTab = 'summary' | 'squads' | 'commentary' | 'scorecard' | 'insights';
 const FEED_TABS: { id: FeedTab; label: string }[] = [
@@ -105,6 +106,8 @@ export default function CloudLiveMatchScreen() {
   }
 
   const insights = calculateInsights(match);
+  const testSituation = currentTestSituation(match);
+  const overComparison = sameOverComparison(match);
   const battingTeam = match.innings?.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
   const isComplete = match.status === 'COMPLETED';
   const isLive = ['IN_PROGRESS', 'INNINGS_BREAK', 'FOLLOW_ON_DECISION'].includes(match.status);
@@ -155,6 +158,15 @@ export default function CloudLiveMatchScreen() {
             {matchResultText(match)}
           </Text> : match.innings?.target != null && <Text variant="bodyStrong" style={{ marginTop: spacing.sm }}>
             Target {match.innings.target} · Need {Math.max(0, match.innings.target - match.score.runs)} runs
+          </Text>}
+          {!isComplete && match.innings?.target == null && testSituation.positionText && <Text variant="bodyStrong" style={{ marginTop: spacing.sm }}>
+            {testSituation.positionText}
+          </Text>}
+          {!isComplete && testSituation.followOnText && <Text variant="caption" tone="accent" style={{ marginTop: spacing.xs }}>
+            {testSituation.followOnText}
+          </Text>}
+          {!isComplete && overComparison && <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
+            {overComparison}
           </Text>}
           {isLive && <View style={styles.quickStats}>
             <MiniStat label="CRR" value={insights.crr.toFixed(2)} />
@@ -328,6 +340,7 @@ function Summary({ match, insights }: { match: CloudLiveMatch; insights: MatchIn
     <Card accentColor={colors.accent}>
       <Text variant="overline" tone="muted">RIGHT NOW</Text>
       <Text variant="h2" style={{ marginTop: spacing.sm }}>{situationText(match, insights)}</Text>
+      {sameOverComparison(match) && <Text variant="caption" tone="muted" style={{ marginTop: spacing.sm }}>{sameOverComparison(match)}</Text>}
       <View style={styles.rateRow}>
         <MiniStat label="RUN RATE" value={insights.crr.toFixed(2)} />
         <MiniStat label="REQUIRED" value={insights.rrr == null ? '—' : insights.rrr.toFixed(2)} />
@@ -682,38 +695,67 @@ function commentaryHeadline(match: CloudLiveMatch, event: CloudMatchEvent): stri
 function buildCommentaryInsights(match: CloudLiveMatch): Map<string, CommentaryInsight> {
   const result = new Map<string, CommentaryInsight>();
   const batters = new Map<string, CommentaryBatterState>();
+  let activeInningsId = '';
+  let inningsRuns = 0;
+  let inningsWickets = 0;
+  let inningsBalls = 0;
 
   [...match.commentary]
     .sort((left, right) => left.sequence - right.sequence)
     .forEach(event => {
-      if (event.kind === 'INNINGS_STARTED') {
-        batters.clear();
-        return;
-      }
       if (event.kind !== 'BALL_RECORDED') return;
       const payload = event.payload;
+      const inningsId = String(payload.innings_id ?? '');
+      if (inningsId !== activeInningsId) {
+        activeInningsId = inningsId;
+        inningsRuns = 0;
+        inningsWickets = 0;
+        inningsBalls = 0;
+        batters.clear();
+      }
       const strikerId = stringValue(payload.striker_id);
-      if (strikerId) {
-        const batter = batters.get(strikerId) ?? emptyBatterState();
-        const batRuns = Number(payload.runs_bat ?? 0);
-        batter.runs += batRuns;
-        if (payload.is_legal) batter.balls += 1;
-        if (batRuns === 4) batter.fours += 1;
-        if (batRuns === 6) batter.sixes += 1;
-        batters.set(strikerId, batter);
+      const batter = strikerId
+        ? batters.get(strikerId) ?? emptyBatterState()
+        : emptyBatterState();
+      const batRuns = Number(payload.runs_bat ?? 0);
+      batter.runs += batRuns;
+      if (payload.is_legal) batter.balls += 1;
+      if (batRuns === 4) batter.fours += 1;
+      if (batRuns === 6) batter.sixes += 1;
+      if (strikerId) batters.set(strikerId, batter);
+
+      inningsRuns += batRuns + Number(payload.runs_extra ?? 0);
+      inningsWickets += payload.is_wicket ? 1 : 0;
+      inningsBalls += payload.is_legal ? 1 : 0;
+      const innings = match.allInnings.find(item => item.id === inningsId);
+      const team = innings?.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
+      const details = [`${team.shortName} ${inningsRuns}/${inningsWickets} after ${formatOver(inningsBalls)} ov`];
+
+      if (payload.is_wicket) {
+        const outPlayerId = stringValue(payload.out_player_id) ?? strikerId;
+        const dismissed = outPlayerId ? batters.get(outPlayerId) ?? emptyBatterState() : emptyBatterState();
+        const batterName = playerName(match, outPlayerId, 'Batter');
+        const strikeRate = dismissed.balls ? (dismissed.runs / dismissed.balls) * 100 : 0;
+        details.push(`${batterName} ${dismissalScorecardText(match, event)} (${dismissed.runs}r ${dismissed.balls}b, SR ${strikeRate.toFixed(2)})`);
+      } else {
+        details.push(`${playerName(match, strikerId, 'Batter')} ${batter.runs} (${batter.balls})`);
       }
 
-      if (!payload.is_wicket) return;
-      const outPlayerId = stringValue(payload.out_player_id) ?? strikerId;
-      const batter = outPlayerId
-        ? batters.get(outPlayerId) ?? emptyBatterState()
-        : emptyBatterState();
-      const batterName = playerName(match, outPlayerId, 'Batter');
-      const dismissal = dismissalScorecardText(match, event);
-      const strikeRate = batter.balls ? (batter.runs / batter.balls) * 100 : 0;
-      result.set(event.id, {
-        detail: `${batterName} ${dismissal} (${batter.runs}r ${batter.balls}b ${batter.fours}x4 ${batter.sixes}x6 SR: ${strikeRate.toFixed(2)})`,
-      });
+      if (innings) {
+        const fallback = DEFAULT_RULES[match.format as MatchFormat] ?? DEFAULT_RULES.TURF;
+        const situation = testMatchSituation({
+          format: match.format,
+          followOnEnabled: Boolean(match.rules.followOnEnabled ?? fallback.followOnEnabled),
+          oversPerInnings: Number(match.rules.oversPerInnings ?? fallback.oversPerInnings),
+          currentInnings: innings,
+          currentRuns: inningsRuns,
+          innings: match.allInnings,
+          teamName: teamId => teamId === match.teamA.id ? match.teamA.name : match.teamB.name,
+        });
+        if (situation.positionText) details.push(situation.positionText);
+        if (situation.followOnText) details.push(situation.followOnText);
+      }
+      result.set(event.id, { detail: details.join(' · ') });
     });
 
   return result;
@@ -810,11 +852,43 @@ function ballLabel(event: CloudMatchEvent) {
   if (event.kind !== 'BALL_RECORDED') return `#${event.sequence}`;
   return `${Number(event.payload.over_no ?? 0)}.${Number(event.payload.legal_ball_in_over ?? 0)}`;
 }
+function currentTestSituation(match: CloudLiveMatch, currentRuns = match.score.runs) {
+  if (!match.innings) return {};
+  const fallback = DEFAULT_RULES[match.format as MatchFormat] ?? DEFAULT_RULES.TURF;
+  return testMatchSituation({
+    format: match.format,
+    followOnEnabled: Boolean(match.rules.followOnEnabled ?? fallback.followOnEnabled),
+    oversPerInnings: Number(match.rules.oversPerInnings ?? fallback.oversPerInnings),
+    currentInnings: match.innings,
+    currentRuns,
+    innings: match.allInnings,
+    teamName: teamId => teamId === match.teamA.id ? match.teamA.name : match.teamB.name,
+  });
+}
+
+function sameOverComparison(match: CloudLiveMatch): string | undefined {
+  if (match.format !== 'TURF_TEST' || !match.innings || match.score.legalBalls === 0) return undefined;
+  const reference = [...match.allInnings]
+    .filter(item => item.sequence < match.innings!.sequence && item.battingTeamId !== match.innings!.battingTeamId)
+    .sort((a, b) => b.sequence - a.sequence)[0];
+  if (!reference || reference.totalBalls < match.score.legalBalls) return undefined;
+  const referenceScore = scoreAtLegalBalls(match.commentary, reference.id, match.score.legalBalls);
+  const referenceTeam = reference.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
+  const battingTeam = match.innings.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
+  const difference = match.score.runs - referenceScore;
+  const comparison = difference === 0
+    ? 'level'
+    : `${Math.abs(difference)} run${Math.abs(difference) === 1 ? '' : 's'} ${difference > 0 ? 'ahead' : 'behind'}`;
+  return `At ${formatOver(match.score.legalBalls)} ov: ${battingTeam.shortName} ${match.score.runs}, ${referenceTeam.shortName} were ${referenceScore} · ${comparison}`;
+}
+
 function situationText(match: CloudLiveMatch, insights: MatchInsights) {
   if (match.status === 'COMPLETED') return matchResultText(match);
   if (match.innings?.target != null) {
     return `${Math.max(0, match.innings.target - match.score.runs)} runs needed from ${insights.ballsRemaining} balls`;
   }
+  const testSituation = currentTestSituation(match);
+  if (testSituation.positionText) return testSituation.positionText;
   return `Projected score ${insights.projectedScore} at the current rate`;
 }
 

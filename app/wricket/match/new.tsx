@@ -30,6 +30,7 @@ import {
   setMatchStatus,
 } from '@/lib/wricket/db/repo';
 import { Team, User, MatchFormat, FORMAT_LABEL, DEFAULT_RULES, TossChoice, FormatRules } from '@/lib/wricket/domain/types';
+import { followOnThresholdForOvers } from '@/lib/wricket/domain/test-match';
 import { matchSetupApi } from '@/lib/supabase/matchSetupApi';
 import { teamManagementApi } from '@/lib/supabase/teamManagementApi';
 import { fixturesApi } from '@/lib/supabase/fixturesApi';
@@ -144,6 +145,9 @@ export default function NewMatchScreen() {
     ...DEFAULT_RULES[format],
     playersPerSide: Number.isInteger(playingCount) ? playingCount : 0,
     oversPerInnings: Number.isInteger(oversPerInnings) ? oversPerInnings : 0,
+    followOnThreshold: format === 'TURF_TEST'
+      ? followOnThresholdForOvers(oversPerInnings)
+      : DEFAULT_RULES[format].followOnThreshold,
   };
 
   const canProceedTeams = teamAId && teamBId && teamAId !== teamBId;

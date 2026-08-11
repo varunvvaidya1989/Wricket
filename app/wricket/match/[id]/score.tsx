@@ -67,6 +67,7 @@ import {
   Team,
 } from '@/lib/wricket/domain/types';
 import { applyBall, formatOver, isInningsOver, runRate } from '@/lib/wricket/domain/scoring';
+import { testMatchSituation } from '@/lib/wricket/domain/test-match';
 import { ballSymbol, batsmanLineFor, bowlerLineFor } from '@/lib/wricket/domain/stats';
 import {
   CloudScoringSyncState,
@@ -122,6 +123,7 @@ export default function ScoreScreen() {
   const [teamA, setTeamA] = useState<Team | null>(null);
   const [teamB, setTeamB] = useState<Team | null>(null);
   const [innings, setInnings] = useState<Innings | null>(null);
+  const [matchInnings, setMatchInnings] = useState<Innings[]>([]);
   const [balls, setBalls] = useState<Ball[]>([]);
   const [adjustments, setAdjustments] = useState<ScoreAdjustment[]>([]);
   const [retirements, setRetirements] = useState<BatterRetirement[]>([]);
@@ -129,6 +131,7 @@ export default function ScoreScreen() {
   const [xiBowling, setXiBowling] = useState<MatchXIPlayer[]>([]);
   const [live, setLive] = useState<LiveState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [followOnDecisionSaving, setFollowOnDecisionSaving] = useState(false);
 
   // sheets
   const [openersOpen, setOpenersOpen] = useState(false);
@@ -145,6 +148,7 @@ export default function ScoreScreen() {
     pending: 0,
   });
   const lastShownSyncErrorRef = useRef<string | null>(null);
+  const lastFollowOnPromptRef = useRef<string | null>(null);
   const confirmLeaveScoring = useCallback(() => {
     const leave = () => router.back();
     if (Platform.OS === 'web') {
@@ -208,7 +212,13 @@ export default function ScoreScreen() {
         open = innList.find(i => !i.isClosed);
       }
     }
+    setMatchInnings(innList);
     if (!open) {
+      if (m.status === 'FOLLOW_ON_DECISION') {
+        setInnings(null);
+        setLive(null);
+        return;
+      }
       router.replace({
         pathname: '/wricket/match/[id]/scorecard',
         params: { id: m.id },
@@ -342,6 +352,17 @@ export default function ScoreScreen() {
 
   const battingTeam = innings && (innings.battingTeamId === teamA?.id ? teamA : teamB);
   const bowlingTeam = innings && (innings.bowlingTeamId === teamA?.id ? teamA : teamB);
+  const testSituation = match && innings && live && teamA && teamB
+    ? testMatchSituation({
+        format: match.format,
+        followOnEnabled: match.rules.followOnEnabled,
+        oversPerInnings: match.rules.oversPerInnings,
+        currentInnings: innings,
+        currentRuns: live.totalRuns,
+        innings: matchInnings,
+        teamName: teamId => teamId === teamA.id ? teamA.name : teamB.name,
+      })
+    : {};
 
   const striker = live?.strikerId ? xiBatting.find(p => p.userId === live.strikerId) : null;
   const nonStriker = live?.nonStrikerId ? xiBatting.find(p => p.userId === live.nonStrikerId) : null;
@@ -487,7 +508,7 @@ export default function ScoreScreen() {
         if (step.kind === 'FOLLOW_ON_DECISION') {
           Alert.alert('Follow-on', 'Trail exceeds threshold. Enforce follow-on?', [
             {
-              text: 'Decline',
+              text: `Decline — ${bowlingTeam?.name ?? 'leading team'} bat`,
               onPress: async () => {
                 const innList = await listInningsForMatch(match!.id);
                 await startNextInnings(match!.id, {
@@ -499,7 +520,7 @@ export default function ScoreScreen() {
               },
             },
             {
-              text: 'Enforce',
+              text: `Enforce on ${battingTeam?.name ?? 'trailing team'}`,
               style: 'destructive',
               onPress: async () => {
                 const innList = await listInningsForMatch(match!.id);
@@ -575,7 +596,7 @@ export default function ScoreScreen() {
         balls.length + adjustments.length + retirements.length + 1,
       );
     },
-    [adjustments.length, balls.length, innings, live, loadFromDb, match, persistSession, retirements.length, router, triggerFlash, xiBatting, xiBowling],
+    [adjustments.length, balls.length, battingTeam, bowlingTeam, innings, live, loadFromDb, match, persistSession, retirements.length, router, triggerFlash, xiBatting, xiBowling],
   );
 
   const recordScoreAdjustment = useCallback(
@@ -643,6 +664,9 @@ export default function ScoreScreen() {
           await startNextInnings(match!.id, step.next);
           loadFromDb();
         }
+        else if (step.kind === 'FOLLOW_ON_DECISION') {
+          await loadFromDb();
+        }
       }
     },
     [adjustments.length, balls.length, innings, live, loadFromDb, match, persistSession, retirements.length, router, triggerFlash, xiBatting.length],
@@ -708,6 +732,9 @@ export default function ScoreScreen() {
         else if (step.kind === 'NEXT_INNINGS' && step.next) {
           await startNextInnings(match!.id, step.next);
           loadFromDb();
+        }
+        else if (step.kind === 'FOLLOW_ON_DECISION') {
+          await loadFromDb();
         }
       }
     },
@@ -809,7 +836,7 @@ export default function ScoreScreen() {
       } else if (step.kind === 'FOLLOW_ON_DECISION') {
         Alert.alert('Follow-on', 'Trail exceeds threshold. Enforce follow-on?', [
           {
-            text: 'Decline',
+            text: `Decline — ${bowlingTeam?.name ?? 'leading team'} bat`,
             onPress: async () => {
               const innList = await listInningsForMatch(match.id);
               await startNextInnings(match.id, {
@@ -821,7 +848,7 @@ export default function ScoreScreen() {
             },
           },
           {
-            text: 'Enforce',
+            text: `Enforce on ${battingTeam?.name ?? 'trailing team'}`,
             style: 'destructive',
             onPress: async () => {
               const innList = await listInningsForMatch(match.id);
@@ -845,7 +872,32 @@ export default function ScoreScreen() {
         cause instanceof Error ? cause.message : 'Please try again.',
       );
     }
-  }, [match, innings, loadFromDb, router]);
+  }, [battingTeam, bowlingTeam, match, innings, loadFromDb, router]);
+
+  const resolveFollowOnDecision = useCallback(async (enforce: boolean) => {
+    if (!match) return;
+    setFollowOnDecisionSaving(true);
+    try {
+      const innList = await listInningsForMatch(match.id);
+      const firstInnings = innList.find(item => item.sequence === 1);
+      const secondInnings = innList.find(item => item.sequence === 2);
+      if (!firstInnings || !secondInnings) throw new Error('Both first innings are required before deciding the follow-on.');
+      await startNextInnings(match.id, {
+        sequence: 3,
+        battingTeamId: enforce ? secondInnings.battingTeamId : firstInnings.battingTeamId,
+        bowlingTeamId: enforce ? firstInnings.battingTeamId : secondInnings.battingTeamId,
+        isFollowOn: enforce,
+      });
+      await loadFromDb();
+    } catch (cause) {
+      Alert.alert(
+        'Could not apply follow-on decision',
+        cause instanceof Error ? cause.message : 'Please try again.',
+      );
+    } finally {
+      setFollowOnDecisionSaving(false);
+    }
+  }, [loadFromDb, match]);
 
   const finishExceptionalMatch = useCallback(async (
     resolution: MatchAbandonmentResolution,
@@ -862,6 +914,39 @@ export default function ScoreScreen() {
     }
   }, [innings, match, router]);
 
+  useEffect(() => {
+    if (match?.status !== 'FOLLOW_ON_DECISION') {
+      lastFollowOnPromptRef.current = null;
+      return;
+    }
+    const firstInnings = matchInnings.find(item => item.sequence === 1);
+    const secondInnings = matchInnings.find(item => item.sequence === 2);
+    if (!firstInnings || !secondInnings || !teamA || !teamB) return;
+    const promptKey = `${match.id}:${secondInnings.id}`;
+    if (lastFollowOnPromptRef.current === promptKey) return;
+    lastFollowOnPromptRef.current = promptKey;
+
+    const enforcingTeam = firstInnings.battingTeamId === teamA.id ? teamA : teamB;
+    const followingTeam = secondInnings.battingTeamId === teamA.id ? teamA : teamB;
+    const deficit = firstInnings.totalRuns - secondInnings.totalRuns;
+    Alert.alert(
+      'Follow-on available',
+      `${followingTeam.name} trail ${enforcingTeam.name} by ${deficit} runs. Enforce the follow-on?`,
+      [
+        {
+          text: `Decline — ${enforcingTeam.name} bat`,
+          onPress: () => void resolveFollowOnDecision(false),
+        },
+        {
+          text: `Enforce on ${followingTeam.name}`,
+          style: 'destructive',
+          onPress: () => void resolveFollowOnDecision(true),
+        },
+      ],
+      { cancelable: false },
+    );
+  }, [match, matchInnings, resolveFollowOnDecision, teamA, teamB]);
+
   const abandonMatch = useCallback(() => {
     if (!match || !teamA || !teamB) return;
     Alert.alert('End match', 'Choose how this match should be recorded.', [
@@ -877,6 +962,31 @@ export default function ScoreScreen() {
       { text: 'Cancelled', style: 'destructive', onPress: () => void finishExceptionalMatch('CANCELLED') },
     ], { cancelable: true });
   }, [finishExceptionalMatch, match, teamA, teamB]);
+
+  if (match?.status === 'FOLLOW_ON_DECISION' && teamA && teamB) {
+    const firstInnings = matchInnings.find(item => item.sequence === 1);
+    const secondInnings = matchInnings.find(item => item.sequence === 2);
+    const enforcingTeam = firstInnings?.battingTeamId === teamA.id ? teamA : teamB;
+    const followingTeam = secondInnings?.battingTeamId === teamA.id ? teamA : teamB;
+    const deficit = firstInnings && secondInnings ? firstInnings.totalRuns - secondInnings.totalRuns : undefined;
+
+    return (
+      <Screen>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={styles.loadState}>
+          <MaterialCommunityIcons name="swap-vertical-bold" size={48} color={colors.accent} />
+          <Text variant="h2">Follow-on decision</Text>
+          <Text tone="muted" style={styles.loadErrorText}>
+            {followingTeam.name} trail {enforcingTeam.name}{deficit !== undefined ? ` by ${deficit} runs` : ''}. Choose who bats in the third innings.
+          </Text>
+          <View style={styles.loadActions}>
+            <Button title={`Enforce on ${followingTeam.name}`} disabled={followOnDecisionSaving} onPress={() => void resolveFollowOnDecision(true)} />
+            <Button title={`Decline — ${enforcingTeam.name} bat`} variant="secondary" disabled={followOnDecisionSaving} onPress={() => void resolveFollowOnDecision(false)} />
+          </View>
+        </View>
+      </Screen>
+    );
+  }
 
   if (!match || !innings || !live || !battingTeam || !bowlingTeam) {
     return (
@@ -963,6 +1073,12 @@ export default function ScoreScreen() {
             {formatOver(live.legalBalls)} overs · CRR {runRate(live.totalRuns, live.legalBalls).toFixed(2)}
             {innings.target ? ` · Need ${Math.max(0, innings.target - live.totalRuns)} off ${Math.max(0, match.rules.oversPerInnings * 6 - live.legalBalls)} balls` : ''}
           </Text>
+          {testSituation.positionText && <Text variant="bodyStrong" style={{ marginTop: spacing.xs }}>
+            {testSituation.positionText}
+          </Text>}
+          {testSituation.followOnText && <Text variant="caption" tone="accent" style={{ marginTop: 2 }}>
+            {testSituation.followOnText}
+          </Text>}
         </View>
 
         <View style={styles.scoringContent}>
