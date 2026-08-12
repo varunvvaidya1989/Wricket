@@ -1,6 +1,7 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import React from 'react';
 import { GestureResponderEvent, Pressable, StyleSheet, View } from 'react-native';
+import { SportIcon } from '@/components/sports/SportIcon';
 
 import { Text } from '@/components/ui/Text';
 import { SportOption } from '@/lib/supabase/sportstageAccountApi';
@@ -27,7 +28,7 @@ export function SportMultiSelect({ sports, selectedCodes, primaryCode, onToggle,
       onPress={() => onToggle(sport.code)}
       style={({ pressed }) => [styles.sport, compact && styles.compact, isSelected && styles.selected, pressed && styles.pressed]}
     >
-      <View style={[styles.icon, isSelected && styles.iconSelected]}><MaterialCommunityIcons name={sportIcon(sport.code)} size={21} color={isSelected ? colors.accent : colors.textMuted} /></View>
+      <View style={[styles.icon, isSelected && styles.iconSelected]}><SportIcon code={sport.code} size={21} color={isSelected ? colors.accent : colors.textMuted} /></View>
       <View style={styles.copy}><Text variant="bodyStrong" numberOfLines={1}>{sport.name}</Text><Text variant="caption" tone={sport.status === 'AVAILABLE' ? 'muted' : 'dim'}>{sport.status === 'AVAILABLE' ? 'Available now' : 'Coming soon'}</Text></View>
       {isSelected ? <Pressable
         accessibilityRole="radio"
@@ -40,13 +41,6 @@ export function SportMultiSelect({ sports, selectedCodes, primaryCode, onToggle,
   })}</View>;
 }
 
-function sportIcon(code: string): keyof typeof MaterialCommunityIcons.glyphMap {
-  if (code === 'CRICKET') return 'cricket';
-  if (code === 'FOOTBALL') return 'soccer';
-  if (code === 'BADMINTON') return 'badminton';
-  if (code === 'BASKETBALL') return 'basketball';
-  return 'trophy-outline';
-}
 
 const styles = StyleSheet.create({
   list: { gap: spacing.sm },

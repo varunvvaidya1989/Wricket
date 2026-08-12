@@ -1,40 +1,27 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { Href, useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import { Href, useRouter } from 'expo-router';
+import React from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
+import { SportIcon } from '@/components/sports/SportIcon';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
-import { GlobalProfileData, globalProfileApi, SportSummary } from '@/lib/supabase/globalProfileApi';
+import { useGlobalProfile } from '@/hooks/useGlobalProfile';
+import { SportSummary } from '@/lib/supabase/globalProfileApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 
 export default function GlobalProfileScreen() {
   const auth = useAuth();
   const router = useRouter();
-  const [data, setData] = useState<GlobalProfileData>();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>();
-
-  const load = useCallback(async () => {
-    if (!auth.session) { setLoading(false); return; }
-    setLoading(true);
-    try {
-      setData(await globalProfileApi.get(auth.session.user.id));
-      setError(undefined);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load your global profile');
-    } finally { setLoading(false); }
-  }, [auth.session]);
-
-  useFocusEffect(useCallback(() => { void load(); return undefined; }, [load]));
+  const { data, loading, error, reload } = useGlobalProfile(auth.session?.user.id);
 
   return <Screen padded={false}>
     <AppHeader title="Global Profile" eyebrow="SPORTSTAGE" back right={<Pressable accessibilityRole="button" accessibilityLabel="Account settings" onPress={() => router.push('/account')} style={styles.headerAction}><MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} /></Pressable>} />
-    {loading && !data ? <View style={styles.center}><ActivityIndicator color={colors.accent} /><Text variant="caption" tone="muted">Loading your sports...</Text></View> : !auth.session ? <View style={styles.center}><MaterialCommunityIcons name="account-lock-outline" size={34} color={colors.textDim} /><Text variant="h3">Sign in to view your profile</Text></View> : error && !data ? <View style={styles.center}><MaterialCommunityIcons name="cloud-alert-outline" size={34} color={colors.textDim} /><Text variant="h3">Profile unavailable</Text><Text tone="muted" style={styles.centerText}>{error}</Text><Pressable onPress={() => void load()} style={styles.retry}><Text variant="caption" style={{ color: colors.accentInk }}>TRY AGAIN</Text></Pressable></View> : data ? <ScrollView refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />} contentContainerStyle={styles.content}>
+    {loading && !data ? <View style={styles.center}><ActivityIndicator color={colors.accent} /><Text variant="caption" tone="muted">Loading your sports...</Text></View> : !auth.session ? <View style={styles.center}><MaterialCommunityIcons name="account-lock-outline" size={34} color={colors.textDim} /><Text variant="h3">Sign in to view your profile</Text></View> : error && !data ? <View style={styles.center}><MaterialCommunityIcons name="cloud-alert-outline" size={34} color={colors.textDim} /><Text variant="h3">Profile unavailable</Text><Text tone="muted" style={styles.centerText}>{error}</Text><Pressable onPress={() => void reload()} style={styles.retry}><Text variant="caption" style={{ color: colors.accentInk }}>TRY AGAIN</Text></Pressable></View> : data ? <ScrollView refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} />} contentContainerStyle={styles.content}>
       <View style={styles.identity}>
         {data.profile.avatarUrl ? <Image source={{ uri: data.profile.avatarUrl }} style={styles.avatarImage} /> : <View style={styles.avatar}><Text variant="h1" tone="accent">{initials(data.profile.displayName)}</Text></View>}
         <View style={styles.identityCopy}><Text variant="h2" numberOfLines={1}>{data.profile.displayName}</Text><Text variant="caption" tone="muted">SportStage member</Text></View>
@@ -60,7 +47,7 @@ function SportSummaryCard({ summary, onOpen }: { summary: SportSummary; onOpen: 
   const route = summary.sport.code === 'CRICKET' ? '/wricket/me' as Href : summary.sport.appRoute as Href | undefined;
   const canOpen = summary.available && Boolean(route);
   return <Card onPress={canOpen ? () => onOpen(route!) : undefined} style={!summary.available ? styles.unavailableCard : undefined}>
-    <View style={styles.sportHeader}><View style={styles.sportIcon}><MaterialCommunityIcons name={summary.sport.code === 'CRICKET' ? 'cricket' : 'trophy-outline'} size={24} color={summary.available ? colors.accent : colors.textDim} /></View><View style={styles.flex}><View style={styles.sportTitle}><Text variant="h3">{summary.sport.name}</Text>{summary.sport.isPrimary ? <Text variant="overline" tone="accent">PRIMARY</Text> : null}</View><Text variant="caption" tone="muted">{summary.sport.accessStatus === 'COMING_SOON' ? 'Profile reserved · App coming soon' : summary.available ? 'Sport profile active' : 'Profile unavailable'}</Text></View>{canOpen ? <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} /> : null}</View>
+    <View style={styles.sportHeader}><View style={styles.sportIcon}><SportIcon code={summary.sport.code} size={24} color={summary.available ? colors.accent : colors.textDim} /></View><View style={styles.flex}><View style={styles.sportTitle}><Text variant="h3">{summary.sport.name}</Text>{summary.sport.isPrimary ? <Text variant="overline" tone="accent">PRIMARY</Text> : null}</View><Text variant="caption" tone="muted">{summary.sport.accessStatus === 'COMING_SOON' ? 'Profile reserved · activates at launch' : summary.available ? 'Sport profile active' : 'Profile unavailable'}</Text></View>{canOpen ? <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} /> : null}</View>
     {summary.headlineStats.length ? <View style={styles.sportStats}>{summary.headlineStats.map(item => <View key={item.label} style={styles.sportStat}><Text variant="h2">{item.value}</Text><Text variant="overline" tone="dim">{item.label}</Text></View>)}</View> : <Text variant="caption" tone="dim" style={styles.noActivity}>{summary.available ? 'No recorded activity yet.' : 'Your profile will activate when this sport launches.'}</Text>}
   </Card>;
 }

@@ -1,218 +1,333 @@
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import type { Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { usePathname, useRouter } from 'expo-router';
-import type { Href } from 'expo-router';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
+import { SportStageLogo } from '@/components/branding/SportStageLogo';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { SportIcon } from '@/components/sports/SportIcon';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
-import { colors, palette } from '@/lib/theme/colors';
-import { spacing, radius } from '@/lib/theme/spacing';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { Button } from '@/components/ui/Button';
-import { SportStageLogo } from '@/components/branding/SportStageLogo';
-import { SportStageSignOutActions } from '@/components/auth/SportStageSignOutActions';
+import { useGlobalProfile } from '@/hooks/useGlobalProfile';
+import type { SportSummary } from '@/lib/supabase/globalProfileApi';
+import { colors } from '@/lib/theme/colors';
 
-interface SportApp {
-  id: string;
-  name: string;
-  status: string;
-  description: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  accent: string;
-  enabled: boolean;
-  route?: Href;
-}
-
-const sportApps: SportApp[] = [
-  {
-    id: 'wricket',
-    name: 'Wricket',
-    status: 'Ready',
-    description: 'Cricket tournaments, live scoring, innings, scorecards and points tables.',
-    icon: 'cricket',
-    accent: colors.accent,
-    enabled: true,
-    route: '/wricket' as Href,
-  },
-];
+const LOCKED_COPY = 'Profile reserved · activates at launch';
 
 export default function SportStageDashboard() {
   const auth = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
-  const nested = pathname !== '/';
-  const cricketEnabled = auth.profile?.connectedSports.some(sport => sport.code === 'CRICKET' && sport.accessStatus === 'ACTIVE') ?? false;
-  const selectedSport = auth.profile?.primarySport;
+  const { data } = useGlobalProfile(auth.session?.user.id);
+  const fallbackSports: SportSummary[] = (auth.profile?.connectedSports ?? [])
+    .filter(sport => sport.accessStatus !== 'SUSPENDED')
+    .map(sport => ({ sport, available: sport.accessStatus === 'ACTIVE', headlineStats: [] }));
+  const sports = data?.sports ?? fallbackSports;
+  const displayName = data?.profile.displayName ?? auth.profile?.displayName ?? 'SportStage member';
 
   return (
-    <Screen scroll padded={!nested}>
-      {nested ? <AppHeader title="SportStage apps" back /> : null}
-      <View style={[styles.header, nested && styles.nestedSection]}>
-        <SportStageLogo size={60} />
-        <Text variant="overline" tone="muted" style={{ marginTop: spacing.lg }}>
-          SportStage
-        </Text>
-        {!nested ? <Text variant="h1" style={styles.title}>{cricketEnabled ? 'Your cricket stage' : `${selectedSport?.name ?? 'Your sport'} is coming soon`}</Text> : null}
-        <Text variant="body" tone="muted" style={styles.subtitle}>
-          {cricketEnabled
-            ? `${auth.profile?.connectedSports.length ?? 1} sport${auth.profile?.connectedSports.length === 1 ? '' : 's'} connected. Wricket is ready now.`
-            : 'Your SportStage account is ready. Selected sports will unlock here as their apps launch.'}
-        </Text>
-      </View>
-
-      {!nested && auth.session ? <Pressable onPress={() => router.push('/profile')} style={({ pressed }) => [styles.profileCard, pressed && { opacity: 0.78 }]}>
-        <View style={styles.profileAvatar}><Text variant="h3" tone="accent">{initials(auth.profile?.displayName ?? 'SportStage member')}</Text></View>
-        <View style={{ flex: 1, minWidth: 0 }}><Text variant="overline" tone="muted">GLOBAL PROFILE</Text><Text variant="h3" numberOfLines={1}>{auth.profile?.displayName ?? 'SportStage member'}</Text><Text variant="caption" tone="dim">{auth.profile?.connectedSports.length ?? 0} connected sport{auth.profile?.connectedSports.length === 1 ? '' : 's'}</Text></View>
-        <MaterialCommunityIcons name="chevron-right" size={23} color={colors.textDim} />
-      </Pressable> : null}
-
-      <View style={[styles.grid, nested && styles.nestedSection]}>
-        {sportApps.map(app => {
-          const enabled = app.enabled && cricketEnabled;
-          return (
-          <Pressable
-            key={app.id}
-            disabled={!enabled || !app.route}
-            onPress={() => app.route && router.push(app.route)}
-            style={({ pressed }) => [
-              styles.appCard,
-              { borderTopColor: app.accent },
-              !enabled && styles.appCardDisabled,
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <View style={styles.cardTop}>
-              <View style={[styles.appIcon, { backgroundColor: app.accent }]}>
-                <MaterialCommunityIcons
-                  name={app.icon}
-                  size={28}
-                  color={enabled ? colors.accentInk : palette.black}
-                />
-              </View>
-              <View style={[styles.statusPill, enabled && styles.statusPillReady]}>
-                <Text
-                  variant="caption"
-                  style={{
-                    color: enabled ? colors.accentInk : colors.textMuted,
-                    fontWeight: '700',
-                  }}
-                >
-                  {enabled ? app.status : 'Unavailable'}
-                </Text>
-              </View>
-            </View>
-
-            <Text variant="h2" style={{ marginTop: spacing.lg }}>
-              {app.name}
-            </Text>
-            <Text variant="body" tone="muted" style={styles.cardCopy}>
-              {app.description}
-            </Text>
-
-            <View style={styles.cardFooter}>
-              <Text variant="bodyStrong" tone={enabled ? 'accent' : 'dim'}>
-                {enabled ? 'Open app' : 'Available to Cricket accounts'}
-              </Text>
-              {enabled && (
-                <MaterialCommunityIcons name="arrow-right" size={20} color={colors.accent} />
-              )}
-            </View>
-          </Pressable>
-          );
-        })}
-      </View>
-
-      {!cricketEnabled && !nested ? (
-        <View style={styles.accountActions}>
-          <Text variant="overline" tone="muted">ACCOUNT</Text>
-          <Text variant="caption" tone="muted">
-            You can connect multiple sports and choose which one is primary. Available sport apps remain accessible even when they are not primary.
-          </Text>
-          <Button
-            title="Manage my sports"
-            variant="secondary"
-            onPress={() => router.push('/account')}
-            fullWidth
-          />
-          <SportStageSignOutActions />
+    <Screen scroll padded={false}>
+      <View style={styles.hero}>
+        <View pointerEvents="none" style={styles.heroGlowOuter} />
+        <View pointerEvents="none" style={styles.heroGlowInner} />
+        <View style={styles.heroMark}>
+          <SportStageLogo size={54} />
         </View>
+        <Text style={styles.heroTitle}>Your sports stage</Text>
+      </View>
+
+      <View style={styles.divider} />
+
+      {auth.session ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open Global Profile"
+          onPress={() => router.push('/profile')}
+          style={({ pressed }) => [styles.profileCard, pressed && styles.pressed]}
+        >
+          <View style={styles.profileTop}>
+            <View style={styles.profileAvatar}>
+              <Text style={styles.profileInitials}>{initials(displayName)}</Text>
+            </View>
+            <View style={styles.profileIdentity}>
+              <Text numberOfLines={1} style={styles.profileName}>{displayName}</Text>
+              <Text style={styles.profileSub}>GLOBAL PROFILE</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={21} color={colors.textDim} />
+          </View>
+          <View style={styles.profileStats}>
+            <ProfileStat value={data?.activeSports ?? sports.length} label="SPORTS" />
+            <ProfileStat value={data?.totalMatches ?? '—'} label="MATCHES" />
+            <ProfileStat value={data?.achievements ?? '—'} label="MILESTONES" />
+          </View>
+        </Pressable>
       ) : null}
+
+      <Text style={styles.sectionLabel}>YOUR SPORTS</Text>
+      <View style={styles.sportGrid}>
+        {sports.map(summary => (
+          <SportCard
+            key={summary.sport.id}
+            summary={summary}
+            onOpen={route => router.push(route)}
+          />
+        ))}
+      </View>
     </Screen>
   );
 }
 
+function ProfileStat({ value, label }: { value: number | string; label: string }) {
+  return (
+    <View style={styles.profileStat}>
+      <Text style={styles.profileStatValue}>{value}</Text>
+      <Text style={styles.profileStatLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function SportCard({ summary, onOpen }: { summary: SportSummary; onOpen: (route: Href) => void }) {
+  const route = summary.sport.code === 'CRICKET'
+    ? '/wricket' as Href
+    : summary.sport.appRoute as Href | undefined;
+  const ready = summary.available && Boolean(route);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !ready }}
+      disabled={!ready}
+      onPress={ready ? () => onOpen(route!) : undefined}
+      style={({ pressed }) => [
+        styles.sportCard,
+        ready ? styles.sportCardReady : styles.sportCardLocked,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={[styles.sportIcon, ready ? styles.sportIconReady : styles.sportIconLocked]}>
+        <SportIcon
+          code={summary.sport.code}
+          size={25}
+          color={ready ? colors.accentInk : colors.textDim}
+        />
+      </View>
+      <View style={styles.sportMain}>
+        <Text style={styles.sportName}>{summary.sport.name}</Text>
+        <Text style={styles.sportDescription}>
+          {ready ? readyDescription(summary.sport.code) : LOCKED_COPY}
+        </Text>
+        {ready ? <Text style={styles.sportOpen}>Open app →</Text> : null}
+      </View>
+      <View style={[styles.sportStatus, ready ? styles.sportStatusReady : styles.sportStatusLocked]}>
+        <Text style={[styles.sportStatusText, ready ? styles.sportStatusTextReady : styles.sportStatusTextLocked]}>
+          {ready ? 'READY' : 'LOCKED'}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function readyDescription(code: string) {
+  if (code === 'CRICKET') return 'Wricket · tournaments, live scoring and scorecards.';
+  return 'Your SportStage app is ready.';
+}
+
+function initials(name: string) {
+  return name.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'S';
+}
+
 const styles = StyleSheet.create({
-  header: {
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
+  hero: {
+    position: 'relative',
+    paddingTop: 30,
+    paddingHorizontal: 18,
+    paddingBottom: 30,
+    overflow: 'hidden',
+    alignItems: 'center',
   },
-  title: {
-    marginTop: spacing.sm,
-    maxWidth: 320,
+  heroGlowOuter: {
+    position: 'absolute',
+    top: -54,
+    width: 360,
+    height: 280,
+    borderRadius: 180,
+    backgroundColor: 'rgba(95, 227, 138, 0.045)',
   },
-  subtitle: {
-    marginTop: spacing.md,
-    maxWidth: 360,
-    lineHeight: 22,
+  heroGlowInner: {
+    position: 'absolute',
+    top: -18,
+    width: 220,
+    height: 190,
+    borderRadius: 110,
+    backgroundColor: 'rgba(95, 227, 138, 0.075)',
   },
-  grid: {
-    gap: spacing.md,
-    paddingBottom: spacing.xxxl,
-  },
-  accountActions: {
-    gap: spacing.sm,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxxl,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  nestedSection: { paddingHorizontal: spacing.lg },
-  profileCard: { marginBottom: spacing.xl, minHeight: 78, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  profileAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
-  appCard: {
-    backgroundColor: colors.surface,
+  heroMark: {
+    width: 56,
+    height: 56,
+    borderRadius: 15,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
-    borderTopWidth: 4,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
+    backgroundColor: '#0C1210',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
   },
-  appCardDisabled: {
-    opacity: 0.58,
+  heroTitle: {
+    marginTop: 14,
+    color: colors.text,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 27,
+    lineHeight: 30,
+    letterSpacing: -0.5,
+    zIndex: 2,
   },
-  cardTop: {
+  divider: {
+    height: 1,
+    marginHorizontal: 18,
+    backgroundColor: colors.border,
+  },
+  profileCard: {
+    marginTop: 20,
+    marginHorizontal: 18,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  profileTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 14,
   },
-  appIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: radius.md,
+  profileAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#274531',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  statusPill: {
-    backgroundColor: colors.surfaceElevated,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+  profileInitials: {
+    color: colors.accent,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
   },
-  statusPillReady: {
-    backgroundColor: colors.accent,
+  profileIdentity: { flex: 1, minWidth: 0 },
+  profileName: {
+    color: colors.text,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
   },
-  cardCopy: {
-    marginTop: spacing.sm,
-    lineHeight: 21,
+  profileSub: {
+    marginTop: 2,
+    color: colors.textDim,
+    fontFamily: 'IBMPlexMono_400Regular',
+    fontSize: 9.5,
   },
-  cardFooter: {
-    marginTop: spacing.lg,
+  profileStats: { flexDirection: 'row', gap: 8 },
+  profileStat: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+  },
+  profileStatValue: {
+    color: colors.text,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 17,
+    fontVariant: ['tabular-nums'],
+  },
+  profileStatLabel: {
+    marginTop: 2,
+    color: colors.textDim,
+    fontFamily: 'IBMPlexMono_400Regular',
+    fontSize: 8,
+  },
+  sectionLabel: {
+    paddingTop: 20,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
+    color: colors.textDim,
+    fontFamily: 'IBMPlexMono_400Regular',
+    fontSize: 9.5,
+    letterSpacing: 0.8,
+  },
+  sportGrid: {
+    paddingHorizontal: 18,
+    paddingBottom: 48,
+    gap: 10,
+  },
+  sportCard: {
+    minHeight: 76,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 13,
   },
+  sportCardReady: {
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(95, 227, 138, 0.07)',
+  },
+  sportCardLocked: {
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    opacity: 0.62,
+  },
+  sportIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sportIconReady: { backgroundColor: colors.accent },
+  sportIconLocked: {
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sportMain: { flex: 1, minWidth: 0 },
+  sportName: {
+    color: colors.text,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14.5,
+  },
+  sportDescription: {
+    marginTop: 3,
+    color: colors.textMuted,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 10.5,
+    lineHeight: 15,
+  },
+  sportOpen: {
+    marginTop: 8,
+    color: colors.accent,
+    fontFamily: 'IBMPlexMono_400Regular',
+    fontSize: 10,
+  },
+  sportStatus: {
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+  },
+  sportStatusReady: { backgroundColor: colors.accent },
+  sportStatusLocked: { borderWidth: 1, borderColor: colors.border },
+  sportStatusText: {
+    fontFamily: 'IBMPlexMono_400Regular',
+    fontSize: 8.5,
+    letterSpacing: 0.4,
+  },
+  sportStatusTextReady: { color: '#0A1A0F' },
+  sportStatusTextLocked: { color: colors.textDim },
+  pressed: { opacity: 0.78 },
 });
-
-function initials(name: string) { return name.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'S'; }
