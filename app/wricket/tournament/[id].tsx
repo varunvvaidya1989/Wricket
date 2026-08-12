@@ -45,6 +45,7 @@ import { createOnlineTeam } from '@/lib/wricket/data/cloudFirst';
 import { TournamentMvpLeaderboard } from '@/components/wricket/mvp/TournamentMvpLeaderboard';
 import { StandingsCalculator } from '@/lib/wricket/fixtures';
 import { tournamentStatsApi } from '@/lib/supabase/tournamentStatsApi';
+import { TournamentLogo } from '@/components/wricket/tournament/TournamentLogo';
 import {
   scorerManagementApi,
   ScorerSearchResult,
@@ -227,18 +228,30 @@ export default function TournamentDetailScreen() {
           {(tournament.bannerUrl || tournament.bannerLocalUri)
             ? <Image source={{ uri: tournament.bannerUrl ?? tournament.bannerLocalUri }} style={styles.heroImage} />
             : <View style={styles.heroFallback}><View style={styles.pitchStripeOne} /><View style={styles.pitchStripeTwo} /><View style={styles.pitchSeam}>{Array.from({ length: 8 }, (_, index) => <View key={index} style={styles.pitchStitch} />)}</View></View>}
+          <View style={styles.heroShade} />
           <View style={[styles.statusPill, tournament.status === 'COMPLETED' && styles.statusPillComplete]}><Text variant="overline" tone={tournament.status === 'ACTIVE' ? 'accent' : 'muted'}>● {tournament.status}</Text></View>
-          <View style={styles.heroCopy}><Text variant="overline" style={{ color: colors.gold }}>{FORMAT_LABEL[tournament.format]}</Text><Text variant="h2">{tournament.name}</Text></View>
+          <View style={styles.heroIdentity}>
+            <TournamentLogo name={tournament.name} uri={tournament.logoUrl ?? tournament.logoLocalUri} size={72} style={styles.heroLogo} />
+            <View style={styles.heroCopy}>
+              <Text variant="overline" style={{ color: colors.gold }}>{FORMAT_LABEL[tournament.format]}</Text>
+              <Text variant="h1" numberOfLines={2}>{tournament.name}</Text>
+              <Text variant="caption" tone="muted" numberOfLines={1}>{tournament.location ?? formatTournamentDate(tournament.startDate)}</Text>
+            </View>
+          </View>
         </View>
         <View style={styles.quickActions}>
           <Pressable style={styles.quickAction} onPress={() => setShowShareBanner(true)}><MaterialCommunityIcons name="share-variant-outline" size={18} color={colors.textMuted} /><Text variant="caption">SHARE</Text></Pressable>
           {tournament.organizerProfileId === auth.session?.user.id ? <Pressable style={styles.quickAction} onPress={() => selectTab('settings')}><MaterialCommunityIcons name="pencil-outline" size={18} color={colors.textMuted} /><Text variant="caption">EDIT</Text></Pressable> : <Pressable style={styles.quickAction} onPress={() => router.push({ pathname: '/wricket/tournament/[id]/moments', params: { id: tournament.id } })}><MaterialCommunityIcons name="image-multiple-outline" size={18} color={colors.gold} /><Text variant="caption">MOMENTS</Text></Pressable>}
           {tournament.organizerProfileId === auth.session?.user.id ? <Pressable style={styles.quickAction} onPress={() => setShowAddTeam(true)}><MaterialCommunityIcons name="account-plus-outline" size={18} color={colors.accent} /><Text variant="caption" tone="accent">ADD TEAM</Text></Pressable> : null}
         </View>
+        <View style={styles.overviewMetrics}>
+          <OverviewMetric value={String(teams.length)} label="TEAMS" icon="account-group-outline" />
+          <OverviewMetric value={String(matches.length)} label="MATCHES" icon="cricket" />
+          <OverviewMetric value={String(tournament.oversPerMatch)} label="OVERS" icon="counter" />
+        </View>
+        <View style={styles.sectionHeading}><Text variant="overline" tone="dim">TOURNAMENT DETAILS</Text></View>
         <Card style={styles.infoCard}>
           <InfoRow icon="calendar-outline" text={formatTournamentDate(tournament.startDate)} />
-          <InfoRow icon="account-group-outline" text={`${teams.length} teams · ${tournament.playersPerTeam} players per team`} />
-          <InfoRow icon="counter" text={`${tournament.oversPerMatch} overs per match`} />
           <InfoRow
             icon="account-outline"
             text={organizerContact.name}
@@ -303,9 +316,6 @@ export default function TournamentDetailScreen() {
             <Text variant="bodyStrong" style={{ color: colors.accent }}>Open tournament social page</Text>
           </Pressable>
         )}
-        <Text variant="caption" tone="dim" style={{ marginTop: spacing.xs }}>
-          {teams.length} teams · {matches.length} matches
-        </Text>
       </View>
     </View>;
 
@@ -452,6 +462,7 @@ function CompactTournamentHeader({ tournament, hasLiveMatch, onBack, onExpand }:
       <MaterialCommunityIcons name="arrow-left" size={20} color={colors.text} />
     </Pressable>
     <Pressable accessibilityRole="button" accessibilityLabel="Show tournament information" onPress={onExpand} style={styles.compactContext}>
+      <TournamentLogo name={tournament.name} uri={tournament.logoUrl ?? tournament.logoLocalUri} size={30} style={styles.compactLogo} />
       <Text variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>{tournament.name}</Text>
       <View style={[styles.compactStatus, hasLiveMatch && styles.compactStatusLive]}><Text variant="overline" tone={hasLiveMatch || tournament.status === 'ACTIVE' ? 'accent' : 'muted'}>● {label}</Text></View>
     </Pressable>
@@ -464,6 +475,14 @@ function TabBtn({ label, active, onPress }: { label: string; active: boolean; on
       <Text variant="bodyStrong" tone={active ? 'default' : 'muted'}>{label}</Text>
     </Pressable>
   );
+}
+
+function OverviewMetric({ value, label, icon }: { value: string; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }) {
+  return <View style={styles.overviewMetric}>
+    <View style={styles.metricIcon}><MaterialCommunityIcons name={icon} size={17} color={colors.accent} /></View>
+    <Text variant="h3">{value}</Text>
+    <Text variant="overline" tone="dim">{label}</Text>
+  </View>;
 }
 
 function InfoRow({ icon, text, detail, action, actions, last }: {
@@ -1859,6 +1878,7 @@ const styles = StyleSheet.create({
   compactBack: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   compactContext: { flex: 1, minWidth: 0, height: 48, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   compactStatus: { flexShrink: 0, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3, backgroundColor: colors.surfaceElevated },
+  compactLogo: { flexShrink: 0, borderWidth: 1, borderColor: colors.borderStrong },
   compactStatusLive: { backgroundColor: colors.accentMuted },
   collapsedPage: { flex: 1, backgroundColor: colors.bg },
   overviewReveal: { overflow: 'hidden', backgroundColor: colors.bg },
@@ -1867,7 +1887,7 @@ const styles = StyleSheet.create({
   collapsedTabScroll: { flex: 1 },
   collapsedTabContent: { paddingBottom: spacing.xxxl },
   quickActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  quickAction: { flex: 1, minHeight: 42, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, flexDirection: 'row', gap: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  quickAction: { flex: 1, minHeight: 46, borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, flexDirection: 'row', gap: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   banner: {
     width: '100%',
     height: 112,
@@ -1886,15 +1906,22 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
   },
-  hero: { height: 150, borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surface, position: 'relative' },
-  heroImage: { ...StyleSheet.absoluteFillObject, width: undefined, height: undefined, opacity: 0.58 },
+  hero: { height: 224, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface, position: 'relative', borderWidth: 1, borderColor: colors.border },
+  heroImage: { ...StyleSheet.absoluteFillObject, width: undefined, height: undefined },
   heroFallback: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated },
+  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8, 11, 9, 0.34)', borderBottomWidth: 108, borderBottomColor: 'rgba(8, 11, 9, 0.42)' },
   pitchStripeOne: { position: 'absolute', top: 0, bottom: 0, left: '18%', width: '18%', backgroundColor: 'rgba(95, 227, 138, 0.035)' },
   pitchStripeTwo: { position: 'absolute', top: 0, bottom: 0, right: '18%', width: '18%', backgroundColor: 'rgba(95, 227, 138, 0.035)' },
   pitchSeam: { height: 112, width: 18, borderLeftWidth: 2, borderRightWidth: 2, borderColor: 'rgba(232, 196, 104, 0.36)', alignItems: 'center', justifyContent: 'space-around' },
   pitchStitch: { width: 9, height: 2, transform: [{ rotate: '-25deg' }], backgroundColor: 'rgba(232, 196, 104, 0.6)' },
-  heroCopy: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md },
-  infoCard: { padding: 0, marginTop: spacing.md, overflow: 'hidden' },
+  heroIdentity: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md, flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md },
+  heroLogo: { flexShrink: 0, borderWidth: 3, borderColor: 'rgba(238, 242, 237, 0.9)', backgroundColor: colors.surface },
+  heroCopy: { flex: 1, minWidth: 0, gap: spacing.xs, paddingBottom: 2 },
+  overviewMetrics: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  overviewMetric: { flex: 1, minHeight: 96, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, justifyContent: 'flex-end', gap: spacing.xs },
+  metricIcon: { position: 'absolute', top: spacing.sm, right: spacing.sm, width: 30, height: 30, borderRadius: 15, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
+  sectionHeading: { marginTop: spacing.xl, marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
+  infoCard: { padding: 0, overflow: 'hidden', borderRadius: radius.lg },
   infoRow: { minHeight: 48, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
   infoRowLast: { borderBottomWidth: 0 },
   infoAction: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.accentMuted },
@@ -1904,8 +1931,8 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   heroMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, marginBottom: spacing.xs },
-  statusPill: { position: 'absolute', top: spacing.sm, right: spacing.sm, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3, backgroundColor: colors.accentMuted },
-  statusPillComplete: { backgroundColor: colors.surfaceElevated },
+  statusPill: { position: 'absolute', top: spacing.md, right: spacing.md, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 6, backgroundColor: 'rgba(8, 11, 9, 0.82)' },
+  statusPillComplete: { backgroundColor: 'rgba(27, 33, 28, 0.9)' },
   logo: {
     width: 64,
     height: 64,

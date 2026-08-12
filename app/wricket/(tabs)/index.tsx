@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, StyleSheet, FlatList, Pressable, TextInput } from 'react-native';
+import { View, StyleSheet, FlatList, Image, Pressable, TextInput } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
@@ -13,6 +13,7 @@ import { Tournament, FORMAT_LABEL } from '@/lib/wricket/domain/types';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { syncTournamentData } from '@/lib/wricket/sync/tournamentSync';
 import { tournamentDiscoveryApi, TournamentSearchResult } from '@/lib/supabase/tournamentDiscoveryApi';
+import { TournamentLogo } from '@/components/wricket/tournament/TournamentLogo';
 
 export default function TournamentsScreen() {
   const router = useRouter();
@@ -175,7 +176,7 @@ export default function TournamentsScreen() {
         {searching ? <Text variant="caption" tone="muted">Searching…</Text> : null}
         {searchQuery.trim().length >= 2 && !searching && searchResults.length === 0 ? <Text variant="caption" tone="muted">No tournaments found.</Text> : null}
         {searchResults.map(item => <View key={item.id} style={styles.searchResult}>
-          <View style={styles.searchResultIcon}><MaterialCommunityIcons name="trophy-outline" size={18} color={colors.gold} /></View>
+          <TournamentLogo name={item.name} uri={item.logoUrl} size={38} />
           <View style={{ flex: 1 }}><Text variant="bodyStrong" numberOfLines={1}>{item.name}</Text><Text variant="caption" tone="muted" numberOfLines={1}>{item.format}{item.location ? ` · ${item.location}` : ''} · {item.teamCount} teams</Text></View>
           <Pressable disabled={followBusyId === item.id || Boolean(item.membershipReason)} onPress={() => void toggleFollow(item)} style={[styles.followButton, item.isFollowing && styles.followButtonActive]}>
             <MaterialCommunityIcons name={item.isFollowing ? 'bell' : 'bell-outline'} size={16} color={item.isFollowing ? colors.accentInk : colors.accent} />
@@ -195,9 +196,17 @@ export default function TournamentsScreen() {
             paddingHorizontal: spacing.lg,
             paddingBottom: spacing.xxxl,
           }}
-          ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
+          ListHeaderComponent={<View style={styles.listHeading}>
+            <Text variant="overline" tone="muted">YOUR TOURNAMENTS</Text>
+            <View style={styles.listCounts}>
+              <Text variant="caption" tone="accent">{active.length} ACTIVE</Text>
+              {completed.length > 0 ? <Text variant="caption" tone="dim">{completed.length} COMPLETED</Text> : null}
+            </View>
+          </View>}
+          ItemSeparatorComponent={() => <View style={{ height: spacing.lg }} />}
           renderItem={({ item }) => (
             <Card
+              style={styles.tournamentCard}
               onPress={() =>
                 router.push({
                   pathname: '/wricket/tournament/[id]',
@@ -205,19 +214,33 @@ export default function TournamentsScreen() {
                 })
               }
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                <View style={styles.iconBubble}>
-                  <MaterialCommunityIcons name="trophy" size={20} color={colors.accent} />
+              <View style={styles.cardArtwork}>
+                {(item.bannerUrl || item.bannerLocalUri) ? (
+                  <Image source={{ uri: item.bannerUrl ?? item.bannerLocalUri }} resizeMode="cover" style={styles.cardBanner} />
+                ) : (
+                  <View style={styles.cardBannerFallback}>
+                    <View style={styles.fallbackStripeOne} />
+                    <View style={styles.fallbackStripeTwo} />
+                    <MaterialCommunityIcons name="cricket" size={42} color={colors.gold} />
+                  </View>
+                )}
+                <View style={styles.cardScrim} />
+                <View style={[styles.cardStatus, item.status === 'COMPLETED' && styles.cardStatusComplete]}>
+                  <View style={[styles.statusDot, item.status === 'COMPLETED' && styles.statusDotComplete]} />
+                  <Text variant="overline" tone={item.status === 'ACTIVE' ? 'accent' : 'muted'}>{item.status}</Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text variant="h3">{item.name}</Text>
-                  <Text variant="caption" tone="muted">
-                    {FORMAT_LABEL[item.format]} ·{' '}
-                    {item.status === 'ACTIVE' ? 'Active' : 'Completed'}
-                  </Text>
-                  <Text variant="caption" tone={item.syncStatus === 'FAILED' ? 'default' : 'dim'}>
-                    {syncLabel(item.syncStatus)}
-                  </Text>
+                <View style={styles.cardFormat}><Text variant="overline" style={{ color: colors.gold }}>{FORMAT_LABEL[item.format]}</Text></View>
+              </View>
+              <View style={styles.cardBody}>
+                <TournamentLogo name={item.name} uri={item.logoUrl ?? item.logoLocalUri} size={56} style={styles.cardLogo} />
+                <View style={styles.cardCopy}>
+                  <Text variant="h3" numberOfLines={2}>{item.name}</Text>
+                  <View style={styles.cardMetaRow}>
+                    <MaterialCommunityIcons name="calendar-blank-outline" size={14} color={colors.textMuted} />
+                    <Text variant="caption" tone="muted">{formatListDate(item.startDate)}</Text>
+                  </View>
+                  {item.location ? <View style={styles.cardMetaRow}><MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.textMuted} /><Text variant="caption" tone="muted" numberOfLines={1}>{item.location}</Text></View> : null}
+                  <Text variant="caption" tone={item.syncStatus === 'FAILED' ? 'default' : 'dim'}>{syncLabel(item.syncStatus)}</Text>
                 </View>
                 {item.cloudId ? <Pressable
                   accessibilityRole="button"
@@ -262,6 +285,10 @@ function syncLabel(status: Tournament['syncStatus']): string {
   if (status === 'FAILED') return 'Sync failed — tap cloud to retry';
   if (status === 'PENDING') return 'Waiting to sync';
   return 'On this device';
+}
+
+function formatListDate(value: number): string {
+  return new Date(value).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
@@ -320,18 +347,27 @@ const styles = StyleSheet.create({
   searchBox: { minHeight: 46, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   searchInput: { flex: 1, color: colors.text, fontSize: 15 },
   searchResult: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  searchResultIcon: { width: 34, height: 34, borderRadius: radius.sm, backgroundColor: colors.goldMuted, alignItems: 'center', justifyContent: 'center' },
   followButton: { minHeight: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.accent, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 4 },
   followButtonActive: { backgroundColor: colors.accent },
   searchMore: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
-  iconBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  listHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: spacing.sm, paddingBottom: spacing.md },
+  listCounts: { flexDirection: 'row', gap: spacing.md },
+  tournamentCard: { padding: 0, overflow: 'hidden', borderRadius: radius.lg },
+  cardArtwork: { height: 124, overflow: 'hidden', backgroundColor: colors.surfaceElevated, position: 'relative' },
+  cardBanner: { ...StyleSheet.absoluteFillObject, width: undefined, height: undefined },
+  cardBannerFallback: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated },
+  fallbackStripeOne: { position: 'absolute', top: 0, bottom: 0, left: '20%', width: '18%', backgroundColor: 'rgba(95, 227, 138, 0.05)' },
+  fallbackStripeTwo: { position: 'absolute', top: 0, bottom: 0, right: '20%', width: '18%', backgroundColor: 'rgba(95, 227, 138, 0.05)' },
+  cardScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8, 11, 9, 0.22)' },
+  cardStatus: { position: 'absolute', top: spacing.sm, right: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.sm, paddingVertical: 5, borderRadius: radius.pill, backgroundColor: 'rgba(8, 11, 9, 0.82)' },
+  cardStatusComplete: { backgroundColor: 'rgba(27, 33, 28, 0.9)' },
+  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent },
+  statusDotComplete: { backgroundColor: colors.textDim },
+  cardFormat: { position: 'absolute', left: spacing.md, bottom: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: 5, borderRadius: radius.pill, backgroundColor: 'rgba(8, 11, 9, 0.82)' },
+  cardBody: { padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  cardLogo: { flexShrink: 0, borderWidth: 2, borderColor: colors.borderStrong },
+  cardCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
+  cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 },
   cardFollow: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   cardFollowActive: { backgroundColor: colors.accent },
   empty: {
