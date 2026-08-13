@@ -17,6 +17,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { useAuth } from '@/components/providers/AuthProvider';
 import { colors, palette } from '@/lib/theme/colors';
 import { spacing, radius } from '@/lib/theme/spacing';
 import {
@@ -43,6 +44,7 @@ const FORMATS: MatchFormat[] = ['BOX', 'TURF', 'TURF_TEST', 'T20', 'T10', 'ODI']
 
 export default function NewMatchScreen() {
   const router = useRouter();
+  const auth = useAuth();
   const {
     tournamentId,
     teamAId: initialTeamAId,
@@ -67,6 +69,7 @@ export default function NewMatchScreen() {
     initialFormat && FORMATS.includes(initialFormat) ? initialFormat : 'TURF',
   );
   const [allTeams, setAllTeams] = useState<Team[]>([]);
+  const [teamReasons, setTeamReasons] = useState<Record<string, 'MY_TEAM' | 'PLAYED_AGAINST'>>({});
   const [teamAId, setTeamAId] = useState<string | null>(initialTeamAId ?? null);
   const [teamBId, setTeamBId] = useState<string | null>(initialTeamBId ?? null);
   const [playersA, setPlayersA] = useState<User[]>([]);
@@ -95,22 +98,40 @@ export default function NewMatchScreen() {
 
   useEffect(() => {
     (async () => {
-      const [teamList, tournament] = await Promise.all([
-        listTeams(tournamentId ?? null),
-        tournamentId ? getTournament(tournamentId) : Promise.resolve(null),
-      ]);
-      setAllTeams(teamList);
-      if (tournament) {
-        setSelectedTournament(tournament);
-        setFormat(tournament.format);
-        setOversInput(String(tournament.oversPerMatch));
-        setPlayingCountInput(String(Math.min(11, tournament.playersPerTeam)));
-        // Tournament fixtures always inherit the canonical tournament venue.
-        setVenue(tournament.location ?? '');
-        setIsTournamentMatch(true);
+      if (tournamentId) {
+        const [teamList, tournament] = await Promise.all([
+          listTeams(tournamentId),
+          getTournament(tournamentId),
+        ]);
+        setAllTeams(teamList);
+        setTeamReasons({});
+        if (tournament) {
+          setSelectedTournament(tournament);
+          setFormat(tournament.format);
+          setOversInput(String(tournament.oversPerMatch));
+          setPlayingCountInput(String(Math.min(11, tournament.playersPerTeam)));
+          // Tournament fixtures always inherit the canonical tournament venue.
+          setVenue(tournament.location ?? '');
+          setIsTournamentMatch(true);
+        }
+        return;
       }
-    })();
-  }, [tournamentId]);
+      if (!auth.session) {
+        setAllTeams([]);
+        return;
+      }
+      const eligible = await teamManagementApi.listStandaloneMatchTeams();
+      const localTeams = await teamManagementApi.hydrateTeamsForScoring(eligible.map(team => team.id));
+      const reasonByCloudId = new Map(eligible.map(team => [team.id, team.reason]));
+      setAllTeams(localTeams);
+      setTeamReasons(Object.fromEntries(localTeams.flatMap(team => team.cloudId
+        ? [[team.id, reasonByCloudId.get(team.cloudId) ?? 'PLAYED_AGAINST']]
+        : [])));
+    })().catch(cause => Alert.alert(
+      'Could not load match teams',
+      cause instanceof Error ? cause.message : 'Please try again.',
+    ));
+  }, [auth.session, tournamentId]);
 
   useEffect(() => {
     (async () => {
@@ -178,11 +199,12 @@ export default function NewMatchScreen() {
       }
       let cloudMatchId = canonicalMatchId;
       if (!cloudMatchId) {
-        if (!tournamentId) throw new Error('Online match creation requires a tournament');
-        const tournament = await getTournament(tournamentId);
-        if (!tournament?.cloudId) throw new Error('Tournament is not available online');
+        const tournament = tournamentId ? await getTournament(tournamentId) : null;
+        if (tournamentId && !tournament?.cloudId) {
+          throw new Error('Tournament is not available online');
+        }
         cloudMatchId = await matchSetupApi.createMatch({
-          tournamentId: tournament.cloudId,
+          tournamentId: tournament?.cloudId ?? null,
           teamAId: teamA.cloudId,
           teamBId: teamB.cloudId,
           format,
@@ -310,6 +332,7 @@ export default function NewMatchScreen() {
             teamBId={teamBId}
             setTeamAId={setTeamAId}
             setTeamBId={setTeamBId}
+            teamReasons={teamReasons}
             lockFormat={isTournamentMatch}
             venue={venue}
             scheduledAt={scheduledAt}
@@ -439,7 +462,7 @@ function StepBadge({ step }: { step: Step }) {
 
 function TeamsStep({
   format, setFormat, teams, teamAId, teamBId, setTeamAId, setTeamBId,
-  lockFormat, venue, scheduledAt, setVenue, setScheduledAt, tournament,
+  teamReasons, lockFormat, venue, scheduledAt, setVenue, setScheduledAt, tournament,
 }: {
   format: MatchFormat;
   setFormat: (f: MatchFormat) => void;
@@ -448,6 +471,7 @@ function TeamsStep({
   teamBId: string | null;
   setTeamAId: (id: string) => void;
   setTeamBId: (id: string) => void;
+  teamReasons: Record<string, 'MY_TEAM' | 'PLAYED_AGAINST'>;
   lockFormat: boolean;
   venue: string;
   scheduledAt: string;
@@ -518,12 +542,12 @@ function TeamsStep({
         )}
       </View>
 
-      <TeamPicker label="TEAM A" teams={teams} selectedId={teamAId} excludeId={teamBId} onSelect={setTeamAId} />
-      <TeamPicker label="TEAM B" teams={teams} selectedId={teamBId} excludeId={teamAId} onSelect={setTeamBId} />
+      <TeamPicker label="TEAM A" teams={teams} teamReasons={teamReasons} selectedId={teamAId} excludeId={teamBId} onSelect={setTeamAId} />
+      <TeamPicker label="TEAM B" teams={teams} teamReasons={teamReasons} selectedId={teamBId} excludeId={teamAId} onSelect={setTeamBId} />
 
       {teams.length < 2 && (
         <Text variant="caption" tone="muted">
-          You need at least 2 teams. Create teams in a tournament first.
+          You need at least two teams you play for or have played against.
         </Text>
       )}
     </View>
@@ -578,10 +602,11 @@ function MatchDateTimePicker({ value, onChange }: { value: string; onChange: (va
 }
 
 function TeamPicker({
-  label, teams, selectedId, excludeId, onSelect,
+  label, teams, teamReasons, selectedId, excludeId, onSelect,
 }: {
   label: string;
   teams: Team[];
+  teamReasons: Record<string, 'MY_TEAM' | 'PLAYED_AGAINST'>;
   selectedId: string | null;
   excludeId: string | null;
   onSelect: (id: string) => void;
@@ -606,7 +631,12 @@ function TeamPicker({
             <View style={[styles.teamSwatch, { backgroundColor: t.colorHex }]}>
               <Text variant="bodyStrong" style={{ color: palette.black }}>{t.shortName}</Text>
             </View>
-            <Text variant="bodyStrong" style={{ flex: 1 }}>{t.name}</Text>
+            <View style={{ flex: 1 }}>
+              <Text variant="bodyStrong">{t.name}</Text>
+              {teamReasons[t.id] ? <Text variant="caption" tone="muted">
+                {teamReasons[t.id] === 'MY_TEAM' ? 'Your team' : 'Played against'}
+              </Text> : null}
+            </View>
             {locked ? <Text variant="caption" tone="dim">OTHER TEAM</Text> : selectedId === t.id && (
               <MaterialCommunityIcons name="check-circle" size={22} color={colors.accent} />
             )}

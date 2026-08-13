@@ -1,6 +1,8 @@
 import * as Linking from 'expo-linking';
 
-import { updateTeamLogoByCloudId } from '@/lib/wricket/db/repo';
+import { getTeamByCloudId, updateTeamLogoByCloudId } from '@/lib/wricket/db/repo';
+import { mergeCloudPlayer, mergeCloudTeam, mergeCloudTeamPlayer } from '@/lib/wricket/db/syncRepo';
+import type { PlayerRole, Team } from '@/lib/wricket/domain/types';
 import { getSupabaseClient } from './client';
 
 export type TeamRole = 'CAPTAIN' | 'PLAYER';
@@ -55,7 +57,90 @@ export interface MyTeamSummary {
   sourceTeamId?: string;
 }
 
+export interface StandaloneMatchTeamSummary {
+  id: string;
+  name: string;
+  shortName: string;
+  colorHex: string;
+  logoUrl?: string;
+  reason: 'MY_TEAM' | 'PLAYED_AGAINST';
+}
+
 export const teamManagementApi = {
+  async listStandaloneMatchTeams(): Promise<StandaloneMatchTeamSummary[]> {
+    const { data, error } = await getSupabaseClient().rpc('list_standalone_match_teams');
+    if (error) throw error;
+    return (data ?? []).map((team: any) => ({
+      id: team.team_id,
+      name: team.team_name,
+      shortName: team.short_name,
+      colorHex: team.color_hex,
+      logoUrl: team.logo_url ?? undefined,
+      reason: team.eligibility_reason,
+    }));
+  },
+
+  async hydrateTeamsForScoring(teamIds: string[]): Promise<Team[]> {
+    if (teamIds.length === 0) return [];
+    const client = getSupabaseClient();
+    const [{ data: teams, error: teamError }, { data: memberships, error: membershipError }] = await Promise.all([
+      client.from('teams')
+        .select('id, source_local_id, tournament_id, name, short_name, color_hex, logo_url, created_at')
+        .in('id', teamIds),
+      client.from('team_players')
+        .select('team_id, player_id, jersey_no, is_captain, is_keeper')
+        .in('team_id', teamIds),
+    ]);
+    if (teamError) throw teamError;
+    if (membershipError) throw membershipError;
+
+    const playerIds = Array.from(new Set((memberships ?? []).map(member => member.player_id)));
+    const { data: players, error: playerError } = playerIds.length
+      ? await client.from('players')
+        .select('id, source_local_id, display_name, role, batting_hand, bowling_style, created_at')
+        .in('id', playerIds)
+      : { data: [], error: null };
+    if (playerError) throw playerError;
+
+    for (const team of teams ?? []) {
+      await mergeCloudTeam({
+        cloudId: team.id,
+        sourceLocalId: team.source_local_id ?? null,
+        tournamentCloudId: team.tournament_id ?? null,
+        name: team.name,
+        shortName: team.short_name,
+        colorHex: team.color_hex,
+        logoUrl: team.logo_url ?? undefined,
+        createdAt: Date.parse(team.created_at),
+      });
+    }
+    for (const player of players ?? []) {
+      await mergeCloudPlayer({
+        cloudId: player.id,
+        sourceLocalId: player.source_local_id ?? null,
+        name: player.display_name,
+        role: (player.role ?? 'AR') as PlayerRole,
+        battingHand: player.batting_hand === 'RIGHT' || player.batting_hand === 'LEFT'
+          ? player.batting_hand
+          : undefined,
+        bowlingStyle: player.bowling_style ?? undefined,
+        createdAt: Date.parse(player.created_at),
+      });
+    }
+    for (const member of memberships ?? []) {
+      await mergeCloudTeamPlayer({
+        teamCloudId: member.team_id,
+        playerCloudId: member.player_id,
+        jerseyNo: member.jersey_no ?? undefined,
+        isCaptain: member.is_captain,
+        isKeeper: member.is_keeper,
+      });
+    }
+
+    const localTeams = await Promise.all(teamIds.map(getTeamByCloudId));
+    return localTeams.filter((team): team is Team => Boolean(team));
+  },
+
   async createTeamEntity(input: {
     name: string;
     shortName: string;

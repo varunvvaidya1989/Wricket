@@ -105,6 +105,25 @@ export default function HomeScreen() {
       <Text variant="overline" tone="dim">{new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'short' }).format(new Date())}</Text>
       <Text variant="h2" style={styles.greeting}>{greeting}, {name}</Text>
 
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Start a friendly cricket match"
+        onPress={() => auth.session ? router.push('/wricket/match/new') : router.push('/wricket/me')}
+        style={({ pressed }) => [styles.startMatchBanner, pressed && styles.startMatchBannerPressed]}
+      >
+        <View style={styles.startMatchIcon}>
+          <MaterialCommunityIcons name="cricket" size={26} color={colors.accentInk} />
+        </View>
+        <View style={styles.flex}>
+          <Text variant="overline" style={{ color: colors.accentInk }}>QUICK MATCH</Text>
+          <Text variant="h3" style={{ color: colors.accentInk }}>Start a match</Text>
+          <Text variant="caption" style={styles.startMatchCopy}>
+            Pick teams you play for or have faced. No tournament needed.
+          </Text>
+        </View>
+        <MaterialCommunityIcons name="arrow-right" size={24} color={colors.accentInk} />
+      </Pressable>
+
       <View style={styles.section}><SectionLabel live>Live now</SectionLabel>{matches.length > 0 ? <Text variant="caption" tone="muted">{matches.length} MATCH{matches.length === 1 ? '' : 'ES'}</Text> : null}</View>
       {loading && matches.length === 0 ? <ActivityIndicator color={colors.accent} /> : matches.length > 0 ? (
         <LiveMatchesCarousel
@@ -276,6 +295,10 @@ function Insight({ label, value }: { label: string; value: string }) { return <V
 
 const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: 112 }, greeting: { marginTop: spacing.xs }, flex: { flex: 1 },
+  startMatchBanner: { marginTop: spacing.lg, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderRadius: radius.xl, backgroundColor: colors.accent },
+  startMatchBannerPressed: { opacity: 0.82, transform: [{ scale: 0.99 }] },
+  startMatchIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.1)' },
+  startMatchCopy: { color: 'rgba(0, 0, 0, 0.68)', marginTop: 2 },
   section: { marginTop: spacing.xl, marginBottom: spacing.sm, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   liveCard: { padding: 0, overflow: 'hidden', borderColor: 'rgba(95, 227, 138, 0.28)', backgroundColor: '#111713' },
   glowTop: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(95, 227, 138, 0.08)', top: -110, right: -55 },

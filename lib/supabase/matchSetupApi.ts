@@ -18,7 +18,7 @@ export interface StartedMatchSetup {
 
 export const matchSetupApi = {
   async createMatch(input: {
-    tournamentId: string;
+    tournamentId: string | null;
     teamAId: string;
     teamBId: string;
     format: MatchFormat;

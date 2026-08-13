@@ -2,7 +2,7 @@ import { getSupabaseClient } from './client';
 
 export interface CloudLiveMatch {
   id: string;
-  tournamentId: string;
+  tournamentId?: string;
   tournamentLocalId?: string;
   tournamentName: string;
   format: string;
@@ -152,14 +152,15 @@ export const liveMatchApi = {
     const matches = await this.list();
     const grouped = new Map<string, CloudLiveTournament>();
     for (const match of matches) {
-      const tournament = grouped.get(match.tournamentId) ?? {
-        id: match.tournamentId,
+      const groupId = match.tournamentId ?? `friendly:${match.id}`;
+      const tournament = grouped.get(groupId) ?? {
+        id: groupId,
         localId: match.tournamentLocalId,
         name: match.tournamentName,
         matches: [],
       };
       tournament.matches.push(match);
-      grouped.set(match.tournamentId, tournament);
+      grouped.set(groupId, tournament);
     }
     return Array.from(grouped.values());
   },
@@ -364,7 +365,9 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
     match.team_a_id,
     match.team_b_id,
   ])));
-  const tournamentIds = Array.from(new Set(matches.map(match => match.tournament_id)));
+  const tournamentIds = Array.from(new Set(matches
+    .map(match => match.tournament_id)
+    .filter((id): id is string => Boolean(id))));
   const client = getSupabaseClient();
   const [
     { data: teams, error: teamsError },
@@ -381,9 +384,11 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
     client.from('match_snapshots')
       .select('match_id, latest_sequence, scoreboard, scorecard, updated_at')
       .in('match_id', matchIds),
-    client.from('tournaments')
-      .select('id, source_local_id, name, location, logo_url')
-      .in('id', tournamentIds),
+    tournamentIds.length
+      ? client.from('tournaments')
+        .select('id, source_local_id, name, location, logo_url')
+        .in('id', tournamentIds)
+      : Promise.resolve({ data: [], error: null }),
     detailed
       ? loadAllMatchEvents(matchIds)
       : loadRecentMatchEvents(matchIds),
@@ -434,16 +439,15 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
       ?? matchInnings[matchInnings.length - 1];
     const snapshot = snapshotMap.get(match.id);
     const tournament = tournamentMap.get(match.tournament_id);
-    if (!tournament) return [];
     const scoreboard = snapshot?.scoreboard ?? {};
     return [{
       id: match.id,
-      tournamentId: tournament.id,
-      tournamentLocalId: tournament.source_local_id ?? undefined,
-      tournamentName: tournament.name,
+      tournamentId: tournament?.id,
+      tournamentLocalId: tournament?.source_local_id ?? undefined,
+      tournamentName: tournament?.name ?? 'Friendly match',
       format: match.format,
       status: match.status,
-      venue: match.venue ?? tournament.location ?? undefined,
+      venue: match.venue ?? tournament?.location ?? undefined,
       rules: match.rules ?? {},
       result: match.result ?? undefined,
       teamA: { id: teamA.id, name: teamA.name, shortName: teamA.short_name },

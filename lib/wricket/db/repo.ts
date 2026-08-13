@@ -356,6 +356,12 @@ export async function getTeam(id: string): Promise<Team | null> {
   return row ? rowToTeam(row) : null;
 }
 
+export async function getTeamByCloudId(cloudId: string): Promise<Team | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>('SELECT * FROM teams WHERE cloud_id = ?', cloudId);
+  return row ? rowToTeam(row) : null;
+}
+
 export async function updateTeamLogoByCloudId(cloudTeamId: string, logoUrl: string): Promise<void> {
   const db = await getDb();
   await db.runAsync(
