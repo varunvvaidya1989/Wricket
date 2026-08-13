@@ -104,7 +104,7 @@ export default function PlayerScreen() {
           )}
         </View>
 
-        <PerformanceTeaser own={ownProfile} stats={displayedStats} onPress={() => ownProfile ? router.push('/wricket/stats') : router.push({ pathname: '/wricket/stats', params: { playerId: id, playerName: name } })} />
+        <PerformanceTeaser own={ownProfile} stats={displayedStats} onPress={() => ownProfile ? router.push({ pathname: '/wricket/my-wricket', params: { section: 'performance' } }) : router.push({ pathname: '/wricket/stats', params: { playerId: id, playerName: name } })} />
 
         {ownProfile && auth.session ? (
           <MyTeamsCard

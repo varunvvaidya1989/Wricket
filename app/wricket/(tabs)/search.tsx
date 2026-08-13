@@ -9,6 +9,7 @@ import { Text } from '@/components/ui/Text';
 import { globalSearchApi, GlobalSearchResult, GlobalSearchType } from '@/lib/supabase/globalSearchApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
+import { WricketAvatarButton } from '@/components/wricket/navigation/WricketProfileDrawer';
 
 const RECENT_SEARCHES_KEY = 'wricket.global-search.recent.v1';
 const filters: { id: GlobalSearchType; label: string }[] = [
@@ -92,8 +93,11 @@ export default function GlobalSearchScreen() {
 
   return <Screen padded={false}>
     <View style={styles.header}>
-      <Text variant="overline" tone="muted">DISCOVER WRICKET</Text>
-      <Text variant="h1">Search</Text>
+      <View>
+        <Text variant="overline" tone="muted">DISCOVER WRICKET</Text>
+        <Text variant="h1">Search</Text>
+      </View>
+      <WricketAvatarButton />
     </View>
     <View style={styles.searchBox}>
       <MaterialCommunityIcons name="magnify" size={21} color={colors.textDim} />
@@ -176,7 +180,7 @@ function resultMeta(type: GlobalSearchResult['type']) {
 }
 
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md },
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   searchBox: { marginHorizontal: spacing.lg, minHeight: 48, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, gap: spacing.sm },
   input: { flex: 1, color: colors.text, fontFamily: 'Inter_400Regular', fontSize: 15, paddingVertical: spacing.md },
   clearButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },

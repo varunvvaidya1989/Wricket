@@ -1,7 +1,8 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/Button';
@@ -37,6 +38,8 @@ export default function AccountScreen() {
   const [battingHand, setBattingHand] = useState('');
   const [bowlingStyle, setBowlingStyle] = useState('');
   const [saving, setSaving] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(auth.profile?.avatarUrl ?? undefined);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [linkCandidates, setLinkCandidates] = useState<LegacyPlayerCandidate[]>([]);
   const [claimPending, setClaimPending] = useState(false);
   const [skipLegacyLink, setSkipLegacyLink] = useState(false);
@@ -69,6 +72,35 @@ export default function AccountScreen() {
       Alert.alert('Could not load sports', cause instanceof Error ? cause.message : 'Please try again.');
     });
   }, [auth.profile, auth.session]);
+
+  useEffect(() => {
+    setAvatarUrl(auth.profile?.avatarUrl ?? undefined);
+  }, [auth.profile?.avatarUrl]);
+
+  const chooseAvatar = async () => {
+    if (!auth.session || uploadingAvatar) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Photo permission needed', 'Allow photo access to choose your SportStage profile image.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.82,
+    });
+    if (result.canceled) return;
+    setUploadingAvatar(true);
+    try {
+      setAvatarUrl(await sportstageAccountApi.updateAvatar(auth.session.user.id, result.assets[0].uri));
+      await auth.refreshProfile();
+    } catch (cause) {
+      Alert.alert('Could not update profile image', cause instanceof Error ? cause.message : 'Please try again.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const requestLink = async (candidate: LegacyPlayerCandidate) => {
     setSaving(true);
@@ -165,6 +197,28 @@ export default function AccountScreen() {
     </View> : null}
     <View style={styles.section}>
       <Text variant="overline" tone="muted">PROFILE</Text>
+      <View style={styles.avatarRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={avatarUrl ? 'Change profile image' : 'Add profile image'}
+          disabled={uploadingAvatar}
+          onPress={() => void chooseAvatar()}
+          style={styles.avatar}
+        >
+          {avatarUrl
+            ? <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+            : <Text variant="h2" tone="accent">{initials(displayName)}</Text>}
+          <View style={styles.avatarEdit}>
+            <MaterialCommunityIcons name={uploadingAvatar ? 'progress-clock' : 'camera'} size={16} color={colors.accentInk} />
+          </View>
+        </Pressable>
+        <Button
+          title={avatarUrl ? 'Change photo' : 'Add photo'}
+          variant="secondary"
+          onPress={() => void chooseAvatar()}
+          loading={uploadingAvatar}
+        />
+      </View>
       <TextInput value={displayName} onChangeText={setDisplayName} placeholder="Display name" placeholderTextColor={colors.textDim} style={styles.input} />
       <TextInput value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor={colors.textDim} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} style={styles.input} />
       <Text variant="caption" tone="muted" style={styles.mobileLabel}>Mobile number</Text>
@@ -222,6 +276,10 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingTop: spacing.md, marginBottom: spacing.xl },
   back: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   section: { gap: spacing.sm, marginBottom: spacing.xl },
+  avatarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, marginBottom: spacing.sm },
+  avatar: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentMuted, borderWidth: 1, borderColor: colors.accent },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 39 },
+  avatarEdit: { position: 'absolute', right: -2, bottom: -2, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, borderWidth: 2, borderColor: colors.bg },
   input: { minHeight: 50, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: spacing.md, fontSize: 16 },
   inputInvalid: { borderColor: colors.danger },
   mobileLabel: { marginTop: spacing.xs },
@@ -253,4 +311,8 @@ function getInitialPhone(session: ReturnType<typeof useAuth>['session']): string
   if (typeof mobile === 'string') return mobile;
   const pendingPhone = session?.user.user_metadata?.pending_phone_e164;
   return typeof pendingPhone === 'string' ? pendingPhone : '';
+}
+
+function initials(name: string): string {
+  return name.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'P';
 }

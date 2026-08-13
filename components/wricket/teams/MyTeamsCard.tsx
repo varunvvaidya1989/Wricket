@@ -13,9 +13,11 @@ import { MyTeamSummary, teamManagementApi } from '@/lib/supabase/teamManagementA
 export function MyTeamsCard({
   accountId,
   onOpenTeam,
+  showIntro = true,
 }: {
   accountId: string;
   onOpenTeam: (teamId: string) => void;
+  showIntro?: boolean;
 }) {
   const [teams, setTeams] = useState<MyTeamSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,16 +36,16 @@ export function MyTeamsCard({
     void load().catch(() => undefined);
   }, [load]));
 
-  return (
-    <Card>
+  const content = (
+    <>
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
+        {showIntro ? <View style={{ flex: 1 }}>
           <Text variant="h3">My teams</Text>
           <Text variant="caption" tone="muted">Teams you own, captain, or play for</Text>
-        </View>
+        </View> : <View style={{ flex: 1 }} />}
         <Pressable onPress={() => setCreateOpen(true)} style={styles.addButton}>
           <MaterialCommunityIcons name="plus" size={18} color={colors.accentInk} />
-          <Text variant="caption" style={{ color: colors.accentInk }}>CREATE</Text>
+          <Text variant="caption" style={{ color: colors.accentInk }}>CREATE TEAM</Text>
         </Pressable>
       </View>
 
@@ -70,8 +72,9 @@ export function MyTeamsCard({
           onOpenTeam(team.id);
         }}
       />
-    </Card>
+    </>
   );
+  return showIntro ? <Card>{content}</Card> : <View style={styles.embeddedRoot}>{content}</View>;
 }
 
 function MyTeamsList({ teams, onOpenTeam }: {
@@ -82,23 +85,36 @@ function MyTeamsList({ teams, onOpenTeam }: {
     <View style={styles.list}>
       {teams.map(team => (
         <Pressable key={team.id} onPress={() => onOpenTeam(team.id)} style={({ pressed }) => [styles.teamRow, pressed && styles.teamRowPressed]}>
-          <View style={[styles.teamBadge, { backgroundColor: team.colorHex }]}>
-            {team.logoUrl
-              ? <Image source={{ uri: team.logoUrl }} style={styles.logo} />
-              : <Text variant="caption" style={{ color: palette.black }}>{team.shortName}</Text>}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text variant="bodyStrong">{team.name}</Text>
-            <Text variant="caption" tone="muted" numberOfLines={1}>
-              {team.role === 'OWNER' ? 'Owner' : team.role === 'CAPTAIN' ? 'Captain' : 'Player'}
-              {team.tournamentName ? ` · ${team.tournamentName}` : ' · Reusable team'}
+          <View style={styles.teamMeta}>
+            <View style={styles.roleChip}>
+              <Text variant="overline" tone={team.role === 'OWNER' ? 'accent' : 'muted'}>{roleLabel(team.role)}</Text>
+            </View>
+            <Text variant="caption" tone="dim" numberOfLines={1} style={styles.teamContext}>
+              {team.tournamentName ?? 'Reusable team'}
             </Text>
           </View>
-          <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textDim} />
+          <View style={styles.teamMain}>
+            <View style={[styles.teamBadge, { backgroundColor: team.colorHex }]}>
+              {team.logoUrl
+                ? <Image source={{ uri: team.logoUrl }} style={styles.logo} />
+                : <Text variant="caption" style={{ color: palette.black }}>{team.shortName}</Text>}
+            </View>
+            <View style={styles.teamCopy}>
+              <Text variant="h3" numberOfLines={1}>{team.name}</Text>
+              <Text variant="caption" tone="muted" numberOfLines={1}>{team.shortName}</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={colors.accent} />
+          </View>
         </Pressable>
       ))}
     </View>
   );
+}
+
+function roleLabel(role: MyTeamSummary['role']): string {
+  if (role === 'OWNER') return 'OWNER';
+  if (role === 'CAPTAIN') return 'CAPTAIN';
+  return 'PLAYER';
 }
 
 function CreateTeamEntityModal({ visible, accountId, onClose, onCreated }: {
@@ -157,14 +173,20 @@ function CreateTeamEntityModal({ visible, accountId, onClose, onCreated }: {
 }
 
 const styles = StyleSheet.create({
+  embeddedRoot: { gap: spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   addButton: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: radius.pill, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, backgroundColor: colors.accent },
   message: { marginTop: spacing.md },
   empty: { alignItems: 'center', gap: spacing.xs, marginTop: spacing.md, paddingVertical: spacing.md },
-  list: { gap: spacing.sm, marginTop: spacing.md },
-  teamRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceElevated },
-  teamRowPressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
-  teamBadge: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  list: { gap: spacing.md },
+  teamRow: { padding: spacing.md, gap: spacing.sm, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  teamRowPressed: { opacity: 0.74 },
+  teamMeta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  roleChip: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: colors.surfaceElevated },
+  teamContext: { flex: 1 },
+  teamMain: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  teamBadge: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  teamCopy: { flex: 1, minWidth: 0, gap: spacing.xs },
   logo: { width: '100%', height: '100%' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
   sheet: { borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, backgroundColor: colors.bg, padding: spacing.xl, gap: spacing.sm },

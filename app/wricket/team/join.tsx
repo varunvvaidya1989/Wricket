@@ -31,7 +31,7 @@ export default function JoinTeamScreen() {
       <MaterialCommunityIcons name="account-lock-outline" size={44} color={colors.accent} />
       <Text variant="h2">Sign in to join</Text>
       <Text tone="muted" style={{ textAlign: 'center' }}>Team invitations require a verified SportStage account.</Text>
-      <Button title="Open account" onPress={() => router.push('/wricket/me')} />
+      <Button title="Open account" onPress={() => router.push('/account')} />
     </View>
   </Screen>;
 

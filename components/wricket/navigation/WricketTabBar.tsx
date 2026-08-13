@@ -15,10 +15,19 @@ const tabs: {
   isActive: (pathname: string) => boolean;
 }[] = [
   { label: 'Home', route: '/wricket/live', icon: 'home-variant-outline', isActive: path => path === '/wricket/live' },
-  { label: 'Tournaments', route: '/wricket', icon: 'trophy-outline', isActive: path => path === '/wricket' || path.startsWith('/wricket/tournament') || path.startsWith('/wricket/team') || path.startsWith('/wricket/match') },
+  {
+    label: 'My Wricket',
+    route: '/wricket/my-wricket',
+    icon: 'account-outline',
+    isActive: path => path === '/wricket/my-wricket'
+      || path === '/wricket'
+      || path === '/wricket/stats'
+      || path.startsWith('/wricket/player')
+      || path.startsWith('/wricket/tournament')
+      || path.startsWith('/wricket/team')
+      || path.startsWith('/wricket/match'),
+  },
   { label: 'Search', route: '/wricket/search', icon: 'magnify', isActive: path => path === '/wricket/search' || path.startsWith('/wricket/user') },
-  { label: 'Performance', route: '/wricket/stats', icon: 'chart-line', isActive: path => path === '/wricket/stats' || path.startsWith('/wricket/player') },
-  { label: 'Cricket', route: '/wricket/me', icon: 'account-circle-outline', isActive: path => path === '/wricket/me' },
 ];
 
 export function WricketTabBar() {

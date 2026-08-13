@@ -8,16 +8,16 @@ import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { legacyPlayerLinkApi } from '@/lib/supabase/legacyPlayerLinkApi';
-import { PerformanceFormEntry, PerformanceHistoryEntry, PersonalStats, personalStatsApi } from '@/lib/supabase/personalStatsApi';
+import { PerformanceFormEntry, PersonalStats, personalStatsApi } from '@/lib/supabase/personalStatsApi';
 import { playerProfileApi } from '@/lib/supabase/playerProfileApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { formBarPercent, formTrend, isPeakForm, formatRate } from '@/lib/wricket/performance';
 
-type Section = 'overview' | 'batting' | 'bowling' | 'history';
+type Section = 'overview' | 'batting' | 'bowling';
 type FormMode = 'batting' | 'bowling';
 
-export default function StatsScreen() {
+export default function StatsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const auth = useAuth();
   const router = useRouter();
   const { playerId, playerName } = useLocalSearchParams<{ playerId?: string; playerName?: string }>();
@@ -53,18 +53,18 @@ export default function StatsScreen() {
   useFocusEffect(useCallback(() => { void load(); return undefined; }, [load]));
 
   if (!auth.session) {
-    return <Screen padded={false}><Header player={Boolean(playerId)} /><View style={styles.signedOut}>
+    return <SectionScreen embedded={embedded}>{!embedded ? <Header player={Boolean(playerId)} /> : null}<View style={styles.signedOut}>
       <View style={styles.signedOutIcon}><MaterialCommunityIcons name="chart-box-outline" size={38} color={colors.accent} /></View>
       <Text variant="h2">Your cricket record</Text>
       <Text tone="muted" style={styles.centeredText}>Sign in to see performance belonging to your player profile.</Text>
-      <Pressable style={styles.primaryButton} onPress={() => router.push('/wricket/me')}><Text variant="bodyStrong" style={{ color: colors.accentInk }}>Sign in</Text></Pressable>
-    </View></Screen>;
+      <Pressable style={styles.primaryButton} onPress={() => router.push('/account')}><Text variant="bodyStrong" style={{ color: colors.accentInk }}>Sign in</Text></Pressable>
+    </View></SectionScreen>;
   }
 
   const name = playerId ? playerName ?? 'Player' : auth.profile?.displayName ?? auth.session.user.email?.split('@')[0] ?? 'Player';
   const profilePlayerId = playerId ?? stats?.playerIds[0];
-  return <Screen padded={false}>
-    <Header player={Boolean(playerId)} />
+  return <SectionScreen embedded={embedded}>
+    {!embedded ? <Header player={Boolean(playerId)} /> : null}
     <ScrollView refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />} contentContainerStyle={styles.content}>
       <Pressable style={styles.profile} disabled={!profilePlayerId} onPress={() => profilePlayerId && router.push({ pathname: '/wricket/player/[id]', params: { id: profilePlayerId } })}>
         <View style={styles.avatar}><Text variant="h2" tone="accent">{initials(name)}</Text></View>
@@ -75,16 +75,19 @@ export default function StatsScreen() {
       {error && <Pressable onPress={() => void load()}><Card style={styles.errorCard}><Text variant="caption">{error} Tap to retry.</Text></Card></Pressable>}
       {linkNeeded && <Card style={styles.linkCard}><MaterialCommunityIcons name="account-search-outline" size={32} color={colors.accent} /><Text variant="h3">Connect your previous player record</Text><Text tone="muted" style={styles.centeredText}>Review the possible AuctionYodha profile before creating a new player.</Text><Pressable style={styles.primaryButton} onPress={() => router.push('/account')}><Text variant="bodyStrong" style={{ color: colors.accentInk }}>Review profiles</Text></Pressable></Card>}
 
-      {stats?.matches === 0 ? <PerformanceEmpty player={Boolean(playerId)} onExplore={() => router.navigate('/wricket')} /> : stats ? <>
+      {stats?.matches === 0 ? <PerformanceEmpty player={Boolean(playerId)} onExplore={() => router.navigate({ pathname: '/wricket/my-wricket', params: { section: 'tournaments' } })} /> : stats ? <>
         <View style={styles.careerStrip}><CareerValue label="MATCHES" value={stats.matches} /><CareerValue label="RUNS" value={stats.runs} /><CareerValue label="WICKETS" value={stats.wickets} /></View>
-        <View style={styles.tabs}>{(['overview', 'batting', 'bowling', 'history'] as const).map(item => <Pressable key={item} onPress={() => setSection(item)} style={[styles.tab, section === item && styles.tabActive]}><Text variant="caption" tone={section === item ? 'accent' : 'muted'} style={styles.tabLabel}>{item.toUpperCase()}</Text></Pressable>)}</View>
+        <View style={styles.tabs}>{(['overview', 'batting', 'bowling'] as const).map(item => <Pressable key={item} onPress={() => setSection(item)} style={[styles.tab, section === item && styles.tabActive]}><Text variant="caption" tone={section === item ? 'accent' : 'muted'} style={styles.tabLabel}>{item.toUpperCase()}</Text></Pressable>)}</View>
         {section === 'overview' && <Overview stats={stats} />}
         {section === 'batting' && <Batting stats={stats} />}
         {section === 'bowling' && <Bowling stats={stats} />}
-        {section === 'history' && <History entries={stats.history} onOpen={matchId => router.push({ pathname: '/wricket/match/[id]/live', params: { id: matchId, tab: 'summary' } })} />}
       </> : null}
     </ScrollView>
-  </Screen>;
+  </SectionScreen>;
+}
+
+function SectionScreen({ embedded, children }: { embedded: boolean; children: React.ReactNode }) {
+  return embedded ? <View style={styles.embeddedScreen}>{children}</View> : <Screen padded={false}>{children}</Screen>;
 }
 
 function Header({ player = false }: { player?: boolean }) {
@@ -139,28 +142,18 @@ function Bowling({ stats }: { stats: PersonalStats }) {
   return <View style={styles.sections}><Card><Text variant="h3">Bowling</Text><StatLine label="Wickets" value={stats.wickets} /><StatLine label="Best in a match" value={`${stats.bestWickets} wickets`} /><StatLine label="Overs" value={formatOvers(stats.bowlingBalls)} /><StatLine label="Runs conceded" value={stats.runsConceded} /><StatLine label="Average" value={formatRate(stats.runsConceded, stats.wickets)} /><StatLine label="Economy" value={formatRate(stats.runsConceded, stats.bowlingBalls, 6)} /></Card></View>;
 }
 
-function History({ entries, onOpen }: { entries: PerformanceHistoryEntry[]; onOpen: (matchId: string) => void }) {
-  if (!entries.length) return <View style={styles.historyEmpty}><Text variant="h3">History is building</Text><Text tone="muted">Completed matches will appear here.</Text></View>;
-  return <View style={styles.historyCard}>{entries.map((entry, index) => <Pressable key={entry.matchId} onPress={() => onOpen(entry.matchId)} style={[styles.historyRow, index > 0 && styles.historyRowBorder]}>
-    <View style={[styles.historyResult, entry.result === 'W' ? styles.historyWin : styles.historyLoss]}><Text variant="caption" style={{ color: entry.result === 'W' ? colors.accent : colors.textDim }}>{entry.result}</Text></View>
-    <View style={styles.historyMain}><Text variant="bodyStrong" numberOfLines={1}>vs {entry.opponentName}</Text><Text variant="caption" tone="dim" numberOfLines={1}>{entry.tournamentName} · {formatHistoryDate(entry.date)}</Text></View>
-    <View style={styles.historyContribution}><Text variant="caption" style={{ color: entry.standout ? colors.gold : colors.accent }}>{entry.runs} ({entry.balls}) · {entry.wickets}W</Text></View>
-    <MaterialCommunityIcons name="chevron-right" size={17} color={colors.textDim} />
-  </Pressable>)}</View>;
-}
-
 function PerformanceEmpty({ onExplore, player }: { onExplore: () => void; player?: boolean }) {
-  return <View style={styles.performanceEmpty}><MaterialCommunityIcons name="chart-line" size={24} color={colors.textMuted} /><Text variant="h3">{player ? 'No performance recorded yet' : 'Your performance starts here'}</Text><Text tone="muted" style={styles.emptyBody}>{player ? 'Form, milestones, and match history will appear after this player completes a match.' : 'Complete your first match and your form, milestones, and match history will appear automatically.'}</Text>{!player ? <Pressable onPress={onExplore} style={styles.emptyCta}><Text variant="caption" style={{ color: colors.accentInk }}>EXPLORE TOURNAMENTS</Text></Pressable> : null}</View>;
+  return <View style={styles.performanceEmpty}><MaterialCommunityIcons name="chart-line" size={24} color={colors.textMuted} /><Text variant="h3">{player ? 'No performance recorded yet' : 'Your performance starts here'}</Text><Text tone="muted" style={styles.emptyBody}>{player ? 'Form and milestones will appear after this player completes a match.' : 'Complete your first match and your form, milestones, and career record will appear automatically.'}</Text>{!player ? <Pressable onPress={onExplore} style={styles.emptyCta}><Text variant="caption" style={{ color: colors.accentInk }}>EXPLORE TOURNAMENTS</Text></Pressable> : null}</View>;
 }
 
 function CareerValue({ label, value }: { label: string; value: number }) { return <View style={styles.careerValue}><Text variant="h2">{value}</Text><Text variant="caption" tone="dim">{label}</Text></View>; }
 function Metric({ icon, label, value }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; value: string }) { const undefinedValue = value === '—'; return <Card style={styles.metric}><MaterialCommunityIcons name={icon} size={21} color={undefinedValue ? colors.textDim : colors.accent} /><Text variant="h2" style={[styles.metricValue, undefinedValue && { color: colors.textDim }]}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></Card>; }
 function StatLine({ label, value }: { label: string; value: string | number }) { const undefinedValue = value === '—'; return <View style={styles.statLine}><Text tone="muted">{label}</Text><Text variant="bodyStrong" style={undefinedValue ? { color: colors.textDim } : undefined}>{value}</Text></View>; }
 function formatOvers(balls: number) { return `${Math.floor(balls / 6)}.${balls % 6}`; }
-function formatHistoryDate(value: string) { return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value)); }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join(''); }
 
 const styles = StyleSheet.create({
+  embeddedScreen: { flex: 1 },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md },
   content: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxxl, gap: spacing.lg },
   profile: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
@@ -195,15 +188,6 @@ const styles = StyleSheet.create({
   formBarLabel: { fontSize: 8.5 },
   formBarValue: { fontSize: 9 },
   formEmpty: { height: 70, alignItems: 'center', justifyContent: 'center' },
-  historyCard: { overflow: 'hidden', borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surface },
-  historyRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: spacing.lg, paddingVertical: 11 },
-  historyRowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  historyResult: { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
-  historyWin: { backgroundColor: colors.accentMuted },
-  historyLoss: { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.border },
-  historyMain: { flex: 1, minWidth: 0 },
-  historyContribution: { alignItems: 'flex-end' },
-  historyEmpty: { minHeight: 160, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg },
   performanceEmpty: { alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.xl, paddingVertical: 26, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surface },
   emptyBody: { maxWidth: 300, textAlign: 'center', lineHeight: 20 },
   emptyCta: { marginTop: spacing.xs, paddingHorizontal: 18, paddingVertical: 9, borderRadius: radius.pill, backgroundColor: colors.accent },

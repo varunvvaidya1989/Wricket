@@ -1153,7 +1153,7 @@ function TournamentSettingsView({
         cloudTournamentId: tournament.cloudId,
         ownerId: auth.session.user.id,
       });
-      router.replace('/wricket');
+      router.replace({ pathname: '/wricket/my-wricket', params: { section: 'tournaments' } });
     } catch (cause) {
       Alert.alert(
         'Could not delete tournament',

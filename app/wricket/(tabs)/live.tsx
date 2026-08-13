@@ -17,6 +17,7 @@ import { Tournament } from '@/lib/wricket/domain/types';
 import { tournamentDiscoveryApi } from '@/lib/supabase/tournamentDiscoveryApi';
 import { PersonalStats, personalStatsApi } from '@/lib/supabase/personalStatsApi';
 import { PerformanceSnapshot } from '@/components/wricket/performance/PerformanceSnapshot';
+import { WricketAvatarButton } from '@/components/wricket/navigation/WricketProfileDrawer';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -101,6 +102,13 @@ export default function HomeScreen() {
   const greeting = useMemo(() => new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening', []);
 
   return <Screen padded={false}>
+    <View style={styles.topBar}>
+      <View style={styles.brand}>
+        <View style={styles.brandMark}><MaterialCommunityIcons name="cricket" size={20} color={colors.accentInk} /></View>
+        <Text variant="bodyStrong">Wricket</Text>
+      </View>
+      <WricketAvatarButton />
+    </View>
     <ScrollView refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />} contentContainerStyle={styles.content}>
       <Text variant="overline" tone="dim">{new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'short' }).format(new Date())}</Text>
       <Text variant="h2" style={styles.greeting}>{greeting}, {name}</Text>
@@ -108,7 +116,7 @@ export default function HomeScreen() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Start a friendly cricket match"
-        onPress={() => auth.session ? router.push('/wricket/match/new') : router.push('/wricket/me')}
+        onPress={() => auth.session ? router.push('/wricket/match/new') : router.push('/account')}
         style={({ pressed }) => [styles.startMatchBanner, pressed && styles.startMatchBannerPressed]}
       >
         <View style={styles.startMatchIcon}>
@@ -147,11 +155,11 @@ export default function HomeScreen() {
         <PerformanceSnapshot
           name={auth.profile?.displayName ?? auth.session.user.email?.split('@')[0] ?? 'Player'}
           stats={performance}
-          onPress={() => router.navigate('/wricket/stats')}
+          onPress={() => router.navigate({ pathname: '/wricket/my-wricket', params: { section: 'performance' } })}
         />
       </> : null}
 
-      <View style={styles.section}><SectionLabel>Your tournaments</SectionLabel><Pressable onPress={() => router.navigate('/wricket')}><Text variant="caption" tone="accent">VIEW ALL</Text></Pressable></View>
+      <View style={styles.section}><SectionLabel>Your tournaments</SectionLabel><Pressable onPress={() => router.navigate({ pathname: '/wricket/my-wricket', params: { section: 'tournaments' } })}><Text variant="caption" tone="accent">VIEW ALL</Text></Pressable></View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
         {tournaments.filter(item => item.status === 'ACTIVE').slice(0, 5).map(item => <Pressable key={item.id} onPress={() => router.push({ pathname: '/wricket/tournament/[id]', params: { id: item.id } })} style={styles.tournament}>
           <View style={[styles.mark, { backgroundColor: colors.goldMuted }]}><MaterialCommunityIcons name="trophy" size={20} color={colors.gold} /></View>
@@ -294,6 +302,9 @@ function formatBallEvent(payload: Record<string, unknown>): string {
 function Insight({ label, value }: { label: string; value: string }) { return <View style={styles.insight}><Text variant="h3">{value}</Text><Text variant="overline" tone="dim">{label}</Text></View>; }
 
 const styles = StyleSheet.create({
+  topBar: { minHeight: 58, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  brandMark: { width: 32, height: 32, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent },
   content: { padding: spacing.lg, paddingBottom: 112 }, greeting: { marginTop: spacing.xs }, flex: { flex: 1 },
   startMatchBanner: { marginTop: spacing.lg, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderRadius: radius.xl, backgroundColor: colors.accent },
   startMatchBannerPressed: { opacity: 0.82, transform: [{ scale: 0.99 }] },

@@ -36,6 +36,14 @@ interface ManagedTeam {
   logoUrl?: string;
 }
 
+type TeamDetailTab = 'squad' | 'stats' | 'history';
+
+const TEAM_DETAIL_TABS: { id: TeamDetailTab; label: string }[] = [
+  { id: 'squad', label: 'Squad' },
+  { id: 'stats', label: 'Stats' },
+  { id: 'history', label: 'History' },
+];
+
 export default function TeamManagementScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -51,6 +59,7 @@ export default function TeamManagementScreen() {
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [insights, setInsights] = useState<TeamInsights>();
   const [updatingLogo, setUpdatingLogo] = useState(false);
+  const [activeTab, setActiveTab] = useState<TeamDetailTab>('squad');
   const isOwner = team?.ownerId === auth.session?.user.id;
   const captain = members.find(member => member.role === 'CAPTAIN' && member.status === 'ACTIVE');
   const isCaptain = captain?.accountId === auth.session?.user.id;
@@ -216,48 +225,68 @@ export default function TeamManagementScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <AppHeader title="Team" back />
       <View style={styles.content}>
-        <View style={styles.hero}>
-          <Pressable
-            disabled={(!isOwner && !isCaptain) || updatingLogo}
-            accessibilityRole="button"
-            accessibilityLabel={(isOwner || isCaptain) ? 'Change team logo' : 'Team logo'}
-            onPress={() => void chooseTeamLogo()}
-            style={[styles.badge, { backgroundColor: team?.colorHex ?? colors.accent }]}
-          >
-            {team?.logoUrl ? <Image source={{ uri: team.logoUrl }} style={styles.teamLogo} /> : <Text variant="h2" style={{ color: colors.accentInk }}>{team?.shortName ?? 'TM'}</Text>}
-            {(isOwner || isCaptain) ? <View style={styles.logoEdit}><MaterialCommunityIcons name={updatingLogo ? 'progress-clock' : 'camera'} size={13} color={colors.accentInk} /></View> : null}
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text variant="h1">{team?.name ?? 'Team'}</Text>
-            <Text variant="caption" tone={insights?.stats.won ? 'accent' : 'muted'}>
-              {insights?.stats.played
-                ? `${insights.stats.won}W – ${insights.stats.lost}L · ${insights.stats.played} matches`
-                : team?.tournamentId ? 'Tournament team' : 'Reusable team entity'}
-            </Text>
+        <View style={styles.teamHeader}>
+          <View style={styles.hero}>
+            <Pressable
+              disabled={(!isOwner && !isCaptain) || updatingLogo}
+              accessibilityRole="button"
+              accessibilityLabel={(isOwner || isCaptain) ? 'Change team logo' : 'Team logo'}
+              onPress={() => void chooseTeamLogo()}
+              style={[styles.badge, { backgroundColor: team?.colorHex ?? colors.accent }]}
+            >
+              {team?.logoUrl ? <Image source={{ uri: team.logoUrl }} style={styles.teamLogo} /> : <Text variant="h2" style={{ color: colors.accentInk }}>{team?.shortName ?? 'TM'}</Text>}
+              {(isOwner || isCaptain) ? <View style={styles.logoEdit}><MaterialCommunityIcons name={updatingLogo ? 'progress-clock' : 'camera'} size={13} color={colors.accentInk} /></View> : null}
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text variant="h1">{team?.name ?? 'Team'}</Text>
+              <Text variant="caption" tone={insights?.stats.won ? 'accent' : 'muted'}>
+                {insights?.stats.played
+                  ? `${insights.stats.won}W – ${insights.stats.lost}L · ${insights.stats.played} matches`
+                  : team?.tournamentId ? 'Tournament team' : 'Reusable team entity'}
+              </Text>
+            </View>
+          </View>
+          <View accessibilityRole="tablist" style={styles.tabs}>
+            {TEAM_DETAIL_TABS.map(tab => (
+              <Pressable
+                key={tab.id}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: activeTab === tab.id }}
+                onPress={() => setActiveTab(tab.id)}
+                style={[styles.tab, activeTab === tab.id && styles.tabActive]}
+              >
+                <Text variant="bodyStrong" tone={activeTab === tab.id ? 'accent' : 'muted'}>
+                  {tab.label}
+                </Text>
+              </Pressable>
+            ))}
           </View>
         </View>
 
-        <View style={styles.statStrip}>
-          <RosterStat label="PLAYED" value={String(insights?.stats.played ?? 0)} />
-          <RosterStat label="WON" value={String(insights?.stats.won ?? 0)} />
-          <RosterStat label="WIN RATE" value={`${Math.round(insights?.stats.winRate ?? 0)}%`} />
-        </View>
+        {activeTab === 'stats' && <>
+          <View style={styles.statStrip}>
+            <RosterStat label="PLAYED" value={String(insights?.stats.played ?? 0)} />
+            <RosterStat label="WON" value={String(insights?.stats.won ?? 0)} />
+            <RosterStat label="WIN RATE" value={`${Math.round(insights?.stats.winRate ?? 0)}%`} />
+          </View>
+          <TeamStats insights={insights} playerCount={activeMembers.length} />
+          <HeadToHead
+            rows={insights?.headToHead ?? []}
+            onOpenTeam={teamId => router.push({ pathname: '/wricket/team/[id]', params: { id: teamId } })}
+          />
+        </>}
 
-        <TeamStats insights={insights} playerCount={activeMembers.length} />
-        <HeadToHead
-          rows={insights?.headToHead ?? []}
-          onOpenTeam={teamId => router.push({ pathname: '/wricket/team/[id]', params: { id: teamId } })}
-        />
-        <MatchHistory
-          matches={insights?.history ?? []}
-          onOpenMatch={matchId => router.push({
-            pathname: '/wricket/match/[id]/live',
-            params: { id: matchId, tab: 'summary' },
-          })}
-        />
+        {activeTab === 'history' && (
+          <MatchHistory
+            matches={insights?.history ?? []}
+            onOpenMatch={matchId => router.push({
+              pathname: '/wricket/match/[id]/live',
+              params: { id: matchId, tab: 'summary' },
+            })}
+          />
+        )}
 
-
-        {roleToAdd && (
+        {activeTab === 'squad' && roleToAdd && (
           <Card>
             <Text variant="h3">{roleToAdd === 'CAPTAIN' ? 'Assign captain' : 'Add players'}</Text>
             <Text variant="body" tone="muted" style={styles.helper}>
@@ -303,7 +332,7 @@ export default function TeamManagementScreen() {
           </Card>
         )}
 
-        {isOwner && !captain && (
+        {activeTab === 'squad' && isOwner && !captain && (
           <Card>
             <Text variant="h3">Invite captain</Text>
             <Text variant="body" tone="muted" style={styles.helper}>
@@ -328,7 +357,7 @@ export default function TeamManagementScreen() {
           </Card>
         )}
 
-        <View>
+        {activeTab === 'squad' && <View>
           <Text variant="overline" tone="muted">ROSTER</Text>
           <View style={styles.playerList}>
             {activeMembers.length ? activeMembers.map((member, index) => (
@@ -361,9 +390,9 @@ export default function TeamManagementScreen() {
                 </Pressable>
               )) : <Text tone="muted">No captain or players have been added.</Text>}
           </View>
-        </View>
+        </View>}
 
-        {isOwner && activeInvitations.length > 0 && (
+        {activeTab === 'squad' && isOwner && activeInvitations.length > 0 && (
           <View>
             <Text variant="overline" tone="muted">ACTIVE CAPTAIN INVITATIONS</Text>
             <View style={styles.roster}>
@@ -385,7 +414,7 @@ export default function TeamManagementScreen() {
           </View>
         )}
 
-        {!roleToAdd && !isOwner && !isCaptain && (
+        {activeTab === 'squad' && !roleToAdd && !isOwner && !isCaptain && (
           <Text variant="body" tone="muted">Only the team owner or captain can manage this roster.</Text>
         )}
       </View>
@@ -502,6 +531,7 @@ function showError(cause: unknown) {
 
 const styles = StyleSheet.create({
   content: { gap: spacing.xl, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xxxl },
+  teamHeader: { gap: spacing.md },
   hero: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   badge: {
     width: 46,
@@ -513,6 +543,9 @@ const styles = StyleSheet.create({
   },
   teamLogo: { width: '100%', height: '100%', borderRadius: radius.md },
   logoEdit: { position: 'absolute', right: -5, bottom: -5, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent, borderWidth: 2, borderColor: colors.bg },
+  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabActive: { borderBottomColor: colors.accent },
   statStrip: { flexDirection: 'row', gap: spacing.sm },
   statCard: { flex: 1, minWidth: 0, padding: spacing.md, gap: spacing.xs },
   helper: { marginTop: spacing.sm },

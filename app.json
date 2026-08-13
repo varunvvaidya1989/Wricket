@@ -2,7 +2,7 @@
   "expo": {
     "name": "SportStage",
     "slug": "sportstage",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/sportstage/logo/sportstage-icon-1024.png",
     "scheme": "sportstage",

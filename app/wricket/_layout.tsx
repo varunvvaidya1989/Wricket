@@ -2,13 +2,15 @@ import { Stack, usePathname } from 'expo-router';
 import { View } from 'react-native';
 
 import { WricketTabBar } from '@/components/wricket/navigation/WricketTabBar';
+import { WricketProfileDrawerProvider } from '@/components/wricket/navigation/WricketProfileDrawer';
 import { colors } from '@/lib/theme/colors';
 
 export default function WricketLayout() {
   const pathname = usePathname();
   const isScoring = /^\/wricket\/match\/[^/]+\/score$/.test(pathname);
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <WricketProfileDrawerProvider>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Stack
         screenOptions={{
           contentStyle: { backgroundColor: colors.bg },
@@ -30,7 +32,8 @@ export default function WricketLayout() {
         <Stack.Screen name="user/[id]" options={{ title: '' }} />
         <Stack.Screen name="ay-profile-link" options={{ title: 'Connect player profile' }} />
       </Stack>
-      {!isScoring ? <WricketTabBar /> : null}
-    </View>
+        {!isScoring ? <WricketTabBar /> : null}
+      </View>
+    </WricketProfileDrawerProvider>
   );
 }

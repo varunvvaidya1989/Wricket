@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, StyleSheet, FlatList, Image, Pressable, TextInput } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, FlatList, Image, Pressable, TextInput } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
@@ -15,7 +15,7 @@ import { syncTournamentData } from '@/lib/wricket/sync/tournamentSync';
 import { tournamentDiscoveryApi, TournamentSearchResult } from '@/lib/supabase/tournamentDiscoveryApi';
 import { TournamentLogo } from '@/components/wricket/tournament/TournamentLogo';
 
-export default function TournamentsScreen() {
+export default function TournamentsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const auth = useAuth();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
@@ -62,7 +62,7 @@ export default function TournamentsScreen() {
       await refreshLocal();
       setSyncMessage(result.failed > 0
         ? `${result.failed} item${result.failed === 1 ? '' : 's'} need attention`
-        : 'Cloud sync complete');
+        : null);
     } catch (error) {
       setSyncMessage(error instanceof Error ? error.message : 'Cloud sync failed');
     } finally {
@@ -145,8 +145,8 @@ export default function TournamentsScreen() {
   const completed = tournaments.filter(t => t.status === 'COMPLETED');
 
   return (
-    <Screen padded={false}>
-      <View style={styles.header}>
+    <SectionScreen embedded={embedded}>
+      {!embedded ? <View style={styles.header}>
         <View>
           <Text variant="overline" tone="muted">Wricket</Text>
           <Text variant="h1">Tournaments</Text>
@@ -161,11 +161,12 @@ export default function TournamentsScreen() {
               />
             </Pressable>
           )}
-          <Pressable style={styles.fab} onPress={() => router.push('/wricket/tournament/new')}>
-            <MaterialCommunityIcons name="plus" size={24} color={colors.accentInk} />
+          <Pressable style={styles.addTournamentButton} onPress={() => router.push('/wricket/tournament/new')}>
+            <MaterialCommunityIcons name="plus" size={18} color={colors.accentInk} />
+            <Text variant="caption" style={styles.addTournamentText}>ADD TOURNAMENT</Text>
           </Pressable>
         </View>
-      </View>
+      </View> : null}
 
       {syncMessage && (
         <Text variant="caption" tone="muted" style={styles.syncMessage}>{syncMessage}</Text>
@@ -186,7 +187,7 @@ export default function TournamentsScreen() {
         {searchHasMore ? <Pressable disabled={searchingMore} onPress={() => void loadMoreSearchResults()} style={styles.searchMore}><Text variant="caption" tone="accent">{searchingMore ? 'LOADING…' : 'LOAD MORE'}</Text></Pressable> : null}
       </View> : null}
 
-      {loading ? null : tournaments.length === 0 ? (
+      {loading ? <ActivityIndicator color={colors.accent} style={styles.loadingIndicator} /> : tournaments.length === 0 ? (
         <EmptyState onCreate={() => router.push('/wricket/tournament/new')} />
       ) : (
         <FlatList
@@ -197,15 +198,19 @@ export default function TournamentsScreen() {
             paddingBottom: spacing.xxxl,
           }}
           ListHeaderComponent={<View style={styles.listHeading}>
-            <Text variant="overline" tone="muted">YOUR TOURNAMENTS</Text>
             <View style={styles.listCounts}>
               <Text variant="caption" tone="accent">{active.length} ACTIVE</Text>
               {completed.length > 0 ? <Text variant="caption" tone="dim">{completed.length} COMPLETED</Text> : null}
             </View>
+            <Pressable style={styles.addTournamentButton} onPress={() => router.push('/wricket/tournament/new')}>
+              <MaterialCommunityIcons name="plus" size={18} color={colors.accentInk} />
+              <Text variant="caption" style={styles.addTournamentText}>ADD TOURNAMENT</Text>
+            </Pressable>
           </View>}
-          ItemSeparatorComponent={() => <View style={{ height: spacing.lg }} />}
-          renderItem={({ item }) => (
-            <Card
+          ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
+          renderItem={({ item }) => {
+            const statusLabel = syncLabel(item.syncStatus);
+            return <Card
               style={styles.tournamentCard}
               onPress={() =>
                 router.push({
@@ -240,7 +245,7 @@ export default function TournamentsScreen() {
                     <Text variant="caption" tone="muted">{formatListDate(item.startDate)}</Text>
                   </View>
                   {item.location ? <View style={styles.cardMetaRow}><MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.textMuted} /><Text variant="caption" tone="muted" numberOfLines={1}>{item.location}</Text></View> : null}
-                  <Text variant="caption" tone={item.syncStatus === 'FAILED' ? 'default' : 'dim'}>{syncLabel(item.syncStatus)}</Text>
+                  {statusLabel ? <Text variant="caption" tone={item.syncStatus === 'FAILED' ? 'default' : 'dim'}>{statusLabel}</Text> : null}
                 </View>
                 {item.cloudId ? <Pressable
                   accessibilityRole="button"
@@ -272,16 +277,20 @@ export default function TournamentsScreen() {
                 </Pressable> : null}
                 <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} />
               </View>
-            </Card>
-          )}
+            </Card>;
+          }}
         />
       )}
-    </Screen>
+    </SectionScreen>
   );
 }
 
-function syncLabel(status: Tournament['syncStatus']): string {
-  if (status === 'SYNCED') return 'Cloud synced';
+function SectionScreen({ embedded, children }: { embedded: boolean; children: React.ReactNode }) {
+  return embedded ? <View style={styles.embeddedScreen}>{children}</View> : <Screen padded={false}>{children}</Screen>;
+}
+
+function syncLabel(status: Tournament['syncStatus']): string | undefined {
+  if (status === 'SYNCED') return undefined;
   if (status === 'FAILED') return 'Sync failed — tap cloud to retry';
   if (status === 'PENDING') return 'Waiting to sync';
   return 'On this device';
@@ -321,6 +330,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  embeddedScreen: { flex: 1 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -329,29 +339,33 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.lg,
   },
-  fab: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  addTournamentButton: {
+    minHeight: 38,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
     backgroundColor: colors.accent,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.xs,
   },
+  addTournamentText: { color: colors.accentInk, fontSize: 9.5 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   syncButton: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceElevated,
     alignItems: 'center', justifyContent: 'center',
   },
   syncMessage: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
-  searchSection: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
+  searchSection: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, gap: spacing.sm },
   searchBox: { minHeight: 46, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   searchInput: { flex: 1, color: colors.text, fontSize: 15 },
   searchResult: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   followButton: { minHeight: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.accent, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 4 },
   followButtonActive: { backgroundColor: colors.accent },
   searchMore: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
-  listHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: spacing.sm, paddingBottom: spacing.md },
+  listHeading: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: spacing.sm },
   listCounts: { flexDirection: 'row', gap: spacing.md },
+  loadingIndicator: { marginTop: spacing.lg },
   tournamentCard: { padding: 0, overflow: 'hidden', borderRadius: radius.lg },
   cardArtwork: { height: 124, overflow: 'hidden', backgroundColor: colors.surfaceElevated, position: 'relative' },
   cardBanner: { ...StyleSheet.absoluteFillObject, width: undefined, height: undefined },

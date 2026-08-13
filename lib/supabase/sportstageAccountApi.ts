@@ -33,4 +33,39 @@ export const sportstageAccountApi = {
     });
     if (error) throw error;
   },
+
+  async updateAvatar(accountId: string, localUri: string): Promise<string> {
+    const client = getSupabaseClient();
+    const response = await fetch(localUri);
+    if (!response.ok) throw new Error('Could not read the selected profile image');
+    const extension = imageExtension(localUri);
+    const folder = `${accountId}/avatar`;
+    const storagePath = `${folder}/avatar-${Date.now()}.${extension}`;
+    const { error: uploadError } = await client.storage.from('profile-media').upload(
+      storagePath,
+      await response.arrayBuffer(),
+      { contentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`, cacheControl: '3600' },
+    );
+    if (uploadError) throw uploadError;
+    const avatarUrl = client.storage.from('profile-media').getPublicUrl(storagePath).data.publicUrl;
+    const { error: updateError } = await client.from('profiles')
+      .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+      .eq('id', accountId);
+    if (updateError) {
+      await client.storage.from('profile-media').remove([storagePath]);
+      throw updateError;
+    }
+    const { data: files } = await client.storage.from('profile-media').list(folder, { limit: 100 });
+    const previousPaths = (files ?? [])
+      .map(file => `${folder}/${file.name}`)
+      .filter(path => path !== storagePath);
+    if (previousPaths.length) await client.storage.from('profile-media').remove(previousPaths);
+    return avatarUrl;
+  },
 };
+
+function imageExtension(uri: string): 'jpg' | 'png' | 'webp' {
+  const value = uri.split('?')[0].split('.').pop()?.toLowerCase();
+  if (value === 'png' || value === 'webp') return value;
+  return 'jpg';
+}

@@ -40,6 +40,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="my-wricket"
+        options={{
+          title: 'My Wricket',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="account-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="search"
         options={{
           title: 'Search',

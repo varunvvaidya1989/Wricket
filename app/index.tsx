@@ -88,7 +88,7 @@ function ProfileStat({ value, label }: { value: number | string; label: string }
 
 function SportCard({ summary, onOpen }: { summary: SportSummary; onOpen: (route: Href) => void }) {
   const route = summary.sport.code === 'CRICKET'
-    ? '/wricket' as Href
+    ? '/wricket/live' as Href
     : summary.sport.appRoute as Href | undefined;
   const ready = summary.available && Boolean(route);
 

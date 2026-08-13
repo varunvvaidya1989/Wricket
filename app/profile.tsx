@@ -44,7 +44,7 @@ export default function GlobalProfileScreen() {
 }
 
 function SportSummaryCard({ summary, onOpen }: { summary: SportSummary; onOpen: (route: Href) => void }) {
-  const route = summary.sport.code === 'CRICKET' ? '/wricket/me' as Href : summary.sport.appRoute as Href | undefined;
+  const route = summary.sport.code === 'CRICKET' ? '/wricket/my-wricket' as Href : summary.sport.appRoute as Href | undefined;
   const canOpen = summary.available && Boolean(route);
   return <Card onPress={canOpen ? () => onOpen(route!) : undefined} style={!summary.available ? styles.unavailableCard : undefined}>
     <View style={styles.sportHeader}><View style={styles.sportIcon}><SportIcon code={summary.sport.code} size={24} color={summary.available ? colors.accent : colors.textDim} /></View><View style={styles.flex}><View style={styles.sportTitle}><Text variant="h3">{summary.sport.name}</Text>{summary.sport.isPrimary ? <Text variant="overline" tone="accent">PRIMARY</Text> : null}</View><Text variant="caption" tone="muted">{summary.sport.accessStatus === 'COMING_SOON' ? 'Profile reserved · activates at launch' : summary.available ? 'Sport profile active' : 'Profile unavailable'}</Text></View>{canOpen ? <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} /> : null}</View>
