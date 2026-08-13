@@ -53,7 +53,7 @@ export async function syncTournamentData(
         if (!team.tournamentId) throw new Error('Standalone teams are not cloud-synced yet');
         const tournament = await getTournament(team.tournamentId);
         if (!tournament?.cloudId) throw new Error('Tournament must sync before its teams');
-        const cloudId = await upsertCloudTeam(team, tournament.cloudId);
+        const cloudId = await upsertCloudTeam(team, tournament.cloudId, userId);
         await markSyncComplete(item, cloudId);
       } else if (item.entityType === 'PLAYER') {
         const player = await getUser(item.entityId);
@@ -137,7 +137,7 @@ export async function syncTournamentData(
     summary.downloaded += 1;
   }
 
-  const cloudMemberships = await listCloudTeamPlayers();
+  const cloudMemberships = await listCloudTeamPlayers(cloudTeams.map(team => team.id));
   const cloudPlayerIds = Array.from(new Set(cloudMemberships.map(item => item.player_id)));
   const cloudPlayers = await listCloudPlayers(cloudPlayerIds);
   for (const item of cloudPlayers) {

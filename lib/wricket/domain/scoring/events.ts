@@ -63,6 +63,7 @@ type DeliveryBase = ScoringEventBase & {
   readonly bowlerId: string;
   readonly wicket?: WicketDetail;
   readonly crossedBatters?: boolean;
+  readonly rotateStrike?: boolean;
   readonly freeHit?: boolean;
 };
 
@@ -212,6 +213,7 @@ export function deliveryEventFromBall(ball: Ball, sequence: number): DomainResul
     strikerId: ball.strikerId,
     nonStrikerId: ball.nonStrikerId,
     bowlerId: ball.bowlerId,
+    rotateStrike: ball.rotateStrike,
     wicket: ball.dismissal
       ? {
           kind: ball.dismissal.kind,

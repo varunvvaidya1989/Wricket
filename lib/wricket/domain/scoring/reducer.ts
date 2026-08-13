@@ -47,11 +47,11 @@ export function applyDeliveryEvent(
   const legalBalls = state.legalBalls + (legal ? 1 : 0);
   const totalRuns = state.totalRuns + event.runs.bat + event.runs.extras;
   const totalWickets = state.totalWickets + (event.wicket ? 1 : 0);
-  const physicalRuns = physicalRunsFor(event);
+  const shouldRotateStrike = event.rotateStrike ?? physicalRunsFor(event) % 2 === 1;
 
   let strikerId: string | undefined = event.strikerId;
   let nonStrikerId: string | undefined = event.nonStrikerId;
-  if (physicalRuns % 2 === 1) {
+  if (shouldRotateStrike) {
     [strikerId, nonStrikerId] = [nonStrikerId, strikerId];
   }
 

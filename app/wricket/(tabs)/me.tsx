@@ -11,17 +11,14 @@ import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { colors } from '@/lib/theme/colors';
 import { spacing } from '@/lib/theme/spacing';
-import { PersonalStats, personalStatsApi } from '@/lib/supabase/personalStatsApi';
 import { PlayerProfile, playerProfileApi } from '@/lib/supabase/playerProfileApi';
 import { LegacyLinkResolution, legacyPlayerLinkApi } from '@/lib/supabase/legacyPlayerLinkApi';
-import { PerformanceTeaser } from '@/components/wricket/performance/PerformanceTeaser';
 
 export default function MeScreen() {
   const router = useRouter();
   const auth = useAuth();
   const name = auth.profile?.displayName ?? 'SportStage member';
   const [player, setPlayer] = useState<PlayerProfile>();
-  const [stats, setStats] = useState<PersonalStats>();
   const [ayLink, setAyLink] = useState<LegacyLinkResolution>();
 
   useFocusEffect(useCallback(() => {
@@ -35,8 +32,7 @@ export default function MeScreen() {
         ? await playerProfileApi.ensureMine(auth.session!.user.id, name)
         : await playerProfileApi.getMine(auth.session!.user.id);
       if (!linkedPlayer) return;
-      const career = await personalStatsApi.get(auth.session!.user.id);
-      if (active) { setPlayer(linkedPlayer); setStats(career); }
+      if (active) setPlayer(linkedPlayer);
     }).catch(() => undefined);
     return () => { active = false; };
   }, [auth.profile?.connectedSports, auth.session, name]));
@@ -51,7 +47,6 @@ export default function MeScreen() {
           {player ? <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} /> : null}
         </View>
       </Card>
-      <PerformanceTeaser own stats={stats} onPress={() => router.push('/wricket/stats')} />
       <MenuCard icon="account-edit-outline" label="Edit player & account" onPress={() => router.push('/account')} />
       {ayLink?.status === 'VERIFIED_MATCH' || ayLink?.status === 'CONTACT_CONFLICT' ? <MenuCard icon="link-variant" label="Link player from AuctionYodha" accent onPress={() => router.push('/wricket/ay-profile-link')} /> : null}
       <MenuCard icon="apps" label="SportStage apps" accent onPress={() => router.replace('/')} />

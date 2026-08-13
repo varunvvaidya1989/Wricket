@@ -14,6 +14,7 @@ import { User } from '@/lib/wricket/domain/types';
 import { PersonalStats, personalStatsApi } from '@/lib/supabase/personalStatsApi';
 import { PerformanceTeaser } from '@/components/wricket/performance/PerformanceTeaser';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { MyTeamsCard } from '@/components/wricket/teams/MyTeamsCard';
 
 interface CloudPlayer {
   id: string;
@@ -104,6 +105,13 @@ export default function PlayerScreen() {
         </View>
 
         <PerformanceTeaser own={ownProfile} stats={displayedStats} onPress={() => ownProfile ? router.push('/wricket/stats') : router.push({ pathname: '/wricket/stats', params: { playerId: id, playerName: name } })} />
+
+        {ownProfile && auth.session ? (
+          <MyTeamsCard
+            accountId={auth.session.user.id}
+            onOpenTeam={teamId => router.push({ pathname: '/wricket/team/[id]', params: { id: teamId } })}
+          />
+        ) : null}
 
         {(cloudPlayer?.batting_hand || cloudPlayer?.bowling_style) && (
           <Card>

@@ -54,6 +54,8 @@ import {
 import { TournamentShareBanner } from '@/components/wricket/tournament/TournamentShareBanner';
 import { tournamentManagementApi } from '@/lib/supabase/tournamentManagementApi';
 import { teamManagementApi } from '@/lib/supabase/teamManagementApi';
+import type { MyTeamSummary } from '@/lib/supabase/teamManagementApi';
+import { syncTournamentData } from '@/lib/wricket/sync/tournamentSync';
 
 type Tab = 'fixtures' | 'table' | 'teams' | 'stats' | 'settings';
 
@@ -362,8 +364,10 @@ export default function TournamentDetailScreen() {
               standings={points}
               generatedSetup={generatedSetup}
               plannedTeamCount={tournament.plannedTeamCount}
+              tournamentCloudId={tournament.cloudId}
               canManage={tournament.organizerProfileId === auth.session?.user.id}
               onAdd={() => setShowAddTeam(true)}
+              onChanged={refresh}
             />
           )}
           {tab === 'stats' && (
@@ -592,7 +596,7 @@ function FixturesView({
                   >
                     <View style={styles.generatedMeta}>
                       <Text variant="caption" tone="dim">
-                        {item.groupId ? groupMap.get(item.groupId) ?? 'GROUP' : stageMap.get(item.stageId) ?? 'TOURNAMENT'} · {fixtureRoundLabel(item.round, stageMap.get(item.stageId))}
+                        {item.groupId ? groupMap.get(item.groupId) ?? 'GROUP' : stageMap.get(item.stageId) ?? 'TOURNAMENT'} · {fixtureRoundLabel(item.round, stageMap.get(item.stageId), item.roundId)}
                         {item.leg > 1 ? ` · LEG ${item.leg}` : ''}
                       </Text>
                       {item.status === 'COMPLETED' || item.status === 'WALKOVER' ? <Text variant="caption" tone="muted">Final score</Text> : null}
@@ -1061,11 +1065,14 @@ function formatNrr(value: number): string {
 }
 
 function knockoutRoundLabel(name: string): string {
-  return ({ QF: 'Quarter-finals', SF: 'Semi-finals', F: 'Final', '3RD_PLACE': 'Third place' } as Record<string, string>)[name] ?? name;
+  return ({ R16: 'Round of 16', QF: 'Quarter-finals', SF: 'Semi-finals', F: 'Final', '3RD_PLACE': 'Third place' } as Record<string, string>)[name] ?? name;
 }
 
-function fixtureRoundLabel(round: number, stageType?: string): string {
-  if (stageType === 'KNOCKOUT') return round === 1 ? 'SF' : round === 2 ? 'FINAL' : `R${round}`;
+function fixtureRoundLabel(round: number, stageType?: string, roundId?: string): string {
+  if (stageType === 'KNOCKOUT') {
+    if (roundId && !roundId.startsWith('MANUAL_R')) return knockoutRoundLabel(roundId);
+    return round === 1 ? 'SF' : round === 2 ? 'FINAL' : `R${round}`;
+  }
   return `R${round}`;
 }
 
@@ -1263,7 +1270,7 @@ function TournamentSettingsView({
         <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
           {!hasGenerated && (
             <Button
-              title="Generate tournament fixtures"
+              title="Set up tournament schedule"
               disabled={teams.length < 2}
               onPress={() => router.push({
                 pathname: '/wricket/tournament/[id]/fixtures',
@@ -1283,7 +1290,7 @@ function TournamentSettingsView({
             fullWidth
           />
           {hasGenerated && (
-            <Button title="Manage or reset fixtures" variant="secondary" onPress={() => router.push({ pathname: '/wricket/tournament/[id]/fixtures', params: { id: tournament.id } })} fullWidth />
+            <Button title="Manage tournament schedule" variant="secondary" onPress={() => router.push({ pathname: '/wricket/tournament/[id]/fixtures', params: { id: tournament.id } })} fullWidth />
           )}
         </View>
       </Card>
@@ -1521,15 +1528,19 @@ function TeamsView({
   standings,
   generatedSetup,
   plannedTeamCount,
+  tournamentCloudId,
   canManage,
   onAdd,
+  onChanged,
 }: {
   teams: Team[];
   standings: PointsRow[];
   generatedSetup: GeneratedFixtureSetup;
   plannedTeamCount: number;
+  tournamentCloudId?: string;
   canManage: boolean;
   onAdd: () => void;
+  onChanged: () => Promise<void>;
 }) {
   const router = useRouter();
   const bracketRounds = generatedSetup.bracket?.rounds ?? [];
@@ -1542,8 +1553,15 @@ function TeamsView({
 
   return (
     <View style={{ flex: 1, paddingTop: spacing.md }}>
+      {canManage ? (
+        <ReusableTeamsTournamentCard
+          tournamentId={tournamentCloudId}
+          hasCapacity={teams.length < plannedTeamCount}
+          onAdded={onChanged}
+        />
+      ) : null}
       {canManage && teams.length < plannedTeamCount && (
-        <Button title="Add team" onPress={onAdd} fullWidth style={{ marginBottom: spacing.lg }} />
+        <Button title="Create tournament team" variant="secondary" onPress={onAdd} fullWidth style={{ marginBottom: spacing.lg }} />
       )}
       <Text variant="caption" tone="muted" style={{ marginBottom: spacing.md }}>
         {teams.length}/{plannedTeamCount} teams added. Owners assign one captain; captains add registered players.
@@ -1583,6 +1601,99 @@ function TeamsView({
         />
       )}
     </View>
+  );
+}
+
+function ReusableTeamsTournamentCard({ tournamentId, hasCapacity, onAdded }: {
+  tournamentId?: string;
+  hasCapacity: boolean;
+  onAdded: () => Promise<void>;
+}) {
+  const auth = useAuth();
+  const [teams, setTeams] = useState<MyTeamSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string>();
+  const [addingTeamId, setAddingTeamId] = useState<string>();
+
+  const load = useCallback(async () => {
+    if (!auth.session || !tournamentId) {
+      setTeams([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setLoadError(undefined);
+    try {
+      setTeams(await teamManagementApi.listReusableForTournament(auth.session.user.id, tournamentId));
+    } catch (cause) {
+      setLoadError(cause instanceof Error ? cause.message : 'Could not load reusable teams.');
+    } finally {
+      setLoading(false);
+    }
+  }, [auth.session, tournamentId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const addTeam = async (teamId: string) => {
+    if (!auth.session || !tournamentId || !hasCapacity) return;
+    setAddingTeamId(teamId);
+    try {
+      await teamManagementApi.enterTournament(teamId, tournamentId);
+      await syncTournamentData(auth.session.user.id, { forceRetry: true });
+      await onAdded();
+      await load();
+    } catch (cause) {
+      Alert.alert('Could not add team', cause instanceof Error ? cause.message : 'Please try again.');
+    } finally {
+      setAddingTeamId(undefined);
+    }
+  };
+
+  return (
+    <Card style={styles.reusableTeamsCard} accentColor={colors.accent}>
+      <View style={styles.reusableTeamsHeader}>
+        <View style={styles.reusableTeamsIcon}><MaterialCommunityIcons name="account-multiple-plus-outline" size={22} color={colors.accent} /></View>
+        <View style={{ flex: 1 }}>
+          <Text variant="h3">Add from My Teams</Text>
+          <Text variant="caption" tone="muted">Reuse a team and copy its current roster.</Text>
+        </View>
+      </View>
+      {!tournamentId ? (
+        <Text variant="caption" tone="muted" style={styles.reusableTeamsMessage}>Sync this tournament before adding a reusable team.</Text>
+      ) : loading ? (
+        <Text variant="caption" tone="muted" style={styles.reusableTeamsMessage}>Loading your teams…</Text>
+      ) : loadError ? (
+        <View style={styles.reusableTeamsMessageRow}>
+          <Text variant="caption" style={{ color: colors.danger, flex: 1 }}>{loadError}</Text>
+          <Button title="Retry" size="sm" variant="ghost" onPress={() => void load()} />
+        </View>
+      ) : teams.length === 0 ? (
+        <Text variant="caption" tone="muted" style={styles.reusableTeamsMessage}>
+          No reusable teams are available. Create one from your cricket profile, or use the button below.
+        </Text>
+      ) : (
+        <View style={styles.reusableTeamsList}>
+          {teams.map(team => (
+            <View key={team.id} style={styles.reusableTeamRow}>
+              <View style={[styles.teamListSwatch, { backgroundColor: team.colorHex }]}>
+                {team.logoUrl ? <Image source={{ uri: team.logoUrl }} style={styles.teamLogo} /> : <Text variant="caption" style={{ color: palette.black }}>{team.shortName}</Text>}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text variant="bodyStrong" numberOfLines={1}>{team.name}</Text>
+                <Text variant="caption" tone="muted" numberOfLines={1}>{team.tournamentName ?? 'Reusable team'}</Text>
+              </View>
+              <Button
+                title={addingTeamId === team.id ? 'Adding…' : 'Add'}
+                size="sm"
+                disabled={!hasCapacity || Boolean(addingTeamId)}
+                onPress={() => void addTeam(team.id)}
+              />
+            </View>
+          ))}
+        </View>
+      )}
+      {!hasCapacity ? <Text variant="caption" tone="muted" style={styles.reusableTeamsMessage}>This tournament has reached its planned team capacity.</Text> : null}
+    </Card>
   );
 }
 
@@ -1873,6 +1984,13 @@ function AddTeamModal({
 }
 
 const styles = StyleSheet.create({
+  reusableTeamsCard: { marginBottom: spacing.md },
+  reusableTeamsHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  reusableTeamsIcon: { width: 42, height: 42, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentMuted },
+  reusableTeamsMessage: { marginTop: spacing.md },
+  reusableTeamsMessageRow: { marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  reusableTeamsList: { marginTop: spacing.md, gap: spacing.sm },
+  reusableTeamRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surfaceElevated },
   headerAction: { width: 40, height: 40, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   compactHeader: { height: 48, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.border, zIndex: 20 },
   compactBack: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },

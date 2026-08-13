@@ -82,6 +82,7 @@ export async function createCloudTeam(input: {
     .from('teams')
     .insert({
       tournament_id: input.tournamentId,
+      entity_owner_id: input.userId,
       name: input.name,
       short_name: input.shortName,
       color_hex: input.colorHex,
@@ -167,11 +168,12 @@ export async function upsertCloudTournament(
   return { cloudId: data.id, bannerUrl, logoUrl };
 }
 
-export async function upsertCloudTeam(team: Team, tournamentCloudId: string): Promise<string> {
+export async function upsertCloudTeam(team: Team, tournamentCloudId: string, ownerId: string): Promise<string> {
   const { data, error } = await getSupabaseClient()
     .from('teams')
     .upsert({
       tournament_id: tournamentCloudId,
+      entity_owner_id: ownerId,
       source_local_id: team.id,
       name: team.name,
       short_name: team.shortName,
@@ -236,15 +238,18 @@ export async function listCloudTeams() {
   const { data, error } = await getSupabaseClient()
     .from('teams')
     .select('id, source_local_id, tournament_id, name, short_name, color_hex, logo_url, created_at')
+    .not('tournament_id', 'is', null)
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data;
 }
 
-export async function listCloudTeamPlayers() {
+export async function listCloudTeamPlayers(teamIds: string[]) {
+  if (teamIds.length === 0) return [];
   const { data, error } = await getSupabaseClient()
     .from('team_players')
     .select('team_id, player_id, jersey_no, is_captain, is_keeper, created_at')
+    .in('team_id', teamIds)
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data;

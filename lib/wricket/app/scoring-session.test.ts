@@ -40,6 +40,25 @@ describe('scoring session restore', () => {
     });
   });
 
+  it('restores an explicit strike-rotation choice from ball history', () => {
+    const state = deriveScoringStateFromHistory([
+      ball({ runsExtra: 1, extraKind: 'BYE', rotateStrike: false }),
+      ball({
+        runsExtra: 2,
+        extraKind: 'LEG_BYE',
+        rotateStrike: true,
+        strikerId: 'batter-1',
+        nonStrikerId: 'batter-2',
+        legalBallInOver: 2,
+      }),
+    ]);
+
+    expect(state).toMatchObject({
+      strikerId: 'batter-2',
+      nonStrikerId: 'batter-1',
+    });
+  });
+
   it('restores exact pending scorer prompt from saved session state', () => {
     const session: ScoringSession = {
       matchId: 'match-1',

@@ -73,6 +73,21 @@ describe('delivery validation and reducer', () => {
     },
   );
 
+  it('honors an explicit strike-rotation choice for extras', () => {
+    const result = applyEvent(
+      baseState,
+      { ...makeDelivery({ extraKind: 'BYE', bat: 0, extras: 1 }), rotateStrike: false },
+      rules,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state).toMatchObject({
+      strikerId: 'batter-1',
+      nonStrikerId: 'batter-2',
+    });
+  });
+
   it('returns a bowler-selection effect at over completion', () => {
     const result = applyEvent(
       { ...baseState, legalBalls: 5 },

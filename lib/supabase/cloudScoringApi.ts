@@ -33,6 +33,7 @@ export interface CloudBallPayload extends Record<string, unknown> {
   runs_bat: number;
   runs_extra: number;
   extra_kind: string | null;
+  rotate_strike?: boolean;
   is_legal: boolean;
   is_wicket: boolean;
   dismissal_kind?: string;

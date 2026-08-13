@@ -164,6 +164,7 @@ export interface Ball {
   runsBat: number;
   runsExtra: number;
   extraKind: ExtraKind;
+  rotateStrike?: boolean;
   isLegal: boolean;
   isWicket: boolean;
   dismissal?: {

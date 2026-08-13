@@ -77,8 +77,8 @@ export function deriveScoringStateFromHistory(
       legalBallInOver = ball.legalBallInOver;
     }
 
-    const physicalRuns = physicalRunsForBall(ball);
-    if (physicalRuns % 2 === 1) {
+    const shouldRotateStrike = ball.rotateStrike ?? physicalRunsForBall(ball) % 2 === 1;
+    if (shouldRotateStrike) {
       [strikerId, nonStrikerId] = [nonStrikerId, strikerId];
     }
 

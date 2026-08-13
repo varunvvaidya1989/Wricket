@@ -56,6 +56,25 @@ describe('applyBall', () => {
     });
   });
 
+  it('uses an explicit strike-rotation choice for additional extras', () => {
+    const noRotation = applyBall(baseState, {
+      runs: 1,
+      extra: 'BYE',
+      isWicket: false,
+      rotateStrike: false,
+    });
+    const forcedRotation = applyBall(baseState, {
+      runs: 2,
+      extra: 'LEG_BYE',
+      isWicket: false,
+      rotateStrike: true,
+    });
+
+    expect(noRotation.ball.rotateStrike).toBe(false);
+    expect(noRotation.next.strikerId).toBe('striker');
+    expect(forcedRotation.next.strikerId).toBe('non-striker');
+  });
+
   it('swaps strike at over completion', () => {
     const result = applyBall(
       {

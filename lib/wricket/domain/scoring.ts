@@ -8,6 +8,7 @@ export interface BallEvent {
   outPlayerId?: string;      // who got out (defaults to striker if omitted)
   fielderId?: string;
   assistantFielderId?: string;
+  rotateStrike?: boolean;   // explicit scorer choice for whether batters changed ends
 }
 
 export interface InningsState {
@@ -71,7 +72,8 @@ export function applyBall(state: InningsState, event: BallEvent): AppliedBall {
 
   let striker = state.strikerId;
   let nonStriker = state.nonStrikerId;
-  if (physicalRuns % 2 === 1) {
+  const shouldRotateStrike = event.rotateStrike ?? physicalRuns % 2 === 1;
+  if (shouldRotateStrike) {
     [striker, nonStriker] = [nonStriker, striker];
   }
 
@@ -101,6 +103,7 @@ export function applyBall(state: InningsState, event: BallEvent): AppliedBall {
     runsBat,
     runsExtra,
     extraKind: event.extra,
+    rotateStrike: event.rotateStrike,
     isLegal,
     isWicket,
     dismissal: isWicket

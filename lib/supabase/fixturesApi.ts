@@ -17,6 +17,7 @@ import type {
   FormatRecommendation,
   PairingAlgorithm,
 } from '@/lib/wricket/fixtures';
+import { projectManualBracket } from '@/lib/wricket/fixtures/manual-schedule';
 
 const REALTIME_COUNTER_KEY = '__wricketFixturesRealtimeCounter';
 const globalWithRealtimeCounter = globalThis as typeof globalThis & {
@@ -37,6 +38,15 @@ export interface GeneratedFixtureSetup {
 }
 
 export type KnockoutPreset = 'FINAL_2' | 'SF_4' | 'QF_8' | 'PLAYOFFS_4' | 'SIX_TEAM_CROSSOVER' | 'CUSTOM';
+
+export interface ManualFixtureInput {
+  stageId: string;
+  groupId?: string;
+  teamAId: string;
+  teamBId: string;
+  round: number;
+  roundName?: string;
+}
 
 export const fixturesApi = {
   getFormatRecommendation(teamCount: number) {
@@ -420,6 +430,126 @@ export const fixturesApi = {
     return data;
   },
 
+  async addManualStage(tournamentId: string, type: 'GROUP' | 'KNOCKOUT') {
+    const client = getSupabaseClient();
+    const setup = await this.getFixtureSetup(tournamentId);
+    if (setup.stages.some(stage => stage.type === type)) {
+      throw new Error(`${type === 'GROUP' ? 'A group' : 'A knockout'} stage already exists`);
+    }
+    if (setup.stages.some(stage => !stage.config?.manual)) {
+      throw new Error('Manual stages cannot be added to an automatically generated schedule');
+    }
+    const groupStage = setup.stages.find(stage => stage.type === 'GROUP');
+    const stage = await this.addStage(tournamentId, {
+      order: setup.stages.reduce((highest, item) => Math.max(highest, Number(item.stage_order ?? 0)), 0) + 1,
+      type,
+      dependsOnStageId: type === 'KNOCKOUT' ? groupStage?.id : undefined,
+      config: type === 'GROUP'
+        ? {
+          manual: true,
+          pairingAlgorithm: 'MANUAL',
+          pointsRule: { win: 3, draw: 1, loss: 0 },
+          tiebreakers: ['HEAD_TO_HEAD', 'GOAL_DIFF', 'GOALS_FOR'],
+        }
+        : { manual: true, seeding: 'MANUAL' },
+    });
+    const { error } = await client.from('fixture_stages')
+      .update({ status: 'IN_PROGRESS' })
+      .eq('id', stage.id);
+    if (error) throw error;
+    return { ...stage, status: 'IN_PROGRESS' };
+  },
+
+  async addManualGroup(input: {
+    stageId: string;
+    name: string;
+    teamIds: string[];
+  }) {
+    const name = input.name.trim();
+    const teamIds = [...new Set(input.teamIds)];
+    if (!name) throw new Error('Enter a group name');
+    if (teamIds.length < 2) throw new Error('Select at least two teams for the group');
+    const client = getSupabaseClient();
+    const { data: stage, error: stageError } = await client.from('fixture_stages')
+      .select('id, type, config')
+      .eq('id', input.stageId)
+      .single();
+    if (stageError) throw stageError;
+    if (stage.type !== 'GROUP' || !stage.config?.manual) {
+      throw new Error('Groups can only be added to a manual group stage');
+    }
+    const { data: existingGroups, error: existingGroupsError } = await client.from('fixture_groups')
+      .select('team_ids')
+      .eq('stage_id', input.stageId);
+    if (existingGroupsError) throw existingGroupsError;
+    const assignedTeamIds = new Set(existingGroups.flatMap(group => group.team_ids));
+    if (teamIds.some(teamId => assignedTeamIds.has(teamId))) {
+      throw new Error('A team can only belong to one group in this stage');
+    }
+    const { data, error } = await client.from('fixture_groups').insert({
+      stage_id: input.stageId,
+      name,
+      team_ids: teamIds,
+    }).select('id, stage_id, name, team_ids').single();
+    if (error) throw error;
+    return data;
+  },
+
+  async addManualFixture(input: ManualFixtureInput): Promise<void> {
+    if (!input.teamAId || !input.teamBId || input.teamAId === input.teamBId) {
+      throw new Error('Select two different teams');
+    }
+    if (!Number.isInteger(input.round) || input.round < 1) {
+      throw new Error('Round must be a whole number greater than zero');
+    }
+    const client = getSupabaseClient();
+    const { data: stage, error: stageError } = await client.from('fixture_stages')
+      .select('id, type, config')
+      .eq('id', input.stageId)
+      .single();
+    if (stageError) throw stageError;
+    if (!stage.config?.manual) throw new Error('Fixtures can only be added through the manual schedule builder');
+    if (stage.type === 'GROUP') {
+      if (!input.groupId) throw new Error('Choose a group for this fixture');
+      const { data: group, error: groupError } = await client.from('fixture_groups')
+        .select('id, stage_id, team_ids')
+        .eq('id', input.groupId)
+        .single();
+      if (groupError) throw groupError;
+      if (group.stage_id !== input.stageId) throw new Error('The selected group belongs to another stage');
+      if (!group.team_ids.includes(input.teamAId) || !group.team_ids.includes(input.teamBId)) {
+        throw new Error('Both teams must belong to the selected group');
+      }
+    }
+    const { data: existing, error: existingError } = await client.from('fixture_matches')
+      .select('team_a_id, team_b_id')
+      .eq('stage_id', input.stageId)
+      .eq('round', input.round);
+    if (existingError) throw existingError;
+    const duplicate = existing.some(match =>
+      (match.team_a_id === input.teamAId && match.team_b_id === input.teamBId) ||
+      (match.team_a_id === input.teamBId && match.team_b_id === input.teamAId));
+    if (duplicate) throw new Error('These teams already meet in this round');
+    const fixture: FixtureMatch = {
+      id: '',
+      stageId: input.stageId,
+      groupId: input.groupId,
+      roundId: input.roundName?.trim() || `MANUAL_R${input.round}`,
+      teamA: input.teamAId,
+      teamB: input.teamBId,
+      round: input.round,
+      leg: 1,
+      status: 'SCHEDULED',
+    };
+    const { error } = await client.from('fixture_matches').insert(toFixtureRow(fixture));
+    if (error) throw error;
+    if (stage.type === 'KNOCKOUT') await syncManualBracket(input.stageId);
+    const { error: statusError } = await client.from('fixture_stages')
+      .update({ status: 'IN_PROGRESS' })
+      .eq('id', input.stageId);
+    if (statusError) throw statusError;
+  },
+
   async patchMatchResult(matchId: string, scoreA: number, scoreB: number, walkover = false) {
     const { data, error } = await getSupabaseClient().from('fixture_matches').update({
       score_a: scoreA,
@@ -432,8 +562,18 @@ export const fixturesApi = {
   },
 
   async deleteMatch(matchId: string): Promise<void> {
-    const { error } = await getSupabaseClient().from('fixture_matches').delete().eq('id', matchId);
+    const client = getSupabaseClient();
+    const { data: match, error: matchError } = await client.from('fixture_matches')
+      .select('stage_id, fixture_stages(type, config)')
+      .eq('id', matchId)
+      .maybeSingle();
+    if (matchError) throw matchError;
+    const { error } = await client.from('fixture_matches').delete().eq('id', matchId);
     if (error) throw error;
+    const stage = Array.isArray(match?.fixture_stages) ? match.fixture_stages[0] : match?.fixture_stages;
+    if (match?.stage_id && stage?.type === 'KNOCKOUT' && stage.config?.manual) {
+      await syncManualBracket(match.stage_id);
+    }
   },
 
   async updateMatch(match: FixtureMatch, input: {
@@ -775,6 +915,31 @@ function toFixtureRow(match: FixtureMatch) {
     score_a: match.scoreA ?? null,
     score_b: match.scoreB ?? null,
   };
+}
+
+async function syncManualBracket(stageId: string): Promise<void> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from('fixture_matches')
+    .select('id, stage_id, group_id, round_id, team_a_id, team_b_id, round, leg, weight, status, score_a, score_b')
+    .eq('stage_id', stageId)
+    .order('round');
+  if (error) throw error;
+  if (!data.length) {
+    const { error: deleteError } = await client.from('knockout_brackets').delete().eq('stage_id', stageId);
+    if (deleteError) throw deleteError;
+    return;
+  }
+  const projection = projectManualBracket(stageId, data.map(row => mapFixtureMatch(row)));
+  if (!projection) return;
+  const { error: bracketError } = await client.from('knockout_brackets').upsert({
+    stage_id: stageId,
+    rounds: projection.rounds,
+    seeding_source: projection.seedingSource,
+    bracket_size: projection.bracketSize,
+    byes: projection.byes,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'stage_id' });
+  if (bracketError) throw bracketError;
 }
 
 async function saveBracketAndMatches(bracket: KnockoutBracket) {

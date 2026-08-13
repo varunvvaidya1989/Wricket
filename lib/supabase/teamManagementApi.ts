@@ -43,7 +43,116 @@ export interface RegisteredPlayerSearchResult {
   currentRole?: TeamRole;
 }
 
+export interface MyTeamSummary {
+  id: string;
+  name: string;
+  shortName: string;
+  colorHex: string;
+  logoUrl?: string;
+  role: 'OWNER' | TeamRole;
+  tournamentId?: string;
+  tournamentName?: string;
+  sourceTeamId?: string;
+}
+
 export const teamManagementApi = {
+  async createTeamEntity(input: {
+    name: string;
+    shortName: string;
+    colorHex: string;
+    ownerId: string;
+  }): Promise<MyTeamSummary> {
+    const name = input.name.trim();
+    const shortName = input.shortName.trim().toUpperCase().slice(0, 4);
+    if (!name || !shortName) throw new Error('Team name and short name are required');
+    const { data, error } = await getSupabaseClient().from('teams').insert({
+      tournament_id: null,
+      entity_owner_id: input.ownerId,
+      source_team_id: null,
+      name,
+      short_name: shortName,
+      color_hex: input.colorHex,
+    }).select('id, name, short_name, color_hex, logo_url').single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      name: data.name,
+      shortName: data.short_name,
+      colorHex: data.color_hex,
+      logoUrl: data.logo_url ?? undefined,
+      role: 'OWNER',
+    };
+  },
+
+  async listMine(accountId: string): Promise<MyTeamSummary[]> {
+    const client = getSupabaseClient();
+    const { data: memberships, error: membershipError } = await client.from('team_account_members')
+      .select('team_id, role')
+      .eq('account_id', accountId)
+      .eq('status', 'ACTIVE');
+    if (membershipError) throw membershipError;
+    const memberRoleByTeam = new Map((memberships ?? []).map(member => [member.team_id, member.role as TeamRole]));
+    const memberIds = [...memberRoleByTeam.keys()];
+    const [{ data: owned, error: ownedError }, memberResult] = await Promise.all([
+      client.from('teams')
+        .select('id, entity_owner_id, name, short_name, color_hex, logo_url, tournament_id, source_team_id, tournaments(name)')
+        .eq('entity_owner_id', accountId),
+      memberIds.length
+        ? client.from('teams')
+          .select('id, entity_owner_id, name, short_name, color_hex, logo_url, tournament_id, source_team_id, tournaments(name)')
+          .in('id', memberIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (ownedError) throw ownedError;
+    if (memberResult.error) throw memberResult.error;
+    const rows = new Map<string, any>();
+    for (const team of [...(owned ?? []), ...(memberResult.data ?? [])]) rows.set(team.id, team);
+    return [...rows.values()]
+      .filter(team => !team.source_team_id || !rows.has(team.source_team_id))
+      .map((team): MyTeamSummary => {
+      const tournament = Array.isArray(team.tournaments) ? team.tournaments[0] : team.tournaments;
+      return {
+        id: team.id,
+        name: team.name,
+        shortName: team.short_name,
+        colorHex: team.color_hex,
+        logoUrl: team.logo_url ?? undefined,
+        role: team.entity_owner_id === accountId ? 'OWNER' : memberRoleByTeam.get(team.id) ?? 'PLAYER',
+        tournamentId: team.tournament_id ?? undefined,
+        tournamentName: tournament?.name ?? undefined,
+        sourceTeamId: team.source_team_id ?? undefined,
+      };
+      }).sort((a, b) => a.name.localeCompare(b.name));
+  },
+
+  async listReusableForTournament(accountId: string, tournamentId: string): Promise<MyTeamSummary[]> {
+    const [mine, { data: entries, error }] = await Promise.all([
+      teamManagementApi.listMine(accountId),
+      getSupabaseClient().from('teams')
+        .select('id, source_team_id')
+        .eq('tournament_id', tournamentId),
+    ]);
+    if (error) throw error;
+    const enteredTeamIds = new Set((entries ?? []).flatMap(team => [
+      team.id,
+      ...(team.source_team_id ? [team.source_team_id] : []),
+    ]));
+    return mine.filter(team =>
+      team.tournamentId !== tournamentId
+      && !enteredTeamIds.has(team.id)
+      && (!team.sourceTeamId || !enteredTeamIds.has(team.sourceTeamId)),
+    );
+  },
+
+  async enterTournament(teamId: string, tournamentId: string): Promise<string> {
+    const { data, error } = await getSupabaseClient().rpc('enter_team_in_tournament', {
+      p_source_team_id: teamId,
+      p_tournament_id: tournamentId,
+    });
+    if (error) throw error;
+    return data;
+  },
+
   async updateLogo(teamId: string, localUri: string, userId: string): Promise<string> {
     const client = getSupabaseClient();
     const response = await fetch(localUri);

@@ -160,8 +160,8 @@ export async function hydrateScoringMatch(matchId: string): Promise<void> {
             id, innings_id, over_no, ball_in_over, legal_ball_in_over, striker_id,
             non_striker_id, bowler_id, runs_bat, runs_extra, extra_kind, is_legal,
             is_wicket, dismissal_kind, out_player_id, fielder_id,
-            assistant_fielder_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            assistant_fielder_id, rotate_strike, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           event.id, inningsId, Number(payload.over_no ?? 0),
           Number(payload.ball_in_over ?? 0), Number(payload.legal_ball_in_over ?? 0),
           requirePlayer(payload.striker_id as string), requirePlayer(payload.non_striker_id as string),
@@ -171,6 +171,7 @@ export async function hydrateScoringMatch(matchId: string): Promise<void> {
           payload.dismissal_kind ?? null, mapPlayer(payload.out_player_id as string) ?? null,
           mapPlayer(payload.fielder_id as string) ?? null,
           mapPlayer(payload.assistant_fielder_id as string) ?? null,
+          payload.rotate_strike == null ? null : Number(Boolean(payload.rotate_strike)),
           createdAt,
         );
       } else if (event.kind === 'SCORE_ADJUSTED') {

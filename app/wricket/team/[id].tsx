@@ -27,7 +27,7 @@ interface ManagedTeam {
   shortName: string;
   ownerId: string;
   colorHex: string;
-  tournamentId: string;
+  tournamentId?: string;
   logoUrl?: string;
 }
 
@@ -60,7 +60,7 @@ export default function TeamManagementScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     const { data, error } = await getSupabaseClient().from('teams')
-      .select('name, short_name, color_hex, logo_url, tournament_id, tournaments!inner(created_by)')
+      .select('name, short_name, color_hex, logo_url, tournament_id, entity_owner_id, tournaments(created_by)')
       .eq('id', id)
       .single();
     if (error) throw error;
@@ -68,15 +68,17 @@ export default function TeamManagementScreen() {
     setTeam({
       name: data.name,
       shortName: data.short_name,
-      ownerId: tournament.created_by,
+      ownerId: data.entity_owner_id ?? tournament?.created_by,
       colorHex: data.color_hex,
-      tournamentId: data.tournament_id,
+      tournamentId: data.tournament_id ?? undefined,
       logoUrl: data.logo_url ?? undefined,
     });
     const [roster, stats, matchResult] = await Promise.all([
       teamManagementApi.listRoster(id),
-      tournamentStatsApi.get(data.tournament_id),
-      getSupabaseClient().from('matches').select('team_a_id, team_b_id, status, result').eq('tournament_id', data.tournament_id).in('status', ['COMPLETED', 'WALKOVER']),
+      data.tournament_id ? tournamentStatsApi.get(data.tournament_id) : Promise.resolve({ players: [] }),
+      data.tournament_id
+        ? getSupabaseClient().from('matches').select('team_a_id, team_b_id, status, result').eq('tournament_id', data.tournament_id).in('status', ['COMPLETED', 'WALKOVER'])
+        : Promise.resolve({ data: [], error: null }),
     ]);
     setMembers(roster);
     setPlayerStats(stats.players.filter(player => roster.some(member => member.playerId === player.id)));
@@ -87,7 +89,7 @@ export default function TeamManagementScreen() {
       if (!winner) return next;
       return winner === id ? { ...next, won: next.won + 1 } : { ...next, lost: next.lost + 1 };
     }, { won: 0, lost: 0 }));
-    if (tournament.created_by === auth.session?.user.id) {
+    if ((data.entity_owner_id ?? tournament?.created_by) === auth.session?.user.id) {
       setInvitations(await teamManagementApi.listInvitations(id));
     } else {
       setInvitations([]);
@@ -236,7 +238,9 @@ export default function TeamManagementScreen() {
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text variant="h1">{team?.name ?? 'Team'}</Text>
-            <Text variant="caption" tone={record.won ? 'accent' : 'muted'}>{record.won}W – {record.lost}L</Text>
+            <Text variant="caption" tone={record.won ? 'accent' : 'muted'}>
+              {team?.tournamentId ? `${record.won}W – ${record.lost}L` : 'Reusable team entity'}
+            </Text>
           </View>
         </View>
 
@@ -375,7 +379,7 @@ export default function TeamManagementScreen() {
         )}
 
         {!roleToAdd && !isOwner && !isCaptain && (
-          <Text variant="body" tone="muted">Only the tournament owner or team captain can manage this roster.</Text>
+          <Text variant="body" tone="muted">Only the team owner or captain can manage this roster.</Text>
         )}
       </View>
     </Screen>

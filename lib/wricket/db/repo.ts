@@ -729,6 +729,7 @@ export async function insertBall(input: {
   runsBat: number;
   runsExtra: number;
   extraKind: ExtraKind;
+  rotateStrike?: boolean;
   isLegal: boolean;
   isWicket: boolean;
   dismissalKind?: DismissalKind;
@@ -749,6 +750,7 @@ export async function insertBall(input: {
     runsBat: input.runsBat,
     runsExtra: input.runsExtra,
     extraKind: input.extraKind,
+    rotateStrike: input.rotateStrike,
     isLegal: input.isLegal,
     isWicket: input.isWicket,
     dismissal: input.isWicket
@@ -764,9 +766,9 @@ export async function insertBall(input: {
   await db.runAsync(
     `INSERT INTO balls (id, innings_id, over_no, ball_in_over, legal_ball_in_over,
        striker_id, non_striker_id, bowler_id,
-       runs_bat, runs_extra, extra_kind, is_legal, is_wicket,
+       runs_bat, runs_extra, extra_kind, rotate_strike, is_legal, is_wicket,
        dismissal_kind, out_player_id, fielder_id, assistant_fielder_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ball.id,
     ball.inningsId,
     ball.overNo,
@@ -778,6 +780,7 @@ export async function insertBall(input: {
     ball.runsBat,
     ball.runsExtra,
     ball.extraKind,
+    ball.rotateStrike === undefined ? null : Number(ball.rotateStrike),
     ball.isLegal ? 1 : 0,
     ball.isWicket ? 1 : 0,
     input.dismissalKind ?? null,
@@ -836,6 +839,7 @@ function rowToBall(row: any): Ball {
     runsBat: row.runs_bat,
     runsExtra: row.runs_extra,
     extraKind: row.extra_kind,
+    rotateStrike: row.rotate_strike == null ? undefined : !!row.rotate_strike,
     isLegal: !!row.is_legal,
     isWicket: !!row.is_wicket,
     dismissal: row.is_wicket

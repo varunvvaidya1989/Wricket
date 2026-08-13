@@ -382,6 +382,7 @@ export default function ScoreScreen() {
       outPlayerId?: string;
       fielderId?: string;
       assistantFielderId?: string;
+      rotateStrike?: boolean;
     }) => {
       if (!innings || !live || !live.strikerId || !live.nonStrikerId || !live.bowlerId) return;
 
@@ -410,6 +411,7 @@ export default function ScoreScreen() {
         runsBat: result.ball.runsBat,
         runsExtra: result.ball.runsExtra,
         extraKind: result.ball.extraKind,
+        rotateStrike: result.ball.rotateStrike,
         isLegal: result.ball.isLegal,
         isWicket: result.ball.isWicket,
         dismissalKind: event.dismissalKind,
@@ -455,6 +457,7 @@ export default function ScoreScreen() {
             runs_bat: newBall.runsBat,
             runs_extra: newBall.runsExtra,
             extra_kind: newBall.extraKind,
+            rotate_strike: newBall.rotateStrike,
             is_legal: newBall.isLegal,
             is_wicket: newBall.isWicket,
             dismissal_kind: event.dismissalKind,
@@ -1296,9 +1299,9 @@ export default function ScoreScreen() {
       <ExtrasSheet
         visible={extraOpen}
         onClose={() => setExtraOpen(false)}
-        onConfirm={async ({ kind, runs }) => {
+        onConfirm={async ({ kind, runs, rotateStrike }) => {
           setExtraOpen(false);
-          await recordBall({ runs, extra: kind, isWicket: false });
+          await recordBall({ runs, extra: kind, isWicket: false, rotateStrike });
         }}
       />
     </Screen>
@@ -1807,10 +1810,18 @@ function ExtrasSheet({
   visible, onClose, onConfirm,
 }: {
   visible: boolean; onClose: () => void;
-  onConfirm: (e: { kind: NonNullable<ExtraKind>; runs: number }) => void;
+  onConfirm: (e: { kind: NonNullable<ExtraKind>; runs: number; rotateStrike?: boolean }) => void;
 }) {
   const [kind, setKind] = useState<NonNullable<ExtraKind>>('WIDE');
   const [runs, setRuns] = useState(0);
+  const [rotateStrike, setRotateStrike] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    setKind('WIDE');
+    setRuns(0);
+    setRotateStrike(null);
+  }, [visible]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -1837,13 +1848,55 @@ function ExtrasSheet({
           <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>RUNS</Text>
           <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
             {[0, 1, 2, 3, 4, 6].map(r => (
-              <Pressable key={r} onPress={() => setRuns(r)} style={[styles.runChip, runs === r && styles.runChipActive]}>
+              <Pressable
+                key={r}
+                onPress={() => {
+                  setRuns(r);
+                  setRotateStrike(null);
+                }}
+                style={[styles.runChip, runs === r && styles.runChipActive]}
+              >
                 <Text variant="bodyStrong" style={runs === r ? { color: colors.accentInk } : undefined}>{r}</Text>
               </Pressable>
             ))}
           </View>
 
-          <Button title="Record" onPress={() => onConfirm({ kind, runs })} fullWidth size="lg" />
+          {runs > 0 && (
+            <>
+              <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>
+                ROTATE STRIKE?
+              </Text>
+              <Text variant="body" tone="muted" style={{ marginBottom: spacing.sm }}>
+                Did the batters change ends on this delivery?
+              </Text>
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
+                <Pressable
+                  onPress={() => setRotateStrike(true)}
+                  style={[styles.chip, { flex: 1 }, rotateStrike === true && styles.chipActive]}
+                >
+                  <Text variant="bodyStrong" style={rotateStrike === true ? { color: colors.accentInk } : undefined}>
+                    Yes
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setRotateStrike(false)}
+                  style={[styles.chip, { flex: 1 }, rotateStrike === false && styles.chipActive]}
+                >
+                  <Text variant="bodyStrong" style={rotateStrike === false ? { color: colors.accentInk } : undefined}>
+                    No
+                  </Text>
+                </Pressable>
+              </View>
+            </>
+          )}
+
+          <Button
+            title="Record"
+            disabled={runs > 0 && rotateStrike === null}
+            onPress={() => onConfirm({ kind, runs, rotateStrike: rotateStrike ?? undefined })}
+            fullWidth
+            size="lg"
+          />
         </View>
       </View>
     </Modal>

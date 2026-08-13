@@ -314,6 +314,10 @@ const TOURNAMENT_REWARDS_SQL = `
 ALTER TABLE tournaments ADD COLUMN rewards TEXT;
 `;
 
+const BALL_STRIKE_ROTATION_SQL = `
+ALTER TABLE balls ADD COLUMN rotate_strike INTEGER;
+`;
+
 export const MIGRATIONS: SqlMigration[] = [
   {
     version: 1,
@@ -380,6 +384,11 @@ export const MIGRATIONS: SqlMigration[] = [
     name: 'tournament_overs_per_match',
     sql: TOURNAMENT_OVERS_SQL,
   },
+  {
+    version: 14,
+    name: 'ball_strike_rotation',
+    sql: BALL_STRIKE_ROTATION_SQL,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
@@ -418,6 +427,8 @@ export async function runMigrations(db: MigrationDatabase): Promise<void> {
           ? { table: 'tournaments', column: 'rewards' }
         : migration.version === 13
           ? { table: 'tournaments', column: 'overs_per_match' }
+        : migration.version === 14
+          ? { table: 'balls', column: 'rotate_strike' }
         : null;
     const alreadyApplied = guardedColumn
       ? await db.getFirstAsync<{ count: number }>(

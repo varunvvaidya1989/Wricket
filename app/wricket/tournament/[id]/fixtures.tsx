@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
+import { ManualScheduleBuilder } from '@/components/wricket/fixtures/ManualScheduleBuilder';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getTournament, listTeams } from '@/lib/wricket/db/repo';
 import type { Team, Tournament } from '@/lib/wricket/domain/types';
@@ -19,7 +20,12 @@ import type {
   PairingAlgorithm,
   TournamentFormatType,
 } from '@/lib/wricket/fixtures';
-import { fixturesApi, GeneratedFixtureSetup, KnockoutPreset } from '@/lib/supabase/fixturesApi';
+import {
+  fixturesApi,
+  GeneratedFixtureSetup,
+  KnockoutPreset,
+  ManualFixtureInput,
+} from '@/lib/supabase/fixturesApi';
 import { syncTournamentData } from '@/lib/wricket/sync/tournamentSync';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
@@ -47,6 +53,7 @@ export default function TournamentFixturesSetupScreen() {
   const [saving, setSaving] = useState(false);
   const [generationError, setGenerationError] = useState<string>();
   const [teamGroups, setTeamGroups] = useState<Record<string, number>>({});
+  const [builderMode, setBuilderMode] = useState<'AUTOMATIC' | 'MANUAL'>('AUTOMATIC');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -79,6 +86,73 @@ export default function TournamentFixturesSetupScreen() {
   }, [tournament?.cloudId]);
 
   const generated = Boolean(setup?.stages.length);
+  const manualSchedule = Boolean(setup?.stages.some(stage => stage.config?.manual));
+
+  const ensureManualCloudData = async () => {
+    if (!tournament || !auth.session) throw new Error('Sign in before building a tournament schedule');
+    if (tournament.cloudId && teams.length >= 2 && teams.every(team => team.cloudId)) {
+      return { tournament, teams };
+    }
+    await syncTournamentData(auth.session.user.id, { forceRetry: true });
+    const [freshTournament, freshTeams] = await Promise.all([
+      getTournament(tournament.id),
+      listTeams(tournament.id),
+    ]);
+    if (!freshTournament?.cloudId) throw new Error('Tournament cloud sync did not complete');
+    if (freshTeams.length < 2 || freshTeams.some(team => !team.cloudId)) {
+      throw new Error('Every team must finish cloud sync before building the schedule');
+    }
+    setTournament(freshTournament);
+    setTeams(freshTeams);
+    return { tournament: freshTournament, teams: freshTeams };
+  };
+
+  const addManualStage = async (type: 'GROUP' | 'KNOCKOUT') => {
+    setSaving(true);
+    setGenerationError(undefined);
+    try {
+      const ready = await ensureManualCloudData();
+      await fixturesApi.addManualStage(ready.tournament.cloudId!, type);
+      setSetup(await fixturesApi.getFixtureSetup(ready.tournament.cloudId!));
+    } catch (cause) {
+      setGenerationError(cause instanceof Error ? cause.message : 'Please try again.');
+      showError(cause);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addManualGroup = async (input: { stageId: string; name: string; teamIds: string[] }) => {
+    setSaving(true);
+    setGenerationError(undefined);
+    try {
+      await fixturesApi.addManualGroup(input);
+      if (tournament?.cloudId) setSetup(await fixturesApi.getFixtureSetup(tournament.cloudId));
+      return true;
+    } catch (cause) {
+      setGenerationError(cause instanceof Error ? cause.message : 'Please try again.');
+      showError(cause);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addManualFixture = async (input: ManualFixtureInput) => {
+    setSaving(true);
+    setGenerationError(undefined);
+    try {
+      await fixturesApi.addManualFixture(input);
+      if (tournament?.cloudId) setSetup(await fixturesApi.getFixtureSetup(tournament.cloudId));
+      return true;
+    } catch (cause) {
+      setGenerationError(cause instanceof Error ? cause.message : 'Please try again.');
+      showError(cause);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
 
   function applyRecommendation(recommendation: Omit<FormatRecommendation, 'alternatives'>) {
     setSelected({ ...recommendation, alternatives: formatChoices });
@@ -158,9 +232,11 @@ export default function TournamentFixturesSetupScreen() {
     const cloudTournamentId = tournament?.cloudId;
     if (!cloudTournamentId || saving) return;
     confirmFixtureAction(
-      'Undo generated fixtures?',
-      'This removes the generated schedule and returns to format selection. It is allowed only before any match starts.',
-      'Undo fixtures',
+      manualSchedule ? 'Reset manual schedule?' : 'Undo generated fixtures?',
+      manualSchedule
+        ? 'This removes every manual stage, group, and fixture. It is allowed only before any match starts.'
+        : 'This removes the generated schedule and returns to format selection. It is allowed only before any match starts.',
+      manualSchedule ? 'Reset schedule' : 'Undo fixtures',
       () => {
         setSaving(true);
         void fixturesApi.resetFixtures(cloudTournamentId).then(async () => {
@@ -213,14 +289,76 @@ export default function TournamentFixturesSetupScreen() {
           <Text variant="overline" tone="muted">FIXTURE BUILDER</Text>
           <Text variant="h1" style={{ marginTop: spacing.xs }}>{tournament.name}</Text>
           <Text variant="body" tone="muted" style={{ marginTop: spacing.sm }}>
-            Recommendation recalculated for {teams.length || tournament.plannedTeamCount} teams before generation.
+            Generate a recommended schedule or add every group, knockout stage, and fixture yourself.
           </Text>
         </View>
 
         {generated ? (
-          <GeneratedSummary setup={setup!} teams={teams} onUndo={undoGeneration} onResetKnockout={resetKnockout} undoing={saving} onGenerateKnockout={generateKnockout} />
+          <>
+            {manualSchedule && (
+              <ManualScheduleBuilder
+                setup={setup!}
+                teams={teams}
+                saving={saving}
+                onAddStage={addManualStage}
+                onAddGroup={addManualGroup}
+                onAddFixture={addManualFixture}
+              />
+            )}
+            <GeneratedSummary
+              setup={setup!}
+              teams={teams}
+              manual={manualSchedule}
+              onUndo={undoGeneration}
+              onResetKnockout={resetKnockout}
+              undoing={saving}
+              onGenerateKnockout={generateKnockout}
+            />
+            {generationError && (
+              <Text variant="caption" style={{ color: colors.danger, textAlign: 'center' }}>
+                {generationError}
+              </Text>
+            )}
+          </>
         ) : (
           <>
+            <Card>
+              <Text variant="h3">How do you want to schedule?</Text>
+              <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs, marginBottom: spacing.md }}>
+                Automatic uses SportStage recommendations. Manual leaves every stage and pairing to the owner.
+              </Text>
+              <View style={styles.choiceGrid}>
+                <Pressable
+                  onPress={() => setBuilderMode('AUTOMATIC')}
+                  style={[styles.choice, builderMode === 'AUTOMATIC' && styles.choiceActive]}
+                >
+                  <MaterialCommunityIcons
+                    name="auto-fix"
+                    size={22}
+                    color={builderMode === 'AUTOMATIC' ? colors.accentInk : colors.text}
+                  />
+                  <Text variant="bodyStrong" style={builderMode === 'AUTOMATIC' ? styles.activeText : undefined}>
+                    Automatic
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setBuilderMode('MANUAL')}
+                  style={[styles.choice, builderMode === 'MANUAL' && styles.choiceActive]}
+                >
+                  <MaterialCommunityIcons
+                    name="pencil-ruler"
+                    size={22}
+                    color={builderMode === 'MANUAL' ? colors.accentInk : colors.text}
+                  />
+                  <Text variant="bodyStrong" style={builderMode === 'MANUAL' ? styles.activeText : undefined}>
+                    Manual
+                  </Text>
+                </Pressable>
+              </View>
+            </Card>
+
+            {builderMode === 'AUTOMATIC' ? (
+              <>
             <View>
               <Label>FORMAT</Label>
               <View style={styles.choiceGrid}>
@@ -331,6 +469,29 @@ export default function TournamentFixturesSetupScreen() {
                 Add at least two teams before generating fixtures.
               </Text>
             )}
+              </>
+            ) : (
+              <>
+                <ManualScheduleBuilder
+                  setup={setup ?? { stages: [], groups: [], matches: [], bracket: null }}
+                  teams={teams}
+                  saving={saving}
+                  onAddStage={addManualStage}
+                  onAddGroup={addManualGroup}
+                  onAddFixture={addManualFixture}
+                />
+                {generationError && (
+                  <Text variant="caption" style={{ color: colors.danger, textAlign: 'center' }}>
+                    {generationError}
+                  </Text>
+                )}
+                {teams.length < 2 && (
+                  <Text variant="caption" style={{ color: colors.danger, textAlign: 'center' }}>
+                    Add at least two teams before building a schedule.
+                  </Text>
+                )}
+              </>
+            )}
           </>
         )}
 
@@ -340,9 +501,10 @@ export default function TournamentFixturesSetupScreen() {
   );
 }
 
-function GeneratedSummary({ setup, teams, onUndo, onResetKnockout, undoing, onGenerateKnockout }: {
+function GeneratedSummary({ setup, teams, manual, onUndo, onResetKnockout, undoing, onGenerateKnockout }: {
   setup: GeneratedFixtureSetup;
   teams: Team[];
+  manual: boolean;
   onUndo: () => void;
   onResetKnockout: () => void;
   undoing: boolean;
@@ -357,12 +519,13 @@ function GeneratedSummary({ setup, teams, onUndo, onResetKnockout, undoing, onGe
   const hasGeneratedKnockout = Boolean(setup.bracket || knockoutMatches.length);
   const knockoutPlanned = Boolean(groupStage?.config?.knockoutPlanned || knockoutStage);
   const canResetAll = groupMatches.every(match => match.status === 'SCHEDULED');
+  const allMatchesUnstarted = setup.matches.every(match => match.status === 'SCHEDULED');
   return (
     <>
       <Card>
-        <Text variant="h2">Fixtures ready</Text>
+        <Text variant="h2">{manual ? 'Manual schedule' : 'Fixtures ready'}</Text>
         <Text variant="body" tone="muted" style={{ marginTop: spacing.sm }}>
-          {setup.stages.length} stage(s) · {setup.groups.length} group(s) · {setup.matches.length} opening fixture(s)
+          {setup.stages.length} stage(s) · {setup.groups.length} group(s) · {setup.matches.length} {manual ? 'fixture(s)' : 'opening fixture(s)'}
         </Text>
       </Card>
       {setup.groups.map(group => (
@@ -401,12 +564,14 @@ function GeneratedSummary({ setup, teams, onUndo, onResetKnockout, undoing, onGe
           </View>
         </Card>
       ))}
-      {groupStage && knockoutPlanned && !hasGeneratedKnockout ? (
+      {!manual && groupStage && knockoutPlanned && !hasGeneratedKnockout ? (
         groupsComplete
           ? <KnockoutBuilder setup={setup} teams={teams} saving={undoing} onGenerate={onGenerateKnockout} />
           : <Card><Text variant="h3">Knockouts unlock after the groups</Text><Text variant="body" tone="muted" style={{ marginTop: spacing.sm }}>Complete every group match, then the owner can select and confirm the knockout format.</Text></Card>
       ) : null}
-      {hasGeneratedKnockout
+      {manual && allMatchesUnstarted
+        ? <Button title="Reset manual schedule" variant="secondary" onPress={onUndo} loading={undoing} fullWidth />
+        : hasGeneratedKnockout
         ? <Button title="Reset knockout fixtures" variant="secondary" onPress={onResetKnockout} loading={undoing} fullWidth />
         : canResetAll
           ? <Button title="Undo group fixtures and change format" variant="secondary" onPress={onUndo} loading={undoing} fullWidth />

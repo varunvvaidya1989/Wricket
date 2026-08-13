@@ -8,8 +8,8 @@ describe('schema migrations', () => {
   });
 
   it('returns migrations after the applied version', () => {
-    expect(getPendingMigrations(0).map((migration) => migration.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
-    expect(getPendingMigrations(1).map((migration) => migration.version)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    expect(getPendingMigrations(0).map((migration) => migration.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+    expect(getPendingMigrations(1).map((migration) => migration.version)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
     expect(getPendingMigrations(SCHEMA_VERSION)).toEqual([]);
   });
 
@@ -25,6 +25,7 @@ describe('schema migrations', () => {
     expect(SCHEMA_SQL).toContain('ALTER TABLE tournaments ADD COLUMN location TEXT');
     expect(SCHEMA_SQL).toContain('CREATE TABLE IF NOT EXISTS scoring_event_outbox');
     expect(SCHEMA_SQL).toContain('ALTER TABLE balls ADD COLUMN assistant_fielder_id TEXT');
+    expect(SCHEMA_SQL).toContain('ALTER TABLE balls ADD COLUMN rotate_strike INTEGER');
     expect(SCHEMA_SQL).toContain('ALTER TABLE tournaments ADD COLUMN latitude REAL');
     expect(MIGRATIONS[10]).toMatchObject({
       version: 11,
