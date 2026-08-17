@@ -21,6 +21,9 @@ export interface CompetitionOfficial {
 export interface CompetitionPlayer {
   readonly id: string;
   readonly name: string;
+  readonly accountId?: string;
+  readonly sportProfileId?: string;
+  readonly eligibility?: readonly MatchFormat[];
 }
 
 interface CompetitionEntrantBase {
@@ -36,6 +39,7 @@ export interface LeaguePlayerEntrant extends CompetitionEntrantBase {
 
 export interface TournamentTeamEntrant extends CompetitionEntrantBase {
   readonly entrantType: 'TEAM';
+  readonly sourceTeamId?: string;
   readonly players: readonly CompetitionPlayer[];
 }
 
@@ -151,6 +155,7 @@ export async function getSportCompetition(
 export async function saveSportCompetition(
   competition: SportCompetitionRecord,
 ): Promise<SportCompetitionRecord> {
+  assertAccountBackedEntrants(competition);
   const valid = validateCompetition(competition);
   const competitions = await readCompetitions();
   const next = [valid, ...competitions.filter((candidate) => candidate.id !== valid.id)];
@@ -166,18 +171,21 @@ export async function removeSportCompetition(id: string): Promise<void> {
   );
 }
 
-export function withLeaguePlayer(
+export function withLeagueSportProfile(
   competition: SportCompetitionRecord,
-  nameValue: string,
+  player: { readonly sportProfileId: string; readonly accountId: string; readonly displayName: string },
   now = Date.now(),
   id = `entrant-${now}-${Math.random().toString(36).slice(2, 8)}`,
 ): SportCompetitionRecord {
   if (competition.kind !== 'LEAGUE') {
-    throw new Error('Individual players can only enter a league. Add a team to this tournament.');
+    throw new Error('Individual players can only enter a league.');
   }
-  const name = cleanName(nameValue, 40);
-  if (!name) throw new Error('Player name is required.');
-  if (competition.entrants.some((entrant) => entrant.name.toLowerCase() === name.toLowerCase())) {
+  const sportProfileId = player.sportProfileId.trim();
+  const accountId = player.accountId.trim();
+  const name = cleanName(player.displayName, 40);
+  if (!sportProfileId || !accountId || !name) throw new Error('Choose a valid SportStage player.');
+  if (competition.entrants.some((entrant) => entrant.entrantType === 'PLAYER'
+    && entrant.player.sportProfileId === sportProfileId)) {
     throw new Error('That player is already entered.');
   }
   return freezeCompetition({
@@ -187,51 +195,74 @@ export function withLeaguePlayer(
       id,
       name,
       seed: competition.entrants.length + 1,
-      player: { id: `${id}-player`, name },
+      player: { id: sportProfileId, sportProfileId, accountId, name, eligibility: ['SINGLES'] },
     }],
     fixtures: [],
     updatedAt: now,
   });
 }
 
-export function withTournamentTeam(
+export function withTournamentSquad(
   competition: SportCompetitionRecord,
-  input: { readonly name: string; readonly playerNames: readonly string[] },
+  input: {
+    readonly sourceTeamId: string;
+    readonly name: string;
+    readonly players: readonly {
+      readonly sportProfileId: string;
+      readonly accountId: string;
+      readonly displayName: string;
+      readonly eligibility: readonly MatchFormat[];
+    }[];
+  },
   now = Date.now(),
   id = `entrant-${now}-${Math.random().toString(36).slice(2, 8)}`,
 ): SportCompetitionRecord {
-  if (competition.kind !== 'TOURNAMENT') {
-    throw new Error('Teams can only enter a tournament. Add an individual player to this league.');
-  }
+  if (competition.kind !== 'TOURNAMENT') throw new Error('Squads can only enter a tournament.');
+  const sourceTeamId = input.sourceTeamId.trim();
   const name = cleanName(input.name, 40);
-  if (!name) throw new Error('Team name is required.');
-  if (competition.entrants.some((entrant) => entrant.name.toLowerCase() === name.toLowerCase())) {
+  if (!sourceTeamId || !name) throw new Error('Choose a valid reusable club team.');
+  if (competition.entrants.some((entrant) => entrant.entrantType === 'TEAM'
+    && entrant.sourceTeamId === sourceTeamId)) {
     throw new Error('That team is already entered.');
   }
-  const playerNames = input.playerNames.map((playerName) => cleanName(playerName, 40));
-  if (playerNames.some((playerName) => !playerName)) throw new Error('Every player needs a name.');
-  const expectedPlayers = competition.matchFormat === 'DOUBLES' ? 2 : 1;
-  if (playerNames.length !== expectedPlayers) {
-    throw new Error(`${competition.matchFormat === 'DOUBLES' ? 'Doubles' : 'Singles'} teams require exactly ${expectedPlayers} player${expectedPlayers === 1 ? '' : 's'}.`);
-  }
-  if (new Set(playerNames.map((playerName) => playerName.toLowerCase())).size !== playerNames.length) {
-    throw new Error('Use a different name for each player on the team.');
+  const players = input.players.flatMap((player): CompetitionPlayer[] => {
+    const sportProfileId = player.sportProfileId.trim();
+    const accountId = player.accountId.trim();
+    const playerName = cleanName(player.displayName, 40);
+    const eligibility = player.eligibility.filter(isMatchFormat);
+    return sportProfileId && accountId && playerName && eligibility.length
+      ? [{ id: sportProfileId, sportProfileId, accountId, name: playerName, eligibility }]
+      : [];
+  });
+  const eligibleCount = players.filter((player) => player.eligibility?.includes(competition.matchFormat)).length;
+  const requiredPlayers = competition.matchFormat === 'DOUBLES' ? 2 : 1;
+  if (eligibleCount < requiredPlayers) {
+    throw new Error(`${name} needs at least ${requiredPlayers} ${competition.matchFormat.toLowerCase()}-eligible player${requiredPlayers === 1 ? '' : 's'}.`);
   }
   return freezeCompetition({
     ...competition,
     entrants: [...competition.entrants, {
-      entrantType: 'TEAM',
-      id,
-      name,
+      entrantType: 'TEAM', id, sourceTeamId, name,
       seed: competition.entrants.length + 1,
-      players: playerNames.map((playerName, index) => ({
-        id: `${id}-player-${index + 1}`,
-        name: playerName,
-      })),
+      players,
     }],
     fixtures: [],
     updatedAt: now,
   });
+}
+
+function assertAccountBackedEntrants(competition: SportCompetitionRecord): void {
+  for (const entrant of competition.entrants) {
+    if (entrant.entrantType === 'PLAYER') {
+      if (!entrant.player.accountId || !entrant.player.sportProfileId) {
+        throw new Error('Guest players are no longer supported. Re-add this entrant from SportStage player search.');
+      }
+      continue;
+    }
+    if (!entrant.sourceTeamId || entrant.players.some((player) => !player.accountId || !player.sportProfileId)) {
+      throw new Error('Guest teams are no longer supported. Register a reusable club team with verified SportStage players.');
+    }
+  }
 }
 
 export function competitionEntrantPlayers(
@@ -516,6 +547,7 @@ function validEntrant(
     readonly seed?: unknown;
     readonly player?: unknown;
     readonly players?: unknown;
+    readonly sourceTeamId?: unknown;
   };
   const name = typeof value.name === 'string' ? cleanName(value.name, 40) : '';
   if (typeof value.id !== 'string' || !name) return [];
@@ -535,6 +567,7 @@ function validEntrant(
     id: value.id,
     name,
     seed,
+    sourceTeamId: typeof value.sourceTeamId === 'string' ? value.sourceTeamId : undefined,
     players: players.length ? players : [{ id: `${value.id}-player-1`, name }],
   }];
 }
@@ -545,6 +578,11 @@ function validPlayer(candidate: unknown, fallbackId: string, fallbackName = ''):
   return {
     id: typeof value.id === 'string' ? value.id : fallbackId,
     name: typeof value.name === 'string' ? cleanName(value.name, 40) : fallbackName,
+    accountId: typeof value.accountId === 'string' ? value.accountId : undefined,
+    sportProfileId: typeof value.sportProfileId === 'string' ? value.sportProfileId : undefined,
+    eligibility: Array.isArray(value.eligibility)
+      ? value.eligibility.filter(isMatchFormat)
+      : undefined,
   };
 }
 
@@ -618,6 +656,10 @@ function isMatchFormat(value: unknown): value is MatchFormat {
 }
 
 function freezeCompetition(competition: SportCompetitionRecord): SportCompetitionRecord {
+  const freezePlayer = (player: CompetitionPlayer) => Object.freeze({
+    ...player,
+    eligibility: player.eligibility ? Object.freeze([...player.eligibility]) : undefined,
+  });
   return Object.freeze({
     ...competition,
     pointsRule: Object.freeze({ ...competition.pointsRule }),
@@ -625,9 +667,9 @@ function freezeCompetition(competition: SportCompetitionRecord): SportCompetitio
     entrants: Object.freeze(competition.entrants.map((entrant) => entrant.entrantType === 'TEAM'
       ? Object.freeze({
           ...entrant,
-          players: Object.freeze(entrant.players.map((player) => Object.freeze({ ...player }))),
+          players: Object.freeze(entrant.players.map(freezePlayer)),
         })
-      : Object.freeze({ ...entrant, player: Object.freeze({ ...entrant.player }) }))),
+      : Object.freeze({ ...entrant, player: freezePlayer(entrant.player) }))),
     fixtures: Object.freeze(competition.fixtures.map((fixture) => Object.freeze({
       ...fixture,
       sourceA: fixture.sourceA ? Object.freeze({ ...fixture.sourceA }) : undefined,

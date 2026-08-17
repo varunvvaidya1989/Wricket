@@ -28,3 +28,7 @@ Recent commits use concise, imperative summaries such as `Add scoring session sc
 ## Security & Configuration
 
 Copy `.env.example` for local setup and never commit private credentials. Only client-safe values may use `EXPO_PUBLIC_`. Do not edit applied database migrations; add a new timestamped migration, and review row-level security changes carefully.
+
+## Non-Cricket Sports Roadmap
+
+Use `docs/non-cricket-sports-implementation-roadmap.md` as the source of truth for the phased non-cricket sports rollout. When implementation of a phase begins, mark it `IN PROGRESS`. Mark it `COMPLETE` only after its acceptance criteria pass, then add a dated implementation-log entry containing the commit, migrations, validation evidence, review corrections, and explicitly deferred work.

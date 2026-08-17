@@ -33,8 +33,8 @@ import {
   saveSportCompetition,
   withCompetitionFixtureSchedule,
   withCompetitionPointsRule,
-  withLeaguePlayer,
-  withTournamentTeam,
+  withLeagueSportProfile,
+  withTournamentSquad,
   withCompetitionOfficial,
   withoutCompetitionOfficial,
   type CompetitionFixtureResult,
@@ -44,6 +44,11 @@ import {
   type SportCompetitionRecord,
 } from '@/lib/sports/scoring';
 import { globalSearchApi, type GlobalSearchResult } from '@/lib/supabase/globalSearchApi';
+import {
+  sportRosterApi,
+  type SportPlayerSearchResult,
+  type SportTeamSummary,
+} from '@/lib/supabase/sportRosterApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 
@@ -69,9 +74,10 @@ export function SportCompetitionDetailScreen({ sportId }: { sportId: ScoringSpor
   const [error, setError] = useState<string>();
   const [tab, setTab] = useState<DetailTab>('overview');
   const [entrantOpen, setEntrantOpen] = useState(false);
-  const [entrantName, setEntrantName] = useState('');
-  const [teamPlayerOne, setTeamPlayerOne] = useState('');
-  const [teamPlayerTwo, setTeamPlayerTwo] = useState('');
+  const [entrantQuery, setEntrantQuery] = useState('');
+  const [playerResults, setPlayerResults] = useState<readonly SportPlayerSearchResult[]>([]);
+  const [teamResults, setTeamResults] = useState<readonly SportTeamSummary[]>([]);
+  const [searchingEntrants, setSearchingEntrants] = useState(false);
   const [pointsOpen, setPointsOpen] = useState(false);
   const [winPoints, setWinPoints] = useState('2');
   const [lossPoints, setLossPoints] = useState('0');
@@ -132,6 +138,38 @@ export function SportCompetitionDetailScreen({ sportId }: { sportId: ScoringSpor
     return () => { active = false; clearTimeout(timer); };
   }, [canManage, officialQuery, officialsOpen]);
 
+  useEffect(() => {
+    if (!entrantOpen || !competition || !canManage) {
+      setPlayerResults([]);
+      setTeamResults([]);
+      setSearchingEntrants(false);
+      return;
+    }
+    let active = true;
+    if (competition.kind === 'TOURNAMENT') {
+      const accountId = auth.session?.user.id;
+      if (!accountId) return;
+      setSearchingEntrants(true);
+      void sportRosterApi.listOwnedTeams(accountId, presentation.catalogCode)
+        .then((teams) => { if (active) setTeamResults(teams); })
+        .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'Could not load reusable teams.'); })
+        .finally(() => { if (active) setSearchingEntrants(false); });
+      return () => { active = false; };
+    }
+    if (entrantQuery.trim().length < 2) {
+      setPlayerResults([]);
+      return () => { active = false; };
+    }
+    const timer = setTimeout(() => {
+      setSearchingEntrants(true);
+      void sportRosterApi.searchPlayers(presentation.catalogCode, entrantQuery)
+        .then((players) => { if (active) setPlayerResults(players); })
+        .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'Could not search players.'); })
+        .finally(() => { if (active) setSearchingEntrants(false); });
+    }, 300);
+    return () => { active = false; clearTimeout(timer); };
+  }, [auth.session?.user.id, canManage, competition, entrantOpen, entrantQuery, presentation.catalogCode]);
+
   const sessionData = useMemo(() => {
     if (!competition) return { results: [] as CompetitionFixtureResult[], byFixture: new Map<string, ScoringSessionRecord>(), completed: new Set<string>() };
     const results: CompetitionFixtureResult[] = [];
@@ -184,31 +222,55 @@ export function SportCompetitionDetailScreen({ sportId }: { sportId: ScoringSpor
     }
   };
 
-  const addEntrant = async () => {
-    if (!competition || !canManage || !entrantName.trim() || saving) return;
+  const ensureEntrantsUnlocked = (): boolean => {
+    if (!competition || !canManage || saving) return false;
     if (competition.fixtures.length) {
       Alert.alert(
         `${competition.kind === 'TOURNAMENT' ? 'Teams' : 'Players'} locked`,
         'The field is locked after the owner schedules the first match.',
       );
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const addLeaguePlayer = async (player: SportPlayerSearchResult) => {
+    if (!competition || !ensureEntrantsUnlocked()) return;
     try {
-      const next = competition.kind === 'TOURNAMENT'
-        ? withTournamentTeam(competition, {
-            name: entrantName,
-            playerNames: competition.matchFormat === 'DOUBLES'
-              ? [teamPlayerOne, teamPlayerTwo]
-              : [teamPlayerOne],
-          })
-        : withLeaguePlayer(competition, entrantName);
-      await persist(next);
-      setEntrantName('');
-      setTeamPlayerOne('');
-      setTeamPlayerTwo('');
+      await persist(withLeagueSportProfile(competition, player));
+      setEntrantQuery('');
       setEntrantOpen(false);
     } catch {
       // Persist reports the actionable error.
+    }
+  };
+
+  const addTournamentTeam = async (team: SportTeamSummary) => {
+    if (!competition || !ensureEntrantsUnlocked()) return;
+    setSaving(true);
+    try {
+      const roster = await sportRosterApi.listTeamMemberships(team.id);
+      const players = roster.filter((member) => member.status === 'ACTIVE').map((member) => ({
+        sportProfileId: member.sportProfileId,
+        accountId: member.accountId ?? '',
+        displayName: member.displayName,
+        eligibility: member.eligibility,
+      }));
+      const next = withTournamentSquad(competition, {
+        sourceTeamId: team.id,
+        name: team.name,
+        players,
+      });
+      const stored = await saveSportCompetition(next);
+      setCompetition(stored);
+      setError(undefined);
+      setEntrantOpen(false);
+    } catch (cause) {
+      const errorMessage = cause instanceof Error ? cause.message : 'Could not register that team.';
+      setError(errorMessage);
+      Alert.alert('Could not register team', errorMessage);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -270,6 +332,18 @@ export function SportCompetitionDetailScreen({ sportId }: { sportId: ScoringSpor
     if (!canScore) {
       Alert.alert('Match not live yet', 'You can view this match after the creator or a match official starts scoring.');
       return;
+    }
+    if (competition.kind === 'TOURNAMENT') {
+      const sideA = competition.entrants.find((entrant) => entrant.id === fixture.sideAId);
+      const sideB = competition.entrants.find((entrant) => entrant.id === fixture.sideBId);
+      if ((sideA?.entrantType === 'TEAM' && sideA.sourceTeamId)
+        || (sideB?.entrantType === 'TEAM' && sideB.sourceTeamId)) {
+        Alert.alert(
+          'Team lineup required',
+          'A singles or doubles lineup must be submitted before this team match can start.',
+        );
+        return;
+      }
     }
     router.push(
       `/${presentation.routeSegment}/match/new?competitionId=${encodeURIComponent(competition.id)}&fixtureId=${encodeURIComponent(fixture.id)}&sideAId=${encodeURIComponent(fixture.sideAId)}&sideBId=${encodeURIComponent(fixture.sideBId)}` as Href,
@@ -492,22 +566,21 @@ export function SportCompetitionDetailScreen({ sportId }: { sportId: ScoringSpor
 
       <EntryModal visible={entrantOpen} title={competition.kind === 'TOURNAMENT' ? 'Add team' : 'Add player'} onClose={() => setEntrantOpen(false)}>
         {competition.fixtures.length ? <Text variant="caption" tone="danger">The entrant field is locked because match scheduling has started.</Text> : null}
-        <TextInput value={entrantName} onChangeText={setEntrantName} autoFocus maxLength={40} placeholder={competition.kind === 'TOURNAMENT' ? 'Team name' : 'Player name'} placeholderTextColor={colors.textDim} style={styles.input} />
-        {competition.kind === 'TOURNAMENT' ? (
-          <View style={styles.rosterInputs}>
-            <Text variant="overline" tone="dim">{competition.matchFormat} ROSTER</Text>
-            <TextInput value={teamPlayerOne} onChangeText={setTeamPlayerOne} maxLength={40} placeholder={competition.matchFormat === 'DOUBLES' ? 'Player 1' : 'Player name'} placeholderTextColor={colors.textDim} style={styles.input} />
-            {competition.matchFormat === 'DOUBLES' ? <TextInput value={teamPlayerTwo} onChangeText={setTeamPlayerTwo} maxLength={40} placeholder="Player 2" placeholderTextColor={colors.textDim} style={styles.input} /> : null}
-          </View>
-        ) : null}
-        <Button
-          title={competition.kind === 'TOURNAMENT' ? 'Add team' : 'Add player'}
-          disabled={!entrantName.trim() || (competition.kind === 'TOURNAMENT' && (!teamPlayerOne.trim() || (competition.matchFormat === 'DOUBLES' && !teamPlayerTwo.trim())))}
-          loading={saving}
-          onPress={() => void addEntrant()}
-          fullWidth
-          style={{ backgroundColor: presentation.accent }}
-        />
+        <Text variant="caption" tone="muted">{competition.kind === 'TOURNAMENT'
+          ? 'Choose one of your reusable club teams. Its accepted account-backed roster is snapshotted for this tournament.'
+          : `Search active SportStage ${config.name} players. Free-text and guest entrants are not allowed.`}</Text>
+        {competition.kind === 'LEAGUE' ? <TextInput value={entrantQuery} onChangeText={setEntrantQuery} autoFocus maxLength={60} placeholder="Search SportStage players" placeholderTextColor={colors.textDim} style={styles.input} /> : null}
+        {searchingEntrants ? <ActivityIndicator color={presentation.accent} /> : null}
+        {competition.kind === 'LEAGUE' ? playerResults.map((player) => (
+          <Pressable key={player.sportProfileId} disabled={saving || competition.entrants.some((entrant) => entrant.entrantType === 'PLAYER' && entrant.player.sportProfileId === player.sportProfileId)} onPress={() => void addLeaguePlayer(player)} style={styles.searchResult}>
+            <View style={styles.flex}><Text variant="bodyStrong">{player.displayName}</Text><Text variant="caption" tone="muted">Verified {config.name} profile</Text></View><Text variant="overline" style={{ color: presentation.accent }}>ADD</Text>
+          </Pressable>
+        )) : teamResults.map((team) => (
+          <Pressable key={team.id} disabled={saving || competition.entrants.some((entrant) => entrant.entrantType === 'TEAM' && entrant.sourceTeamId === team.id)} onPress={() => void addTournamentTeam(team)} style={styles.searchResult}>
+            <View style={[styles.teamColor, { backgroundColor: team.colorHex ?? presentation.accent }]} /><View style={styles.flex}><Text variant="bodyStrong">{team.name}</Text><Text variant="caption" tone="muted">Reusable club team · {team.shortName || 'TEAM'}</Text></View><Text variant="overline" style={{ color: presentation.accent }}>REGISTER</Text>
+          </Pressable>
+        ))}
+        {!searchingEntrants && competition.kind === 'TOURNAMENT' && !teamResults.length ? <Text variant="caption" tone="muted">Create a club and reusable team in My {config.name} before registering a tournament squad.</Text> : null}
       </EntryModal>
 
       <EntryModal visible={pointsOpen} title="Points system" onClose={() => setPointsOpen(false)}>
@@ -749,7 +822,8 @@ const styles = StyleSheet.create({
   close: { width: 38, height: 38, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   input: { minHeight: 50, marginTop: 6, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.bg, color: colors.text, fontFamily: 'Inter_500Medium', fontSize: 15 },
   pointsInputs: { flexDirection: 'row', gap: spacing.sm },
-  rosterInputs: { gap: spacing.sm },
+  searchResult: { minHeight: 62, padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  teamColor: { width: 7, height: 38, borderRadius: radius.pill },
   officialList: { gap: spacing.sm },
   officialRow: { minHeight: 58, padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   officialAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },

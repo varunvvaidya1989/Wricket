@@ -47,6 +47,7 @@ export function SportMySportScreen({ sportId }: { sportId: ScoringSportId }) {
 
   const base = `/${presentation.routeSegment}`;
   const sections = [
+    { label: 'Clubs & teams', detail: 'Verified memberships and reusable rosters', icon: 'account-group-outline' as const, route: `${base}/clubs` },
     { label: 'Matches', detail: `${matchCount} local matches`, icon: 'scoreboard-outline' as const, route: `${base}/matches` },
     { label: 'Competitions', detail: `${competitionCount} tournaments and leagues`, icon: 'trophy-outline' as const, route: `${base}/competitions` },
     { label: 'Performance', detail: `${completedCount} completed results`, icon: 'chart-line' as const, route: `${base}/stats` },
