@@ -317,7 +317,7 @@ Acceptance criteria:
 ### 2026-08-17 — Phase 2 completed
 
 - Status changed from `IN PROGRESS` to `COMPLETE`.
-- Commit: pending final Phase 2 review commit.
+- Commit: `e4007e3` (`Add account-backed sport rosters`).
 - Migrations: `20260817140000`, `20260817143000`, `20260817150000`,
   `20260817151500`.
 - Validation: remote schema lint, 29 linked pgTAP/RLS assertions, 57 test
