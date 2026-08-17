@@ -6,6 +6,8 @@ const sportIcons: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> =
   BADMINTON: 'badminton',
   TENNIS: 'tennis',
   TABLE_TENNIS: 'table-tennis',
+  PADEL: 'racquetball',
+  PICKLEBALL: 'tennis-ball',
 };
 
 export function SportIcon({ code, color, size = 24 }: { code: string; color: string; size?: number }) {

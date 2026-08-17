@@ -4,6 +4,15 @@ import React, { useEffect } from 'react';
 import { AnimatedSportStageSplash } from '@/components/branding/AnimatedSportStageSplash';
 import { useAuth } from './AuthProvider';
 
+const appSportByRoot: Readonly<Record<string, string>> = {
+  wricket: 'CRICKET',
+  tennis: 'TENNIS',
+  badminton: 'BADMINTON',
+  padel: 'PADEL',
+  'table-tennis': 'TABLE_TENNIS',
+  pickleball: 'PICKLEBALL',
+};
+
 export function RootAccessGate({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   const segments = useSegments();
@@ -30,8 +39,11 @@ export function RootAccessGate({ children }: { children: React.ReactNode }) {
       router.replace('/');
       return;
     }
-    const cricketAccess = auth.profile?.connectedSports.some(sport => sport.code === 'CRICKET' && sport.accessStatus === 'ACTIVE');
-    if (root === 'wricket' && !cricketAccess) router.replace('/');
+    const requiredSport = root ? appSportByRoot[root] : undefined;
+    const hasSportAccess = !requiredSport || auth.profile?.connectedSports.some(
+      sport => sport.code === requiredSport && sport.accessStatus === 'ACTIVE',
+    );
+    if (!hasSportAccess) router.replace('/');
   }, [auth.authLinkError, auth.loading, auth.profile, auth.session, root, router]);
 
   if (auth.loading) return <AnimatedSportStageSplash />;

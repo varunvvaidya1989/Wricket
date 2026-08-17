@@ -86,6 +86,11 @@ export default function RootLayout() {
                 <Stack.Screen name="onboarding" options={{ headerShown: false }} />
                 <Stack.Screen name="account" options={{ headerShown: false }} />
                 <Stack.Screen name="profile" options={{ headerShown: false }} />
+                <Stack.Screen name="tennis" options={{ headerShown: false }} />
+                <Stack.Screen name="badminton" options={{ headerShown: false }} />
+                <Stack.Screen name="padel" options={{ headerShown: false }} />
+                <Stack.Screen name="table-tennis" options={{ headerShown: false }} />
+                <Stack.Screen name="pickleball" options={{ headerShown: false }} />
                 <Stack.Screen name="change-password" options={{ headerShown: false }} />
                 <Stack.Screen name="wricket" options={{ headerShown: false }} />
               </Stack>
