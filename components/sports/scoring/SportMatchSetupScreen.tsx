@@ -1,7 +1,7 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 
 import { SportIcon } from '@/components/sports/SportIcon';
@@ -13,10 +13,7 @@ import { Text } from '@/components/ui/Text';
 import {
   SPORT_CONFIGS,
   SPORT_PRESENTATION,
-  canScoreCompetition,
-  competitionEntrantPlayers,
   createScoringSession,
-  listSportCompetitions,
   saveScoringSession,
   type ScoringSportId,
   type MatchFormat,
@@ -28,12 +25,6 @@ import { radius, spacing } from '@/lib/theme/spacing';
 export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) {
   const router = useRouter();
   const auth = useAuth();
-  const { competitionId, fixtureId, sideAId: linkedSideAId, sideBId: linkedSideBId } = useLocalSearchParams<{
-    competitionId?: string;
-    fixtureId?: string;
-    sideAId?: string;
-    sideBId?: string;
-  }>();
   const config = SPORT_CONFIGS[sportId];
   const presentation = SPORT_PRESENTATION[sportId];
   const [matchFormat, setMatchFormat] = useState<MatchFormat>('SINGLES');
@@ -44,28 +35,15 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
   const [initialServer, setInitialServer] = useState<Side>(0);
   const [optionEnabled, setOptionEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [permissionError, setPermissionError] = useState<string>();
-  const [selectedCompetition, setSelectedCompetition] = useState<{
-    id: string;
-    name: string;
-    kind: 'TOURNAMENT' | 'LEAGUE';
-    matchFormat: MatchFormat;
-    fixtureId?: string;
-    sideEntrantIds?: readonly [string, string];
-    sidePlayers?: readonly [readonly string[], readonly string[]];
-  }>();
-  const playerNames = selectedCompetition?.sidePlayers?.flat() ?? (matchFormat === 'DOUBLES'
+  const playerNames = matchFormat === 'DOUBLES'
     ? [sideA, partnerA, sideB, partnerB]
-    : [sideA, sideB]);
+    : [sideA, sideB];
   const canStart = playerNames.every((name) => name.trim())
     && new Set(playerNames.map((name) => name.trim().toLowerCase())).size === playerNames.length;
-  const sidePlayers: readonly [readonly string[], readonly string[]] = selectedCompetition?.sidePlayers
-    ?? (matchFormat === 'DOUBLES'
-      ? [[sideA, partnerA], [sideB, partnerB]]
-      : [[sideA], [sideB]]);
-  const scoringSideNames: readonly [string, string] = selectedCompetition?.fixtureId
-    ? [sideA, sideB]
-    : matchFormat === 'DOUBLES'
+  const sidePlayers: readonly [readonly string[], readonly string[]] = matchFormat === 'DOUBLES'
+    ? [[sideA, partnerA], [sideB, partnerB]]
+    : [[sideA], [sideB]];
+  const scoringSideNames: readonly [string, string] = matchFormat === 'DOUBLES'
       ? [`${sideA.trim()} / ${partnerA.trim()}`, `${sideB.trim()} / ${partnerB.trim()}`]
       : [sideA, sideB];
   const options = useMemo(
@@ -73,61 +51,8 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
     [optionEnabled, presentation.option],
   );
 
-  useEffect(() => {
-    if (!competitionId) {
-      setSelectedCompetition(undefined);
-      setPermissionError(undefined);
-      return;
-    }
-    void listSportCompetitions(sportId).then((competitions) => {
-      const competition = competitions.find((candidate) => candidate.id === competitionId);
-      if (!competition) {
-        setSelectedCompetition(undefined);
-        setPermissionError('This competition could not be found.');
-        return;
-      }
-      if (!canScoreCompetition(competition, auth.session?.user.id)) {
-        setPermissionError('Only the competition creator or an assigned match official can start scoring.');
-      } else {
-        setPermissionError(undefined);
-      }
-      const sideA = competition.entrants.find((entrant) => entrant.id === linkedSideAId);
-      const sideB = competition.entrants.find((entrant) => entrant.id === linkedSideBId);
-      if (fixtureId && sideA && sideB) {
-        const linkedSides = [sideA.id, sideB.id] as const;
-        const linkedPlayers = [
-          competitionEntrantPlayers(sideA).map((player) => player.name),
-          competitionEntrantPlayers(sideB).map((player) => player.name),
-        ] as const;
-        setSelectedCompetition({
-          id: competition.id,
-          name: competition.name,
-          kind: competition.kind,
-          matchFormat: competition.matchFormat,
-          fixtureId,
-          sideEntrantIds: linkedSides,
-          sidePlayers: linkedPlayers,
-        });
-        setMatchFormat(competition.matchFormat);
-        setSideA(sideA.name);
-        setSideB(sideB.name);
-        return;
-      }
-      setSelectedCompetition({
-        id: competition.id,
-        name: competition.name,
-        kind: competition.kind,
-        matchFormat: competition.matchFormat,
-        fixtureId: undefined,
-        sideEntrantIds: undefined,
-        sidePlayers: undefined,
-      });
-      setMatchFormat(competition.matchFormat);
-    });
-  }, [auth.session?.user.id, competitionId, fixtureId, linkedSideAId, linkedSideBId, sportId]);
-
   const start = async () => {
-    if (!canStart || saving || permissionError) return;
+    if (!canStart || saving) return;
     const createdByAccountId = auth.session?.user.id;
     if (!createdByAccountId) {
       Alert.alert('Sign in required', 'Sign in to create a match.');
@@ -142,9 +67,6 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
         sidePlayers,
         initialServer,
         createdByAccountId,
-        competitionId: selectedCompetition?.id,
-        fixtureId: selectedCompetition?.fixtureId,
-        sideEntrantIds: selectedCompetition?.sideEntrantIds,
         options,
       });
       await saveScoringSession(session);
@@ -170,13 +92,6 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
           </View>
         </View>
 
-        {permissionError ? (
-          <View style={styles.permissionBanner}>
-            <MaterialCommunityIcons name="eye-outline" size={20} color={colors.textMuted} />
-            <Text variant="caption" tone="muted" style={styles.flex}>{permissionError}</Text>
-          </View>
-        ) : null}
-
         <View style={styles.section}>
           <Text variant="overline" tone="dim">MATCH FORMAT</Text>
           <View style={styles.formatSelector}>
@@ -184,13 +99,11 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
               <Pressable
                 key={format}
                 accessibilityRole="radio"
-                accessibilityState={{ checked: matchFormat === format, disabled: Boolean(selectedCompetition?.fixtureId) }}
-                disabled={Boolean(selectedCompetition?.fixtureId)}
+                accessibilityState={{ checked: matchFormat === format }}
                 onPress={() => setMatchFormat(format)}
                 style={[
                   styles.formatOption,
                   matchFormat === format && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}16` },
-                  selectedCompetition?.fixtureId && matchFormat !== format && styles.disabled,
                 ]}
               >
                 <MaterialCommunityIcons name={format === 'DOUBLES' ? 'account-multiple' : 'account'} size={20} color={matchFormat === format ? presentation.accent : colors.textDim} />
@@ -199,46 +112,18 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
             ))}
           </View>
           <Text variant="caption" tone="muted">
-            {selectedCompetition?.fixtureId
-              ? `Format is fixed by this ${selectedCompetition.kind.toLowerCase()}.`
-              : matchFormat === 'DOUBLES' ? 'Enter two players on each side.' : 'Enter one player on each side.'}
+            {matchFormat === 'DOUBLES' ? 'Enter two players on each side.' : 'Enter one player on each side.'}
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text variant="overline" tone="dim">{selectedCompetition?.kind === 'TOURNAMENT' ? 'TEAMS' : 'PLAYERS'}</Text>
-          {selectedCompetition?.fixtureId ? (
-            <View style={styles.linkedSides}>
-              {([0, 1] as const).map((side) => (
-                <View key={side} style={styles.linkedSide}>
-                  <Text variant="overline" tone="dim">SIDE {side === 0 ? 'A' : 'B'}</Text>
-                  <Text variant="bodyStrong">{side === 0 ? sideA : sideB}</Text>
-                  <Text variant="caption" tone="muted">
-                    {selectedCompetition.sidePlayers?.[side].join(' · ')}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <>
+          <Text variant="overline" tone="dim">PLAYERS</Text>
               <PlayerNameInput label={matchFormat === 'DOUBLES' ? 'SIDE A · PLAYER 1' : 'SIDE A'} value={sideA} onChangeText={setSideA} />
               {matchFormat === 'DOUBLES' ? <PlayerNameInput label="SIDE A · PLAYER 2" value={partnerA} onChangeText={setPartnerA} placeholder="Partner A" /> : null}
               <PlayerNameInput label={matchFormat === 'DOUBLES' ? 'SIDE B · PLAYER 1' : 'SIDE B'} value={sideB} onChangeText={setSideB} />
               {matchFormat === 'DOUBLES' ? <PlayerNameInput label="SIDE B · PLAYER 2" value={partnerB} onChangeText={setPartnerB} placeholder="Partner B" /> : null}
-            </>
-          )}
           {!canStart ? <Text variant="caption" tone="danger">Every player needs a unique name.</Text> : null}
         </View>
-
-        {selectedCompetition ? (
-          <View style={[styles.competitionLink, { borderColor: presentation.accent }]}>
-            <MaterialCommunityIcons name="trophy-outline" size={21} color={presentation.accent} />
-            <View style={styles.flex}>
-              <Text variant="overline" tone="dim">COMPETITION MATCH</Text>
-              <Text variant="bodyStrong" numberOfLines={1}>{selectedCompetition.name}</Text>
-            </View>
-          </View>
-        ) : null}
 
         <View style={styles.section}>
           <Text variant="overline" tone="dim">FIRST SERVER</Text>
@@ -298,7 +183,7 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
           title="Start scoring"
           size="lg"
           fullWidth
-          disabled={!canStart || Boolean(permissionError)}
+          disabled={!canStart}
           loading={saving}
           onPress={() => void start()}
           style={{ backgroundColor: presentation.accent }}
@@ -339,13 +224,10 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.lg },
   sportHero: { padding: spacing.lg, borderWidth: 1, borderRadius: radius.lg, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   sportIcon: { width: 58, height: 58, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
-  permissionBanner: { padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   rules: { marginTop: 4, lineHeight: 17 },
   section: { gap: spacing.sm },
   formatSelector: { flexDirection: 'row', gap: spacing.sm },
   formatOption: { flex: 1, minHeight: 58, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: 4 },
-  linkedSides: { flexDirection: 'row', gap: spacing.sm },
-  linkedSide: { flex: 1, minWidth: 0, minHeight: 88, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, gap: 5 },
   inputWrap: { gap: 6 },
   input: { minHeight: 52, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, paddingHorizontal: spacing.md, color: colors.text, fontFamily: 'Inter_500Medium', fontSize: 16 },
   segmented: { flexDirection: 'row', gap: spacing.sm },
@@ -354,7 +236,6 @@ const styles = StyleSheet.create({
   optionCard: { minHeight: 78, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   optionCopy: { flex: 1 },
   offlineNote: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  competitionLink: { padding: spacing.md, borderWidth: 1, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   disabled: { opacity: 0.4 },
   flex: { flex: 1, minWidth: 0 },
 });

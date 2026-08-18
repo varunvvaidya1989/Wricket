@@ -79,6 +79,10 @@ const teamFields = 'id, club_id, name, short_name, logo_url, color_hex, owner_ac
 const teamMembershipFields = 'id, team_id, sport_profile_id, club_membership_id, display_name_snapshot, avatar_url_snapshot, status, eligibility, accepted_at, ended_at';
 
 export const sportRosterApi = {
+  async getMySportProfile(accountId: string, sportCode: string): Promise<{ id: string; sportId: string } | undefined> {
+    return getMySportProfile(accountId, sportCode);
+  },
+
   async searchPlayers(sportCode: string, query: string): Promise<SportPlayerSearchResult[]> {
     if (query.trim().length < 2) return [];
     const { data, error } = await getSupabaseClient().rpc('search_sport_players', {
@@ -221,6 +225,14 @@ export const sportRosterApi = {
       .order('name');
     if (error) throw error;
     return (data ?? []).map(mapTeam);
+  },
+
+  async listManageableTeams(sportCode: string): Promise<SportTeamSummary[]> {
+    const { data, error } = await getSupabaseClient().rpc('list_my_manageable_sport_teams', {
+      p_sport_code: sportCode,
+    });
+    if (error) throw error;
+    return (data ?? []).map((row: Record<string, unknown>) => mapTeam({ ...row, id: row.team_id }));
   },
 
   async createTeam(input: {

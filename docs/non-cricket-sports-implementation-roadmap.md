@@ -118,7 +118,7 @@ Acceptance criteria:
 
 ## Phase 3 — Cloud competitions, registration, and manual scheduling
 
-Status: `PENDING`
+Status: `IN PROGRESS`
 
 Objective: replace the device-local competition prototype with server-backed
 tournaments and leagues governed by an explicit lifecycle.
@@ -148,14 +148,14 @@ Acceptance criteria:
 
 ## Phase 4 — Team ties, format templates, and lineup submission
 
-Status: `PENDING`
+Status: `IN PROGRESS`
 
 Objective: model club-squad versus club-squad team matches as an ordered series
 of individual rubbers.
 
 Scope:
 
-- Configurable tie templates containing three to five ordered rubbers.
+- Owner-drafted team ties containing any positive number of ordered matches.
 - Singles, doubles, and mixed-doubles rubber types.
 - Standard templates such as three singles plus two doubles and mixed-team
   combinations.

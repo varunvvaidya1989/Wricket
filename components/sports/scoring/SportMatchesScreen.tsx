@@ -12,14 +12,11 @@ import { Text } from '@/components/ui/Text';
 import {
   SPORT_CONFIGS,
   SPORT_PRESENTATION,
-  canManageCompetition,
   listScoringSessions,
-  listSportCompetitions,
   removeScoringSession,
   replay,
   type ScoringSessionRecord,
   type ScoringSportId,
-  type SportCompetitionRecord,
 } from '@/lib/sports/scoring';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
@@ -31,14 +28,12 @@ export function SportMatchesScreen({ sportId }: { sportId: ScoringSportId }) {
   const config = SPORT_CONFIGS[sportId];
   const presentation = SPORT_PRESENTATION[sportId];
   const [sessions, setSessions] = useState<readonly ScoringSessionRecord[]>([]);
-  const [competitions, setCompetitions] = useState<readonly SportCompetitionRecord[]>([]);
   const reload = useCallback(() => {
-    void Promise.all([listScoringSessions(), listSportCompetitions(sportId)])
-      .then(([stored, storedCompetitions]) => {
+    void listScoringSessions()
+      .then((stored) => {
         setSessions(stored.filter((session) => session.sportId === sportId));
-        setCompetitions(storedCompetitions);
       })
-      .catch(() => { setSessions([]); setCompetitions([]); });
+      .catch(() => setSessions([]));
   }, [sportId]);
   useFocusEffect(reload);
 
@@ -68,11 +63,8 @@ export function SportMatchesScreen({ sportId }: { sportId: ScoringSportId }) {
         </View>
         {sessions.length ? sessions.map((session) => {
           const state = replay(config, session.events, { initialServer: session.initialServer, options: session.options });
-          const competition = competitions.find((candidate) => candidate.id === session.competitionId);
-          const canDelete = competition
-            ? canManageCompetition(competition, auth.session?.user.id)
-            : Boolean(auth.session?.user.id
-              && session.createdByAccountId === auth.session.user.id);
+          const canDelete = Boolean(auth.session?.user.id
+            && session.createdByAccountId === auth.session.user.id);
           return (
             <Pressable
               key={session.id}
