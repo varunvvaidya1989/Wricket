@@ -1,5 +1,5 @@
-import { SportCompetitionDetailScreen } from '@/components/sports/scoring/SportCompetitionDetailScreen';
+import { SportCloudCompetitionDetailScreen } from '@/components/sports/scoring/SportCloudCompetitionDetailScreen';
 
 export default function CompetitionDetail() {
-  return <SportCompetitionDetailScreen sportId="tennis" />;
+  return <SportCloudCompetitionDetailScreen sportId="tennis" />;
 }

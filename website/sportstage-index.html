@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="SportStage - The ultimate cinematic 3D multi-sport platform for clubs, teams, and competitions">
+  <meta name="keywords" content="sportstage, multi-sport, 3D, cricket, badminton, tennis, padel, pickleball, table tennis, football, basketball, volleyball">
+  <meta name="author" content="SportStage">
+  <title>SportStage - Cinematic 3D Multi-Sport Platform</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- CSS Variables & Base Styles -->
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg-secondary: #12121a;
+      --fg: #e8e8ec;
+      --muted: #6b6b80;
+      --accent: #00d4aa;
+      --accent-secondary: #00ffcc;
+      --card: #1a1a24;
+      --border: #2a2a3a;
+      --gradient-start: #0f0f17;
+      --gradient-end: #1a1a24;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html {
+      scroll-behavior: smooth;
+    }
+    
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+    
+    a {
+      text-decoration: none;
+      color: inherit;
+      transition: color 0.3s ease;
+    }
+    
+    ul {
+      list-style: none;
+    }
+    
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+    
+    button {
+      cursor: pointer;
+      font-family: inherit;
+    }
+    
+    /* Background effects */
+    .bg-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+    }
+    
+    .bg-pattern-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: 
+        radial-gradient(ellipse 80% 50% at 20% 20%, rgba(0, 212, 170, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(0, 212, 170, 0.05) 0%, transparent 50%),
+        radial-gradient(ellipse 50% 30% at 50% 50%, rgba(0, 212, 170, 0.03) 0%, transparent 70%);
+      z-index: -1;
+      pointer-events: none;
+    }
+    
+    .grid-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: 
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: -1;
+    }
+    
+    /* Container */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 10;
+    }
+    
+    /* Section base styles */
+    section {
+      position: relative;
+      padding: 160px 0;
+      overflow: hidden;
+    }
+    
+    .section-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(32px, 6vw, 72px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 48px;
+      text-align: center;
+    }
+    
+    .section-title span {
+      color: var(--accent);
+      position: relative;
+    }
+    
+    .section-title span::after {
+      content: '';
+      position: absolute;
+      bottom: 8px;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+    
+    /* Hero Section */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 0 24px;
+    }
+    
+    .hero h1 {
+      font-size: clamp(64px, 12vw, 120px);
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      margin-bottom: 32px;
+      background: linear-gradient(135deg, var(--fg) 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .hero p {
+      font-size: clamp(20px, 4vw, 32px);
+      color: var(--muted);
+      max-width: 700px;
+      margin: 0 auto 48px;
+      font-weight: 400;
+    }
+    
+    /* Features Grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 32px;
+      margin-top: 80px;
+    }
+    
+    .feature-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 48px 32px;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-secondary));
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .feature-card:hover::before {
+      transform: scaleX(1);
+    }
+    
+    .feature-card:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 32px 64px rgba(0, 212, 170, 0.15);
+    }
+    
+    .feature-icon {
+      width: 64px;
+      height: 64px;
+      background: rgba(0, 212, 170, 0.1);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 32px;
+      font-size: 32px;
+      color: var(--accent);
+    }
+    
+    .feature-card h3 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    
+    .feature-card p {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.8;
+    }
+    
+    /* Sports Grid */
+    .sports-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 32px;
+      margin-top: 80px;
+    }
+    
+    .sport-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px 24px;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .sport-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, transparent 0%, rgba(0, 212, 170, 0.03) 100%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    .sport-card:hover::after {
+      opacity: 1;
+    }
+    
+    .sport-card:hover {
+      transform: translateY(-6px);
+      border-color: var(--accent);
+    }
+    
+    .sport-icon {
+      width: 72px;
+      height: 72px;
+      background: rgba(0, 212, 170, 0.1);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 32px;
+      font-size: 36px;
+      color: var(--accent);
+    }
+    
+    .sport-card h3 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    
+    .sport-card p {
+      color: var(--muted);
+      font-size: 15px;
+    }
+    
+    /* CTA Section */
+    .cta {
+      padding: 200px 0;
+      background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .cta::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle at 30% 20%, rgba(0, 212, 170, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 70% 80%, rgba(0, 212, 170, 0.08) 0%, transparent 50%);
+      animation: bgShimmer 20s ease infinite;
+      pointer-events: none;
+    }
+    
+    @keyframes bgShimmer {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(30px, 30px) scale(1.1); }
+    }
+    
+    .cta h2 {
+      font-size: clamp(48px, 10vw, 96px);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      margin-bottom: 32px;
+      text-align: center;
+    }
+    
+    .cta p {
+      color: var(--muted);
+      font-size: 20px;
+      max-width: 700px;
+      margin: 0 auto 64px;
+      text-align: center;
+    }
+    
+    .cta .btn {
+      display: inline-block;
+      padding: 20px 48px;
+      background: var(--accent);
+      color: var(--bg);
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+      border: none;
+      cursor: pointer;
+    }
+    
+    .cta .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 32px rgba(0, 212, 170, 0.4);
+    }
+    
+    .cta .btn-secondary {
+      display: inline-block;
+      padding: 20px 48px;
+      background: transparent;
+      color: var(--fg);
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      transition: all 0.3s ease;
+      margin-left: 16px;
+      cursor: pointer;
+    }
+    
+    .cta .btn-secondary:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    
+    /* Footer */
+    footer {
+      padding: 80px 0 40px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+    }
+    
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 48px;
+      margin-bottom: 64px;
+    }
+    
+    .footer-brand h3 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, var(--fg) 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .footer-brand p {
+      color: var(--muted);
+      font-size: 15px;
+    }
+    
+    .footer-links h4 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      color: var(--fg);
+    }
+    
+    .footer-links ul li {
+      margin-bottom: 12px;
+    }
+    
+    .footer-links a {
+      color: var(--muted);
+      font-size: 15px;
+      transition: color 0.3s ease;
+    }
+    
+    .footer-links a:hover {
+      color: var(--accent);
+    }
+    
+    .footer-bottom {
+      padding-top: 40px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    
+    /* Navigation */
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(10, 10, 15, 0.8);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .nav-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 80px;
+    }
+    
+    .logo {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    
+    .logo .accent {
+      color: var(--accent);
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 48px;
+    }
+    
+    .nav-links a {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--muted);
+      transition: color 0.3s ease;
+    }
+    
+    .nav-links a:hover {
+      color: var(--accent);
+    }
+    
+    .nav-links a.active {
+      color: var(--accent);
+    }
+    
+    /* Mobile Nav */
+    .menu-btn {
+      display: none;
+      width: 48px;
+      height: 48px;
+      background: none;
+      border: none;
+      color: var(--fg);
+      font-size: 24px;
+    }
+    
+    /* Mobile Nav Overlay */
+    .mobile-nav {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 100%;
+      height: 100vh;
+      background: var(--bg);
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 32px;
+      transform: translateX(100%);
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 99;
+    }
+    
+    .mobile-nav.active {
+      transform: translateX(0);
+    }
+    
+    .mobile-nav a {
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--fg);
+      transition: color 0.3s ease;
+    }
+    
+    .mobile-nav a:hover {
+      color: var(--accent);
+    }
+    
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: var(--bg);
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent);
+    }
+    
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        transition: none !important;
+        animation: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Background Canvas for 3D -->
+  <div class="bg-canvas" id="bgCanvas"></div>
+  <div class="bg-pattern-overlay"></div>
+  <div class="grid-overlay"></div>
+
+  <!-- Navigation -->
+  <nav class="nav" id="nav">
+    <div class="container nav-inner">
+      <a href="#hero" class="logo">SportStage<span class="accent">.</span></a>
+      <ul class="nav-links">
+        <li><a href="#hero" class="active">Hero</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#sports">Sports</a></li>
+        <li><a href="#cta">Get Started</a></li>
+      </ul>
+      <button class="menu-btn" aria-label="Open menu" id="menuBtn">
+        ☰
+      </button>
+    </div>
+  </nav>
+
+  <!-- Mobile Navigation -->
+  <div class="mobile-nav" id="mobileNav">
+    <a href="#hero">Hero</a>
+    <a href="#features">Features</a>
+    <a href="#sports">Sports</a>
+    <a href="#cta">Get Started</a>
+  </div>
+
+  <!-- Hero Section -->
+  <section id="hero" class="hero">
+    <div class="container">
+      <h1>SportStage</h1>
+      <p>The ultimate cinematic 3D multi-sport platform for clubs, teams, and competitions. Experience sports like never before.</p>
+      <button class="btn" onclick="scrollToSection('features')">Explore Features</button>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section id="features" style="background: var(--bg-secondary);">
+    <div class="container">
+      <h2 class="section-title">Powerful <span>Features</span></h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+              <path d="M12 2v4l5 5m5-5l-5 5v4"/>
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M16 16l-4-4l-4 4M8 16l-4-4l4 4M12 4l4 4v8"/>
+            </svg>
+          </div>
+          <h3>Club Management</h3>
+          <p>Create and manage sport-specific clubs, invite members, accept/reject requests, and maintain rosters with role-based access control. Server-controlled feature flags ensure secure operations.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M16 16l-4-4l-4 4M8 16l-4-4l4 4M12 4l4 4v8"/>
+            </svg>
+          </div>
+          <h3>Competitions & Matches</h3>
+          <p>Schedule tournaments and leagues, manage fixture lists, and organize matches with support for singles and doubles formats across all supported sports.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <h3>MVP Calculations</h3>
+          <p>Calculate comprehensive Match Value Points with batting, bowling, and fielding statistics. Six decimal places precision with detailed breakdowns.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <h3>Feature Flags</h3>
+          <p>Server-controlled feature flags shipped disabled. Future mutations must use trusted server commands with read-only client grants and RLS-filtered access.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Sports Section -->
+  <section id="sports" style="background: var(--bg);">
+    <div class="container">
+      <h2 class="section-title">Supported <span>Sports</span></h2>
+      <div class="sports-grid">
+        <div class="sport-card">
+          <div class="sport-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+              <path d="M12 2v4l5 5m5-5l-5 5v4M12 22v-4l-5-5m5 5l5-5v4"/>
+            </svg>
+          </div>
+          <h3>Cricket</h3>
+          <p>Full support for tournament and league play with comprehensive scoring, squad management, and competition formats including MVP calculations.</p>
+        </div>
+        <div class="sport-card">
+          <div class="sport-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M8 2L4 7l8 5 8-5M16 2l-8 5 8 5M12 22l-8-5-8 5"/>
+            </svg>
+          </div>
+          <h3>Badminton</h3>
+          <p>Fast-paced singles and doubles scoring with sport-specific rules and club management.</p>
+        </div>
+        <div class="sport-card">
+          <div class="sport-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+              <path d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2zm0 2a8 8 0 1 0 8-8A8.013 8.013 0 0 0 12 4z"/>
+            </svg>
+          </div>
+          <h3>Tennis</h3>
+          <p>Full support for tournament and league play with comprehensive scoring, squad management, and competition formats.</p>
+        </div>
+        <div class="sport-card">
+          <div class="sport-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+            </svg>
+          </div>
+          <h3>Padel</h3>
+          <p>Team competitions with 3-5 player rubbers, squad-based scoring, and tie-breaking rules for club championships.</p>
+        </div>
+        <div class="sport-card">
+          <div class="sport-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <h3>Table Tennis</h3>
+          <p>Best-of-three default games with league and tournament support, integrated with SportStage feature flags.</p>
+        </div>
+        <div class="sport-card">
+          <div class="sport-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <h3>Pickleball</h3>
+          <p>Growing sport support with singles/doubles scoring, club management, and competition pathways.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Live Match Experience -->
+  <section id="live-match" style="background: var(--bg-secondary);">
+    <div class="container">
+      <h2 class="section-title">Live <span>Match Experience</span></h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;">
+        <div>
+          <h3>Real-Time Scoring</h3>
+          <p>Follow matches live with ball-by-ball commentary, real-time statistics, and dynamic score updates. Experience the thrill of live sports with sub-second latency.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Live ball tracking</li>
+            <li>Real-time player stats</li>
+            <li>Dynamic scoreboard</li>
+            <li>Commentary feed</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Immersive 3D View</h3>
+          <p>Watch matches in cinematic 3D with player avatars, stadium atmosphere, and dynamic camera angles that respond to the action on the field.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>3D player avatars</li>
+            <li>Stadium lighting effects</li>
+            <li>Dynamic camera angles</li>
+            <li>Action replays</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tournament Experience -->
+  <section id="tournament" style="background: var(--bg);">
+    <div class="container">
+      <h2 class="section-title">Tournament <span>Experience</span></h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;">
+        <div>
+          <h3>Organizer Tools</h3>
+          <p>Comprehensive tournament management suite including bracket generation, schedule optimization, resource allocation, and real-time monitoring across all supported sports.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Bracket generation</li>
+            <li>Schedule optimization</li>
+            <li>Resource allocation</li>
+            <li>Real-time monitoring</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Spectator Mode</h3>
+          <p>Engage with tournaments as a spectator with live stats, player profiles, interactive heatmaps, and the ability to follow specific players or teams throughout the competition.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Live statistics</li>
+            <li>Player profiles</li>
+            <li>Interactive heatmaps</li>
+            <li>Team/player tracking</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Player Identity -->
+  <section id="player-identity" style="background: var(--bg-secondary);">
+    <div class="container">
+      <h2 class="section-title">Player <span>Identity</span></h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;">
+        <div>
+          <h3>Personalized Profiles</h3>
+          <p>Create comprehensive player profiles with statistics, achievements, and personal branding. Track performance across multiple sports and seasons with detailed analytics.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Career statistics</li>
+            <li>Achievement badges</li>
+            <li>Multi-sport tracking</li>
+            <li>Performance analytics</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Identity Customization</h3>
+          <p>Personalize your SportStage experience with custom avatars, team colors, and profile themes. Express your unique sporting identity across the platform.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Custom avatars</li>
+            <li>Team color schemes</li>
+            <li>Profile themes</li>
+            <li>Personal branding</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Organizer Section -->
+  <section id="organizer" style="background: var(--bg);">
+    <div class="container">
+      <h2 class="section-title">Organizer <span>Tools</span></h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 48px; margin-top: 80px;">
+        <div>
+          <h3>Club Management</h3>
+          <p>Manage club membership, invitations, roles, and permissions with comprehensive admin controls. Track member engagement and activity across all sports.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Member management</li>
+            <li>Role-based access</li>
+            <li>Engagement tracking</li>
+            <li>Activity logs</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Competition Scheduling</h3>
+          <p>Create and manage competitions with flexible scheduling, venue management, and automatic conflict detection. Support for round-robin and knockout formats.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Flexible scheduling</li>
+            <li>Venue management</li>
+            <li>Conflict detection</li>
+            <li>Format support</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Revenue & Analytics</h3>
+          <p>Track revenue, membership growth, and engagement metrics with comprehensive analytics dashboards. Make data-driven decisions for club growth and sustainability.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Revenue tracking</li>
+            <li>Growth metrics</li>
+            <li>Engagement analytics</li>
+            <li>Data-driven insights</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Community Discovery -->
+  <section id="community" style="background: var(--bg-secondary);">
+    <div class="container">
+      <h2 class="section-title">Community <span>Discovery</span></h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;">
+        <div>
+          <h3>Find Players & Teams</h3>
+          <p>Discover local players and teams across all supported sports. Filter by skill level, location, sport, and availability. Connect and request to join or form teams.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Skill level filtering</li>
+            <li>Location-based search</li>
+            <li>Sport-specific matching</li>
+            <li>Availability scheduling</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Events & Meetups</h3>
+          <p>Discover and join sports events and meetups in your area. From casual pickup games to organized tournaments, find your next sporting opportunity.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Event discovery</li>
+            <li>Local meetups</li>
+            <li>Pickup game scheduling</li>
+            <li>Tournament listings</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Cinematic Statistics -->
+  <section id="statistics" style="background: var(--bg);">
+    <div class="container">
+      <h2 class="section-title">Cinematic <span>Statistics</span></h2>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; margin-top: 80px;">
+        <div>
+          <div style="font-size: 64px; font-weight: 700; color: var(--accent); margin-bottom: 16px;" data-target="265" class="stat-number">265</div>
+          <div style="color: var(--muted);">Total Tests</div>
+        </div>
+        <div>
+          <div style="font-size: 64px; font-weight: 700; color: var(--accent); margin-bottom: 16px;" data-target="83" class="stat-number">83</div>
+          <div style="color: var(--muted);">Active Routes</div>
+        </div>
+        <div>
+          <div style="font-size: 64px; font-weight: 700; color: var(--accent); margin-bottom: 16px;" data-target="56" class="stat-number">56</div>
+          <div style="color: var(--muted);">Sports Supported</div>
+        </div>
+        <div>
+          <div style="font-size: 64px; font-weight: 700; color: var(--accent); margin-bottom: 16px;" data-target="1204" class="stat-number">1204</div>
+          <div style="color: var(--muted);">Clubs Worldwide</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Personas -->
+  <section id="personas" style="background: var(--bg-secondary);">
+    <div class="container">
+      <h2 class="section-title">Personas</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 48px; margin-top: 80px;">
+        
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 40px; transition: transform 0.3s ease;">
+          <div style="width: 64px; height: 64px; background: rgba(0, 212, 170, 0.1); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px; font-size: 32px; color: var(--accent);">👤</div>
+          <h3>Club Captain</h3>
+          <p>Responsible for managing club operations, member invitations, competition scheduling, and ensuring smooth day-to-day operations. The backbone of the SportStage ecosystem.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Member management</li>
+            <li>Competition scheduling</li>
+            <li>Resource allocation</li>
+            <li>Community building</li>
+          </ul>
+        </div>
+        
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 40px; transition: transform 0.3s ease;">
+          <div style="width: 64px; height: 64px; background: rgba(0, 212, 170, 0.1); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px; font-size: 32px; color: var(--accent);">⚽</div>
+          <h3>Competitive Player</h3>
+          <p>Driven by excellence, tracking MVP scores, competing in tournaments, and pushing personal performance boundaries across multiple sports disciplines.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>MVP tracking</li>
+            <li>Tournament competition</li>
+            <li>Performance analytics</li>
+            <li>Multi-sport tracking</li>
+          </ul>
+        </div>
+        
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 40px; transition: transform 0.3s ease;">
+          <div style="width: 64px; height: 64px; background: rgba(0, 212, 170, 0.1); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px; font-size: 32px; color: var(--accent);}</div>
+          <h3>Coach & Trainer</h3>
+          <p>Optimize player development with comprehensive statistics, performance insights, and training recommendations tailored to specific sports and individual needs.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Player statistics</li>
+            <li>Performance insights</li>
+            <li>Training recommendations</li>
+            <li>Sport-specific guidance</li>
+          </ul>
+        </div>
+        
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 40px; transition: transform 0.3s ease;">
+          <div style="width: 64px; height: 64px; background: rgba(0, 212, 170, 0.1); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px; font-size: 32px; color: var(--accent);">🏟️</div>
+          <h3>Event Organizer</h3>
+          <p>Manage tournaments from conception to completion, including bracket generation, scheduling, resource allocation, and spectator engagement across all supported sports.</p>
+          <ul style="margin-top: 24px; padding-left: 20px;">
+            <li>Tournament management</li>
+            <li>Bracket generation</li>
+            <li>Scheduling</li>
+            <li>Spectator engagement</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section id="cta" style="padding: 200px 0; background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);">
+    <div class="container">
+      <h2 style="font-size: clamp(48px, 10vw, 96px); font-weight: 700; letter-spacing: -0.04em; margin-bottom: 32px; text-align: center;">
+        Start Your SportStage Journey
+      </h2>
+      <p style="color: var(--muted); font-size: 20px; max-width: 700px; margin: 0 auto 64px; text-align: center;">
+        Join thousands of clubs, teams, and players using SportStage to organize, compete, and excel across multiple sports disciplines.
+      </p>
+      <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
+        <button class="btn" style="padding: 20px 48px; background: var(--accent); color: var(--bg); font-size: 18px; font-weight: 600; letter-spacing: 0.02em; border-radius: 8px; transition: all 0.3s ease;">Get Started</button>
+        <button class="btn-secondary" style="padding: 20px 48px; background: transparent; color: var(--fg); font-size: 18px; font-weight: 500; letter-spacing: 0.02em; border-radius: 8px; border: 2px solid var(--border); transition: all 0.3s ease;">Learn More</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <h3>SportStage</h3>
+          <p>Cinematic 3D multi-sport platform for clubs, teams, and competitions.</p>
+        </div>
+        <div class="footer-links">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#sports">Sports</a></li>
+            <li><a href="#cta">Get Started</a></li>
+          </ul>
+        </div>
+        <div class="footer-links">
+          <h4>Company</h4>
+          <ul>
+            <li><a href="#">About</a></li>
+            <li><a href="#">Blog</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+        <div class="footer-links">
+          <h4>Support</h4>
+          <ul>
+            <li><a href="#">Docs</a></li>
+            <li><a href="#">GitHub</a></li>
+            <li><a href="#">Discord</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>2026 SportStage. All rights reserved.</span>
+        <span>•</span>
+        <span>Privacy Policy</span>
+        <span>•</span>
+        <span>Terms</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Three.js Integration -->
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+    import { gsap } from 'https://cdn.jsdelivr.net/npm/gsap@3.12.2';
+    
+    // Initialize Three.js scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0f);
+    
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 30;
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.getElementById('bgCanvas').appendChild(renderer.domElement);
+    
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    
+    // Create 3D sports elements
+    const sportsElements = [];
+    
+    function createSportIcon(code, position, color) {
+      const geometries = {
+        cricket: new THREE.CylinderGeometry(2, 2, 4, 32),
+        badminton: new THREE.IcosahedronGeometry(2, 0),
+        tennis: new THREE.TorusGeometry(2, 0.5, 16, 32),
+        padel: new THREE.OctahedronGeometry(2),
+        table_tennis: new THREE.SphereGeometry(2, 32, 32),
+        pickleball: new THREE.IcosahedronGeometry(2, 0)
+      };
+      
+      const material = new THREE.MeshStandardMaterial({ color: color || 0x00d4aa, emissive: color || 0x00d4aa, emissiveIntensity: 0.1 });
+      
+      const geometry = geometries[code] || new THREE.SphereGeometry(2, 32, 32);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.copy(position);
+      mesh.userData = { code };
+      scene.add(mesh);
+      sportsElements.push(mesh);
+    }
+    
+    // Create sports icons
+    createSportIcon('cricket', new THREE.Vector3(-15, 0, -15), 0x00d4aa);
+    createSportIcon('badminton', new THREE.Vector3(15, 0, -15), 0x00d4aa);
+    createSportIcon('tennis', new THREE.Vector3(-15, 0, 15), 0x00aaFF);
+    createSportIcon('padel', new THREE.Vector3(15, 0, 15), 0xFF6B6B);
+    createSportIcon('table_tennis', new THREE.Vector3(0, 0, -20), 0x4ECDC4);
+    createSportIcon('pickleball', new THREE.Vector3(0, 0, 20), 0x45B7D1);
+    
+    // Add lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0x00d4aa, 0.8);
+    directionalLight.position.set(10, 10, 10);
+    scene.add(directionalLight);
+    
+    const pointLight = new THREE.PointLight(0x00d4aa, 0.5);
+    pointLight.position.set(-10, 10, -10);
+    scene.add(pointLight);
+    
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      sportsElements.forEach((mesh, i) => {
+        mesh.rotation.y += 0.01;
+        mesh.rotation.x += 0.005;
+        if (mesh.userData.code === 'cricket') {
+          mesh.position.y = 10 + Math.sin(i * 0.5 + Date.now() * 0.001) * 2;
+        }
+      });
+      
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    
+    animate();
+    
+    // Scroll-driven animations
+    document.addEventListener('scroll', () => {
+      const scrollY = window.scrollY;
+      const maxScroll = document.body.scrollHeight - window.innerHeight;
+      const scrollProgress = scrollY / maxScroll;
+      
+      // Parallax effect on hero
+      const heroH1 = document.querySelector('#hero h1');
+      if (heroH1) {
+        heroH1.style.transform = `translateY(${scrollProgress * -30}px)`;
+      }
+      
+      // Background camera movement
+      camera.position.y = 30 * Math.sin(scrollProgress * Math.PI);
+      camera.position.x = 30 * Math.cos(scrollProgress * Math.PI);
+    });
+    
+    // Smooth scroll on nav click
+    document.querySelectorAll('.nav-links a').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetId = link.getAttribute('href');
+        const targetElement = document.querySelector(targetId);
+        if (targetElement) {
+          targetElement.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    });
+    
+    // Mobile menu
+    const menuBtn = document.getElementById('menuBtn');
+    const mobileNav = document.getElementById('mobileNav');
+    
+    menuBtn.addEventListener('click', () => {
+      mobileNav.classList.toggle('active');
+    });
+    
+    // Close mobile nav on link click
+    mobileNav.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        mobileNav.classList.remove('active');
+      });
+    });
+    
+    // Resize handler
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+  
+  <!-- Reduced motion preference -->
+  <script>
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.body.classList.add('reduced-motion');
+    }
+  </script>
+</body>
+</html>

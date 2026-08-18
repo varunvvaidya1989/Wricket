@@ -4,46 +4,55 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
+import { useAuth } from '@/components/providers/AuthProvider';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
+import { useSportFeatureFlag } from '@/hooks/useSportFeatureFlag';
 import {
   SPORT_CONFIGS,
   SPORT_PRESENTATION,
   listScoringSessions,
-  listSportCompetitions,
   replay,
   type ScoringSessionRecord,
   type ScoringSportId,
-  type SportCompetitionRecord,
 } from '@/lib/sports/scoring';
+import { sportCompetitionApi, type CloudCompetition } from '@/lib/supabase/sportCompetitionApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { SportAvatarButton } from './SportProfileDrawer';
 
 export function SportSearchScreen({ sportId }: { sportId: ScoringSportId }) {
   const router = useRouter();
+  const auth = useAuth();
   const config = SPORT_CONFIGS[sportId];
   const presentation = SPORT_PRESENTATION[sportId];
+  const cloudCompetitions = useSportFeatureFlag(
+    'cloud_competitions',
+    presentation.catalogCode,
+    auth.session?.user.id,
+  );
   const [query, setQuery] = useState('');
-  const [competitions, setCompetitions] = useState<readonly SportCompetitionRecord[]>([]);
+  const [competitions, setCompetitions] = useState<readonly CloudCompetition[]>([]);
   const [sessions, setSessions] = useState<readonly ScoringSessionRecord[]>([]);
 
   const reload = useCallback(() => {
-    void Promise.all([listSportCompetitions(sportId), listScoringSessions()])
+    void Promise.all([
+      cloudCompetitions.enabled ? sportCompetitionApi.list(presentation.catalogCode) : [],
+      listScoringSessions(),
+    ])
       .then(([storedCompetitions, storedSessions]) => {
         setCompetitions(storedCompetitions);
         setSessions(storedSessions.filter((session) => session.sportId === sportId));
       })
       .catch(() => { setCompetitions([]); setSessions([]); });
-  }, [sportId]);
+  }, [cloudCompetitions.enabled, presentation.catalogCode, sportId]);
   useFocusEffect(reload);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleCompetitions = useMemo(() => competitions.filter((competition) => !normalizedQuery
     || competition.name.toLowerCase().includes(normalizedQuery)
-    || competition.creatorName.toLowerCase().includes(normalizedQuery)
-    || competition.entrants.some((entrant) => entrant.name.toLowerCase().includes(normalizedQuery))), [competitions, normalizedQuery]);
+    || competition.lifecycle.toLowerCase().includes(normalizedQuery)), [competitions, normalizedQuery]);
   const visibleSessions = useMemo(() => sessions.filter((session) => !normalizedQuery
     || session.sideNames.some((name) => name.toLowerCase().includes(normalizedQuery))), [normalizedQuery, sessions]);
 
@@ -55,18 +64,18 @@ export function SportSearchScreen({ sportId }: { sportId: ScoringSportId }) {
         <View style={[styles.viewerNote, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="eye-outline" size={22} color={presentation.accent} /><View style={styles.flex}><Text variant="bodyStrong">Spectator viewing</Text><Text variant="caption" tone="muted">Open any competition or started match without gaining scoring controls.</Text></View></View>
 
         <View style={styles.sectionHeading}><Text variant="overline" tone="dim">COMPETITIONS</Text><Text variant="caption" tone="muted">{visibleCompetitions.length}</Text></View>
-        {visibleCompetitions.map((competition) => (
+        {cloudCompetitions.enabled ? visibleCompetitions.map((competition) => (
           <Pressable
             key={competition.id}
             onPress={() => router.push(`/${presentation.routeSegment}/competition/${competition.id}?mode=view` as Href)}
             style={({ pressed }) => [styles.resultCard, pressed && styles.pressed]}
           >
             <View style={[styles.resultIcon, { backgroundColor: `${presentation.accent}16` }]}><MaterialCommunityIcons name={competition.kind === 'TOURNAMENT' ? 'trophy-outline' : 'table-large'} size={22} color={presentation.accent} /></View>
-            <View style={styles.flex}><Text variant="bodyStrong" numberOfLines={1}>{competition.name}</Text><Text variant="caption" tone="muted">{competition.kind} · {competition.matchFormat} · {competition.creatorName}</Text></View>
+            <View style={styles.flex}><Text variant="bodyStrong" numberOfLines={1}>{competition.name}</Text><Text variant="caption" tone="muted">{competition.kind} · {competition.lifecycle.replaceAll('_', ' ')}</Text></View>
             <Text variant="overline" style={{ color: presentation.accent }}>VIEW</Text>
           </Pressable>
-        ))}
-        {!visibleCompetitions.length ? <Empty copy="No matching competitions on this device." /> : null}
+        )) : <Empty copy={cloudCompetitions.loading ? 'Checking competition availability…' : 'Cloud competitions are not available yet.'} />}
+        {cloudCompetitions.enabled && !visibleCompetitions.length ? <Empty copy="No matching cloud competitions." /> : null}
 
         <View style={styles.sectionHeading}><Text variant="overline" tone="dim">MATCHES</Text><Text variant="caption" tone="muted">{visibleSessions.length}</Text></View>
         {visibleSessions.map((session) => {

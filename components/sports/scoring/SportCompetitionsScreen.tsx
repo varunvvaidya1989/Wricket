@@ -2,53 +2,56 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
-import {
-  SPORT_CONFIGS,
-  SPORT_PRESENTATION,
-  canManageCompetition,
-  createSportCompetition,
-  listScoringSessions,
-  listSportCompetitions,
-  removeSportCompetition,
-  saveSportCompetition,
-  type CompetitionKind,
-  type MatchFormat,
-  type ScoringSessionRecord,
-  type ScoringSportId,
-  type SportCompetitionRecord,
-} from '@/lib/sports/scoring';
+import { useSportFeatureFlag } from '@/hooks/useSportFeatureFlag';
+import { SPORT_CONFIGS, SPORT_PRESENTATION, type ScoringSportId } from '@/lib/sports/scoring';
+import { sportCompetitionApi, type CloudCompetition, type CloudCompetitionInvitation, type CloudCompetitionKind } from '@/lib/supabase/sportCompetitionApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { SportAvatarButton } from './SportProfileDrawer';
+import { SportCloudCompetitionUnavailable } from './SportCloudCompetitionUnavailable';
 
 export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }) {
   const router = useRouter();
   const auth = useAuth();
   const config = SPORT_CONFIGS[sportId];
   const presentation = SPORT_PRESENTATION[sportId];
-  const [competitions, setCompetitions] = useState<readonly SportCompetitionRecord[]>([]);
-  const [sessions, setSessions] = useState<readonly ScoringSessionRecord[]>([]);
+  const cloudCompetitions = useSportFeatureFlag(
+    'cloud_competitions',
+    presentation.catalogCode,
+    auth.session?.user.id,
+  );
+  const [competitions, setCompetitions] = useState<readonly CloudCompetition[]>([]);
+  const [invitations, setInvitations] = useState<readonly CloudCompetitionInvitation[]>([]);
+  const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
-  const [kind, setKind] = useState<CompetitionKind>('TOURNAMENT');
-  const [matchFormat, setMatchFormat] = useState<MatchFormat>('SINGLES');
+  const [kind, setKind] = useState<CloudCompetitionKind>('TOURNAMENT');
+  const [visibility, setVisibility] = useState<'PUBLIC' | 'PRIVATE'>('PRIVATE');
   const [saving, setSaving] = useState(false);
 
   const reload = useCallback(() => {
-    void Promise.all([listSportCompetitions(sportId), listScoringSessions()])
-      .then(([storedCompetitions, storedSessions]) => {
-        setCompetitions(storedCompetitions);
-        setSessions(storedSessions.filter((session) => session.sportId === sportId));
-      })
-      .catch(() => { setCompetitions([]); setSessions([]); });
-  }, [sportId]);
+    if (!cloudCompetitions.enabled) {
+      setCompetitions([]);
+      setInvitations([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    void Promise.all([
+      sportCompetitionApi.list(presentation.catalogCode),
+      sportCompetitionApi.listInvitations(presentation.catalogCode),
+    ])
+      .then(([nextCompetitions, nextInvitations]) => { setCompetitions(nextCompetitions); setInvitations(nextInvitations); })
+      .catch((cause) => Alert.alert('Could not load competitions', message(cause)))
+      .finally(() => setLoading(false));
+  }, [cloudCompetitions.enabled, presentation.catalogCode]);
   useFocusEffect(reload);
 
   const create = async () => {
@@ -60,18 +63,14 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
     }
     setSaving(true);
     try {
-      const competition = await saveSportCompetition(createSportCompetition({
-        sportId,
-        name,
-        kind,
-        matchFormat: kind === 'LEAGUE' ? 'SINGLES' : matchFormat,
-        creatorAccountId,
-        creatorName: auth.profile?.displayName ?? auth.session?.user.email ?? 'Competition creator',
-      }));
+      const competitionId = await sportCompetitionApi.create({
+        sportCode: presentation.catalogCode, name, kind,
+        visibility, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      });
       setName('');
       setCreateOpen(false);
       reload();
-      router.push(`/${presentation.routeSegment}/competition/${competition.id}` as Href);
+      router.push(`/${presentation.routeSegment}/competition/${competitionId}` as Href);
     } catch (cause) {
       Alert.alert('Could not create competition', cause instanceof Error ? cause.message : 'Please try again.');
     } finally {
@@ -79,20 +78,18 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
     }
   };
 
-  const remove = (competition: SportCompetitionRecord) => {
-    if (!canManageCompetition(competition, auth.session?.user.id)) {
-      Alert.alert('Creator access required', 'Only the competition creator can delete this competition.');
-      return;
-    }
-    Alert.alert(
-    `Delete ${competition.kind.toLowerCase()}?`,
-    'Matches already scored will remain in Match history.',
-    [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => void removeSportCompetition(competition.id).then(reload) },
-    ],
-    );
+  const respondInvitation = (invitation: CloudCompetitionInvitation, accept: boolean) => {
+    if (saving) return;
+    setSaving(true);
+    void sportCompetitionApi.respondOrganizer(invitation.accessId, accept)
+      .then((competitionId) => { reload(); if (accept) router.push(`/${presentation.routeSegment}/competition/${competitionId}` as Href); })
+      .catch((cause) => Alert.alert('Could not respond', message(cause)))
+      .finally(() => setSaving(false));
   };
+
+  if (cloudCompetitions.loading || !cloudCompetitions.enabled) {
+    return <SportCloudCompetitionUnavailable loading={cloudCompetitions.loading} sportId={sportId} />;
+  }
 
   return (
     <Screen scroll padded={false}>
@@ -102,16 +99,16 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
         right={<View style={styles.headerActions}><Pressable accessibilityLabel="Create competition" onPress={() => setCreateOpen(true)} style={[styles.headerAction, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="plus" size={23} color={presentation.accent} /></Pressable><SportAvatarButton /></View>}
       />
       <View style={styles.content}>
+        {invitations.length ? <View style={styles.invitationStack}><Text variant="overline" style={{ color: presentation.accent }}>ORGANIZER INVITATIONS · {invitations.length}</Text>{invitations.map((invitation) => <View key={invitation.accessId} style={styles.competition}><View style={styles.flex}><Text variant="bodyStrong">{invitation.competitionName}</Text><Text variant="caption" tone="muted">{invitation.kind} · ORGANIZER</Text></View><Pressable disabled={saving} onPress={() => respondInvitation(invitation, false)}><Text variant="overline" tone="danger">DECLINE</Text></Pressable><Pressable disabled={saving} onPress={() => respondInvitation(invitation, true)}><Text variant="overline" style={{ color: presentation.accent }}>ACCEPT</Text></Pressable></View>)}</View> : null}
         <View style={styles.summary}>
           <SummaryValue value={competitions.filter((item) => item.kind === 'TOURNAMENT').length} label="TOURNAMENTS" />
           <SummaryValue value={competitions.filter((item) => item.kind === 'LEAGUE').length} label="LEAGUES" />
-          <SummaryValue value={sessions.filter((item) => item.competitionId).length} label="MATCHES" />
+          <SummaryValue value={competitions.filter((item) => item.lifecycle === 'LIVE').length} label="LIVE" />
         </View>
         <Button title="Create tournament or league" fullWidth onPress={() => setCreateOpen(true)} style={{ backgroundColor: presentation.accent }} />
 
-        {competitions.length ? competitions.map((competition) => {
-          const matchCount = sessions.filter((session) => session.competitionId === competition.id).length;
-          const canManage = canManageCompetition(competition, auth.session?.user.id);
+        {loading ? <ActivityIndicator color={presentation.accent} /> : competitions.length ? competitions.map((competition) => {
+          const canManage = competition.ownerAccountId === auth.session?.user.id;
           return (
             <Pressable
               key={competition.id}
@@ -125,20 +122,12 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
               </View>
               <View style={styles.flex}>
                 <Text variant="bodyStrong" numberOfLines={1}>{competition.name}</Text>
-                <Text variant="caption" tone="dim">{competition.kind} · {competition.matchFormat} · {matchCount} MATCHES</Text>
-                <Text variant="caption" tone="muted">{canManage ? 'CREATED BY YOU' : `VIEWING · ${competition.creatorName}`}</Text>
+                <Text variant="caption" tone="dim">{competition.kind} · {competition.lifecycle.replaceAll('_', ' ')}</Text>
+                <Text variant="caption" tone="muted">{canManage ? 'OWNED BY YOU' : 'PARTICIPATING OR ORGANIZING'}</Text>
               </View>
               <View style={[styles.playButton, { backgroundColor: presentation.accent }]}>
                 <MaterialCommunityIcons name="chevron-right" size={20} color={colors.accentInk} />
               </View>
-              {canManage ? <Pressable
-                accessibilityLabel={`Delete ${competition.name}`}
-                hitSlop={8}
-                onPress={(event) => { event.stopPropagation(); remove(competition); }}
-                style={styles.deleteButton}
-              >
-                <MaterialCommunityIcons name="trash-can-outline" size={18} color={colors.textDim} />
-              </Pressable> : null}
             </Pressable>
           );
         }) : (
@@ -160,28 +149,17 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
             <TextInput value={name} onChangeText={setName} autoFocus maxLength={60} placeholder="Competition name" placeholderTextColor={colors.textDim} style={styles.input} />
             <View style={styles.kindSelector}>
               {(['TOURNAMENT', 'LEAGUE'] as const).map((value) => (
-                <Pressable key={value} onPress={() => { setKind(value); if (value === 'LEAGUE') setMatchFormat('SINGLES'); }} style={[styles.kindOption, kind === value && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}16` }]}>
+                <Pressable key={value} onPress={() => setKind(value)} style={[styles.kindOption, kind === value && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}16` }]}>
                   <Text variant="caption" style={kind === value ? { color: presentation.accent } : undefined}>{value}</Text>
                 </Pressable>
               ))}
             </View>
-            {kind === 'TOURNAMENT' ? (
-              <View style={styles.formatSection}>
-                <Text variant="overline" tone="dim">MATCH FORMAT</Text>
-                <View style={styles.kindSelector}>
-                  {config.matchFormats.map((value) => (
-                    <Pressable key={value} onPress={() => setMatchFormat(value)} style={[styles.kindOption, matchFormat === value && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}16` }]}>
-                      <Text variant="caption" style={matchFormat === value ? { color: presentation.accent } : undefined}>{value}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : null}
+            <View style={styles.formatSection}><Text variant="overline" tone="dim">VISIBILITY</Text><View style={styles.kindSelector}>{(['PRIVATE', 'PUBLIC'] as const).map((value) => <Pressable key={value} onPress={() => setVisibility(value)} style={[styles.kindOption, visibility === value && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}16` }]}><Text variant="caption" style={visibility === value ? { color: presentation.accent } : undefined}>{value}</Text></Pressable>)}</View></View>
             <View style={styles.participantNote}>
               <MaterialCommunityIcons name={kind === 'TOURNAMENT' ? 'account-group-outline' : 'account-outline'} size={20} color={presentation.accent} />
               <Text variant="caption" tone="muted" style={styles.flex}>
                 {kind === 'TOURNAMENT'
-                  ? `Tournaments register teams. Each ${matchFormat.toLowerCase()} team has ${matchFormat === 'DOUBLES' ? 'two players' : 'one player'}.`
+                  ? 'Tournaments register teams. For every team tie, you choose how many singles and doubles matches will be played.'
                   : 'Leagues register individual players and use singles fixtures.'}
               </Text>
             </View>
@@ -199,6 +177,7 @@ function SummaryValue({ value, label }: { value: number; label: string }) {
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
+  invitationStack: { gap: spacing.sm },
   headerAction: { width: 40, height: 40, borderWidth: 1, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   summary: { paddingVertical: spacing.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, flexDirection: 'row' },
@@ -206,7 +185,6 @@ const styles = StyleSheet.create({
   competition: { minHeight: 76, padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   kindIcon: { width: 42, height: 42, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   playButton: { width: 34, height: 34, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  deleteButton: { width: 30, height: 34, alignItems: 'center', justifyContent: 'center' },
   empty: { padding: spacing.xl, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg, alignItems: 'center', gap: spacing.sm },
   emptyCopy: { textAlign: 'center', lineHeight: 18 },
   overlay: { flex: 1, padding: spacing.lg, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center' },
@@ -221,3 +199,5 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.72 },
   flex: { flex: 1, minWidth: 0 },
 });
+
+function message(cause: unknown): string { return cause instanceof Error ? cause.message : 'Please try again.'; }

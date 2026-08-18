@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '@/lib/supabase/client';
 
 import {
+  evaluateSportFeatureFlag,
   SportFeatureFlag,
   SportPlatformFeatureKey,
   supportedFeatureKeys,
@@ -42,5 +43,23 @@ export async function loadSportFeatureFlags(): Promise<SportFeatureFlag[]> {
       rolloutPercentage: Math.max(0, Math.min(100, row.rollout_percentage)),
       sportId: row.sport_id,
     }];
+  });
+}
+
+export async function isSportFeatureEnabled(
+  featureKey: SportPlatformFeatureKey,
+  sportCode: string,
+  subjectId?: string | null,
+): Promise<boolean> {
+  const client = getSupabaseClient();
+  const [flags, sportResult] = await Promise.all([
+    loadSportFeatureFlags(),
+    client.from('sports').select('id').eq('code', sportCode.trim().toUpperCase()).maybeSingle(),
+  ]);
+  if (sportResult.error) throw new Error(`Could not resolve sport feature flags: ${sportResult.error.message}`);
+  if (!sportResult.data?.id) return false;
+  return evaluateSportFeatureFlag(flags, featureKey, {
+    sportId: String(sportResult.data.id),
+    subjectId,
   });
 }
