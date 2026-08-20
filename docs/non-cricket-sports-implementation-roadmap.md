@@ -118,7 +118,7 @@ Acceptance criteria:
 
 ## Phase 3 — Cloud competitions, registration, and manual scheduling
 
-Status: `IN PROGRESS`
+Status: `COMPLETE`
 
 Objective: replace the device-local competition prototype with server-backed
 tournaments and leagues governed by an explicit lifecycle.
@@ -337,10 +337,10 @@ Acceptance criteria:
   Phase 3; team-tie templates and lineup submission are Phase 4; cloud player
   statistics and public player cards are Phases 6 and 7.
 
-### 2026-08-20 — Phase 3 acceptance validation completed
+### 2026-08-20 — Phase 3 completed
 
-- Status remains `IN PROGRESS` until the validated work is committed and its
-  commit hash is recorded here.
+- Status changed from `IN PROGRESS` to `COMPLETE`.
+- Commit: `7074232` (`Complete non-cricket competition validation`).
 - Deployed migrations: `20260818100000`, `20260818120000`, `20260818121000`,
   `20260818122000`, `20260818123000`, `20260818124000`, `20260818130000`,
   `20260818131000`, `20260818132000`, and `20260818133000`.
