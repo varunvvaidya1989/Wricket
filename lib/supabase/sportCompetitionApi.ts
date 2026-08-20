@@ -86,11 +86,30 @@ export interface CloudFixtureMatch {
   id: string;
   fixtureId: string;
   displayOrder: number;
-  format: 'SINGLES' | 'DOUBLES';
+  format: 'SINGLES' | 'DOUBLES' | 'MIXED_DOUBLES';
   label: string;
 }
 
 export type CloudFixtureMatchDraft = Pick<CloudFixtureMatch, 'format' | 'label'>;
+
+export interface CloudTeamTieTemplate {
+  id: string;
+  competitionId: string;
+  name: string;
+  rubbers: CloudFixtureMatchDraft[];
+}
+
+export interface CloudTeamTieState {
+  fixtureId: string;
+  status: 'SCHEDULED' | 'IN_PROGRESS' | 'CLINCHED' | 'COMPLETED';
+  rubberCount: number;
+  majorityThreshold: number;
+  entrantAWins: number;
+  entrantBWins: number;
+  winnerEntryId?: string;
+  startedAt?: string;
+  clinchedAt?: string;
+}
 
 export interface CloudCompetitionPointsRule {
   winPoints: number;
@@ -390,6 +409,78 @@ export const sportCompetitionApi = {
     if (error) throw error;
   },
 
+  async submitTeamTieLineup(input: {
+    fixtureMatchId: string; entryId: string; playerProfileIds: string[]; expectedVersion: number;
+  }): Promise<string> {
+    const { data, error } = await getSupabaseClient().rpc('submit_sport_team_tie_lineup', {
+      p_fixture_match_id: input.fixtureMatchId,
+      p_entry_id: input.entryId,
+      p_player_profile_ids: input.playerProfileIds,
+      p_expected_version: input.expectedVersion,
+    });
+    if (error) throw new Error(normalizeCompetitionRpcMessage(error));
+    return String(data);
+  },
+
+  async upsertTeamTieTemplate(input: {
+    competitionId: string; templateId?: string; name: string; rubbers: CloudFixtureMatchDraft[];
+  }): Promise<string> {
+    const { data, error } = await getSupabaseClient().rpc('upsert_sport_team_tie_template', {
+      p_competition_id: input.competitionId, p_template_id: input.templateId ?? null,
+      p_name: input.name.trim(), p_rubbers: input.rubbers,
+    });
+    if (error) throw new Error(normalizeCompetitionRpcMessage(error));
+    return String(data);
+  },
+
+  async applyTeamTieTemplate(fixture: CloudFixture, scheduleVersion: number, templateId: string): Promise<void> {
+    const { error } = await getSupabaseClient().rpc('apply_sport_team_tie_template', {
+      p_fixture_id: fixture.id, p_template_id: templateId,
+      p_expected_schedule_version: scheduleVersion, p_expected_row_version: fixture.rowVersion,
+    });
+    if (error) throw new Error(normalizeCompetitionRpcMessage(error));
+  },
+
+  async overrideTeamTieLineup(input: {
+    fixtureMatchId: string; entryId: string; playerProfileIds: string[]; expectedVersion: number; reason: string;
+  }): Promise<string> {
+    const { data, error } = await getSupabaseClient().rpc('override_sport_team_tie_lineup', {
+      p_fixture_match_id: input.fixtureMatchId, p_entry_id: input.entryId,
+      p_player_profile_ids: input.playerProfileIds, p_expected_version: input.expectedVersion,
+      p_reason: input.reason.trim(),
+    });
+    if (error) throw new Error(normalizeCompetitionRpcMessage(error));
+    return String(data);
+  },
+
+  async reviewTeamTieLineup(lineupId: string, approve: boolean, reason?: string): Promise<void> {
+    const { error } = await getSupabaseClient().rpc('review_sport_team_tie_lineup', {
+      p_lineup_id: lineupId, p_approve: approve, p_reason: reason?.trim() || null,
+    });
+    if (error) throw new Error(normalizeCompetitionRpcMessage(error));
+  },
+
+  async startTeamTie(fixtureId: string, reason?: string): Promise<void> {
+    const { error } = await getSupabaseClient().rpc('start_sport_team_tie', {
+      p_fixture_id: fixtureId, p_reason: reason?.trim() || null,
+    });
+    if (error) throw new Error(normalizeCompetitionRpcMessage(error));
+  },
+
+  async recordTeamTieRubberOutcome(fixtureMatchId: string, winnerEntryId: string, reason: string): Promise<CloudTeamTieState> {
+    const { data, error } = await getSupabaseClient().rpc('record_sport_team_tie_rubber_result', {
+      p_fixture_match_id: fixtureMatchId, p_winner_entry_id: winnerEntryId, p_reason: reason.trim(),
+    });
+    if (error) throw new Error(normalizeCompetitionRpcMessage(error));
+    return mapTeamTieState(data as Record<string, unknown>);
+  },
+
+  async getTeamTieState(fixtureId: string): Promise<CloudTeamTieState> {
+    const { data, error } = await getSupabaseClient().rpc('get_sport_team_tie_state', { p_fixture_id: fixtureId });
+    if (error) throw new Error(normalizeCompetitionRpcMessage(error));
+    return mapTeamTieState(data as Record<string, unknown>);
+  },
+
   async cancelFixture(fixture: CloudFixture, scheduleVersion: number, reason: string): Promise<void> {
     const { error } = await getSupabaseClient().rpc('cancel_sport_fixture', {
       p_fixture_id: fixture.id, p_reason: reason.trim(),
@@ -514,6 +605,16 @@ function mapFixture(row: Record<string, unknown>, matches: Record<string, unknow
       displayOrder: Number(match.display_order),
       format: String(match.match_format) as CloudFixtureMatch['format'], label: String(match.label),
     })),
+  };
+}
+
+function mapTeamTieState(row: Record<string, unknown>): CloudTeamTieState {
+  return {
+    fixtureId: String(row.fixture_id), status: String(row.status) as CloudTeamTieState['status'],
+    rubberCount: Number(row.rubber_count), majorityThreshold: Number(row.majority_threshold),
+    entrantAWins: Number(row.entrant_a_wins), entrantBWins: Number(row.entrant_b_wins),
+    winnerEntryId: optionalString(row.winner_entry_id), startedAt: optionalString(row.started_at),
+    clinchedAt: optionalString(row.clinched_at),
   };
 }
 

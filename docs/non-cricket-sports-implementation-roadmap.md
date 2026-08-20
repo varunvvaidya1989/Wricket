@@ -148,7 +148,7 @@ Acceptance criteria:
 
 ## Phase 4 — Team ties, format templates, and lineup submission
 
-Status: `IN PROGRESS`
+Status: `COMPLETE`
 
 Objective: model club-squad versus club-squad team matches as an ordered series
 of individual rubbers.
@@ -182,7 +182,7 @@ Acceptance criteria:
 
 ## Phase 5 — Authorized scoring and resilient match synchronization
 
-Status: `PENDING`
+Status: `COMPLETE`
 
 Objective: deliver production scoring for standalone matches, league fixtures,
 and team-tie rubbers across all non-cricket sports.

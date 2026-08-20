@@ -494,7 +494,7 @@ function DivisionChoices({ divisions, selected, onSelect, accent }: { divisions:
 function SelectResources({ stages, venues, stageId, venueId, onStage, onVenue, accent }: { stages: CloudCompetitionStage[]; venues: CloudCompetitionVenue[]; stageId?: string; venueId?: string; onStage: (id: string) => void; onVenue: (id: string) => void; accent: string }) { return <><Text variant="overline" tone="dim">STAGE</Text><View style={styles.choices}>{stages.map((item) => <Pressable key={item.id} onPress={() => onStage(item.id)} style={[styles.choice, stageId === item.id && { borderColor: accent }]}><Text variant="caption">{item.name}</Text></Pressable>)}</View><Text variant="overline" tone="dim">VENUE</Text><View style={styles.choices}>{venues.map((item) => <Pressable key={item.id} onPress={() => onVenue(item.id)} style={[styles.choice, venueId === item.id && { borderColor: accent }]}><Text variant="caption">{item.name}</Text></Pressable>)}</View></>; }
 function TieMatchEditor({ matches, onChange, accent }: { matches: CloudFixtureMatchDraft[]; onChange: (matches: CloudFixtureMatchDraft[]) => void; accent: string }) {
   const add = (format: CloudFixtureMatchDraft['format']) => onChange([
-    ...matches, { format, label: `${format === 'SINGLES' ? 'Singles' : 'Doubles'} ${matches.filter((item) => item.format === format).length + 1}` },
+    ...matches, { format, label: `${format === 'SINGLES' ? 'Singles' : format === 'MIXED_DOUBLES' ? 'Mixed doubles' : 'Doubles'} ${matches.filter((item) => item.format === format).length + 1}` },
   ]);
   const move = (index: number, direction: -1 | 1) => {
     const target = index + direction;
