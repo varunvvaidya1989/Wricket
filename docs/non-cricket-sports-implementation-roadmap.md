@@ -1,6 +1,6 @@
 # Non-Cricket Sports Implementation Roadmap
 
-Last updated: 2026-08-17
+Last updated: 2026-08-20
 
 This document is the implementation source of truth for Tennis, Badminton,
 Padel, Table Tennis, Pickleball, and future non-cricket sports in SportStage.
@@ -336,6 +336,32 @@ Acceptance criteria:
 - Deferred work: server-backed competition registration and roster locking are
   Phase 3; team-tie templates and lineup submission are Phase 4; cloud player
   statistics and public player cards are Phases 6 and 7.
+
+### 2026-08-20 — Phase 3 acceptance validation completed
+
+- Status remains `IN PROGRESS` until the validated work is committed and its
+  commit hash is recorded here.
+- Deployed migrations: `20260818100000`, `20260818120000`, `20260818121000`,
+  `20260818122000`, `20260818123000`, `20260818124000`, `20260818130000`,
+  `20260818131000`, `20260818132000`, and `20260818133000`.
+- Linked database validation: all seven Phase 3 pgTAP files passed, covering
+  141 assertions for lifecycle authorization, registration privacy and
+  re-registration, squad control, timezone validation, capacity, check-in,
+  points rules, officials, manual ordering, RLS visibility, optimistic
+  concurrency, and idempotency.
+- Application validation: 73 test files and 338 tests passed together with
+  strict TypeScript, lint, environment, architecture, and a 108-route web
+  export. Exact cloud competition route wiring is checked for all five sports.
+- Supabase advisors reported no error-level findings. Authenticated RPC wrapper
+  and existing multiple-policy performance warnings remain documented for
+  later platform hardening.
+- Review corrections: centralized lifecycle actions shared by the API and UI;
+  added same-request replay and conflicting-request idempotency assertions; and
+  made Phase 3 database fixtures compatible with hardened sport-profile RLS and
+  reliable against a populated linked project.
+- Deferred work: ordered team-tie match drafts belong to Phase 4; lineup
+  submission, scoring synchronization, results, public live discovery, and
+  notifications remain in Phases 4 through 8.
 
 ## Phase completion update template
 

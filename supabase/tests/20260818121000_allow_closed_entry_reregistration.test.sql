@@ -23,6 +23,9 @@ from unnest(array[
   'f4320000-0000-0000-0000-000000000001'::uuid,
   'f4320000-0000-0000-0000-000000000002'::uuid
 ]) account_id cross join public.sports sport where sport.code = 'TENNIS';
+insert into reregistration_ids(kind, id)
+select 'player_profile', id from public.sport_profiles
+where account_id = 'f4320000-0000-0000-0000-000000000002';
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', 'f4320000-0000-0000-0000-000000000001', true);
@@ -35,7 +38,7 @@ select 'league_competition', id from public.sport_competitions where name = 'Rer
 insert into reregistration_ids(kind, id)
 select 'league_entry', public.register_sport_league_player(
   (select id from reregistration_ids where kind = 'league_competition'),
-  (select id from public.sport_profiles where account_id = 'f4320000-0000-0000-0000-000000000002')
+  (select id from reregistration_ids where kind = 'player_profile')
 );
 
 insert into reregistration_tap_output(output) select lives_ok($$select public.withdraw_sport_entry(
@@ -44,7 +47,7 @@ insert into reregistration_tap_output(output) select lives_ok($$select public.wi
 insert into reregistration_tap_output(output) select is(
   public.register_sport_league_player(
     (select id from reregistration_ids where kind = 'league_competition'),
-    (select id from public.sport_profiles where account_id = 'f4320000-0000-0000-0000-000000000002')
+    (select id from reregistration_ids where kind = 'player_profile')
   ),
   (select id from reregistration_ids where kind = 'league_entry'),
   'a withdrawn player registration reuses its entry identity');
@@ -61,7 +64,7 @@ insert into reregistration_tap_output(output) select lives_ok($$select public.se
 insert into reregistration_tap_output(output) select is(
   public.register_sport_league_player(
     (select id from reregistration_ids where kind = 'league_competition'),
-    (select id from public.sport_profiles where account_id = 'f4320000-0000-0000-0000-000000000002')
+    (select id from reregistration_ids where kind = 'player_profile')
   ),
   (select id from reregistration_ids where kind = 'league_entry'),
   'a rejected player registration reuses its entry identity');
@@ -78,7 +81,7 @@ insert into reregistration_tap_output(output) select lives_ok($$select public.se
 insert into reregistration_tap_output(output) select is(
   public.register_sport_league_player(
     (select id from reregistration_ids where kind = 'league_competition'),
-    (select id from public.sport_profiles where account_id = 'f4320000-0000-0000-0000-000000000002')
+    (select id from reregistration_ids where kind = 'player_profile')
   ),
   (select id from reregistration_ids where kind = 'league_entry'),
   'a disqualified player registration reuses its entry identity');
@@ -94,7 +97,7 @@ insert into reregistration_tap_output(output) select is(
 insert into reregistration_tap_output(output) select is(
   public.register_sport_league_player(
     (select id from reregistration_ids where kind = 'league_competition'),
-    (select id from public.sport_profiles where account_id = 'f4320000-0000-0000-0000-000000000002')
+    (select id from reregistration_ids where kind = 'player_profile')
   ),
   (select id from reregistration_ids where kind = 'league_entry'),
   'retrying an active player registration remains idempotent');

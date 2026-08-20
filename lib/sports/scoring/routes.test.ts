@@ -32,8 +32,9 @@ describe('independent sport app routes', () => {
     ];
     routes.forEach((route) => expect(existsSync(resolve(appRoot, route))).toBe(true));
     expect(readFileSync(resolve(appRoot, 'index.tsx'), 'utf8')).toContain(`sportId="${id}"`);
-    expect(readFileSync(resolve(appRoot, 'competition/[id].tsx'), 'utf8'))
-      .toContain('SportCloudCompetitionDetailScreen');
+    const competitionRoute = readFileSync(resolve(appRoot, 'competition/[id].tsx'), 'utf8');
+    expect(competitionRoute).toContain('SportCloudCompetitionDetailScreen');
+    expect(competitionRoute).toContain(`sportId="${id}"`);
   });
 
   it('does not expose a generic court-scoring route', () => {

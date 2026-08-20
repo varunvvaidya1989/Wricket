@@ -40,7 +40,8 @@ insert into cloud_competition_tap_output(output) select lives_ok($$select public
 )$$, 'an active sport account can create an individual league');
 insert into cloud_competition_tap_output(output) select is((select lifecycle::text from public.sport_competitions where name = 'Cloud League'),
   'DRAFT', 'new competitions begin in draft');
-insert into cloud_competition_tap_output(output) select is((select count(*) from public.sport_competition_divisions), 1::bigint,
+insert into cloud_competition_tap_output(output) select is((select count(*) from public.sport_competition_divisions
+  where competition_id = (select id from public.sport_competitions where name = 'Cloud League')), 1::bigint,
   'competition creation adds the default open division');
 insert into cloud_competition_tap_output(output) select throws_ok($$select public.create_sport_competition(
   'TENNIS', 'LEAGUE', 'Invalid Doubles League', 'DOUBLES'

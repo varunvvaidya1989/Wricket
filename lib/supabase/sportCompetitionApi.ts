@@ -1,9 +1,10 @@
+import type { SportCompetitionLifecycle } from '@/lib/sports/platform/competitionLifecycle';
+
 import { getSupabaseClient } from './client';
 import { normalizeCompetitionRpcMessage } from './competitionRpcMessages';
 
 export type CloudCompetitionKind = 'TOURNAMENT' | 'LEAGUE';
-export type CloudCompetitionLifecycle = 'DRAFT' | 'REGISTRATION_OPEN' | 'REGISTRATION_LOCKED'
-  | 'PUBLISHED' | 'LIVE' | 'COMPLETED' | 'ARCHIVED' | 'CANCELLED';
+export type CloudCompetitionLifecycle = SportCompetitionLifecycle;
 export type CloudRegistrationStatus = 'PENDING' | 'ACCEPTED' | 'APPROVED'
   | 'WITHDRAWN' | 'REJECTED' | 'DISQUALIFIED';
 export type CloudStageKind = 'GROUP' | 'ROUND_ROBIN' | 'KNOCKOUT' | 'FINALS' | 'CUSTOM';

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { useSportFeatureFlag } from '@/hooks/useSportFeatureFlag';
+import { getNextCompetitionLifecycleActions } from '@/lib/sports/platform/competitionLifecycle';
 import {
   formatZonedDateTime,
   formatZonedDateTimeLabel,
@@ -464,7 +465,7 @@ export function SportCloudCompetitionDetailScreen({ sportId }: { sportId: Scorin
         <View style={styles.heading}><Text variant="overline" tone="dim">ORGANIZERS</Text><SmallAction label="INVITE" onPress={() => setOrganizerOpen(true)} accent={presentation.accent} /></View>
         {organizers.map((organizer) => <View key={organizer.accessId} style={styles.card}><View style={styles.flex}><Text variant="bodyStrong">{organizer.displayName}</Text><Text variant="caption" tone="muted">{organizer.status}</Text></View>{competition.ownerAccountId === auth.session?.user.id && organizer.status === 'ACTIVE' ? <Pressable onPress={() => transferOwnership(organizer)}><Text variant="overline" style={{ color: presentation.accent }}>TRANSFER OWNER</Text></Pressable> : null}{competition.ownerAccountId === auth.session?.user.id ? <Pressable onPress={() => void run(() => sportCompetitionApi.revokeOrganizer(competition.id, organizer.accountId), 'Could not revoke organizer')}><Text variant="overline" tone="danger">REVOKE</Text></Pressable> : null}</View>)}
         <Text variant="overline" tone="dim">LIFECYCLE ACTIONS</Text>
-        <View style={styles.lifecycle}>{nextLifecycleActions(competition.lifecycle).map((target) => <Button key={target} title={target.replaceAll('_', ' ')} onPress={() => transition(target)} style={{ backgroundColor: target === 'CANCELLED' ? colors.danger : presentation.accent }} />)}</View>
+        <View style={styles.lifecycle}>{getNextCompetitionLifecycleActions(competition.lifecycle).map((target) => <Button key={target} title={target.replaceAll('_', ' ')} onPress={() => transition(target)} style={{ backgroundColor: target === 'CANCELLED' ? colors.danger : presentation.accent }} />)}</View>
       </> : <Empty copy="Only the owner or an accepted organizer can manage this competition." /> : null}
     </View>
 
@@ -483,9 +484,6 @@ export function SportCloudCompetitionDetailScreen({ sportId }: { sportId: Scorin
   </Screen>;
 }
 
-function nextLifecycleActions(current: CloudCompetitionLifecycle): CloudCompetitionLifecycle[] {
-  return ({ DRAFT: ['REGISTRATION_OPEN', 'PUBLISHED', 'CANCELLED'], REGISTRATION_OPEN: ['REGISTRATION_LOCKED', 'CANCELLED'], REGISTRATION_LOCKED: ['REGISTRATION_OPEN', 'PUBLISHED', 'CANCELLED'], PUBLISHED: ['LIVE', 'CANCELLED'], LIVE: ['COMPLETED', 'CANCELLED'], COMPLETED: ['ARCHIVED'], CANCELLED: ['ARCHIVED'], ARCHIVED: [] } as Record<CloudCompetitionLifecycle, CloudCompetitionLifecycle[]>)[current];
-}
 function Info({ label, value }: { label: string; value: string }) { return <View style={styles.info}><Text variant="overline" tone="dim">{label}</Text><Text variant="bodyStrong">{value}</Text></View>; }
 function Empty({ copy }: { copy: string }) { return <View style={styles.empty}><Text variant="caption" tone="muted">{copy}</Text></View>; }
 function SmallAction({ label, onPress, accent }: { label: string; onPress: () => void; accent: string }) { return <Pressable onPress={onPress} style={[styles.smallAction, { borderColor: accent }]}><MaterialCommunityIcons name="plus" size={16} color={accent} /><Text variant="overline" style={{ color: accent }}>{label}</Text></Pressable>; }

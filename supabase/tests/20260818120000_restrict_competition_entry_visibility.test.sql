@@ -58,9 +58,9 @@ insert into public.sport_competition_entries(
   ('f4312000-0000-0000-0000-000000000004', 'f4311000-0000-0000-0000-000000000001', 'PLAYER', 'WITHDRAWN', null, null, now(), '{"display_name":"Withdrawn Player"}');
 
 insert into public.sport_league_players(
-  entry_id, competition_id, sport_profile_id, display_name_snapshot, eligibility
+  entry_id, competition_id, division_key, sport_profile_id, display_name_snapshot, eligibility
 )
-select source.entry_id, 'f4311000-0000-0000-0000-000000000001', profile.id,
+select source.entry_id, 'f4311000-0000-0000-0000-000000000001', 'OPEN', profile.id,
   profile.display_name, '["SINGLES"]'::jsonb
 from (values
   ('f4312000-0000-0000-0000-000000000001'::uuid, 'f4310000-0000-0000-0000-000000000002'::uuid),
@@ -77,6 +77,16 @@ values ('f4313000-0000-0000-0000-000000000001', (select id from public.sports wh
 insert into public.sport_teams(id, club_id, name, owner_account_id) values
   ('f4314000-0000-0000-0000-000000000001', 'f4313000-0000-0000-0000-000000000001', 'Approved Privacy Team', 'f4310000-0000-0000-0000-000000000006'),
   ('f4314000-0000-0000-0000-000000000002', 'f4313000-0000-0000-0000-000000000001', 'Pending Privacy Team', 'f4310000-0000-0000-0000-000000000006');
+insert into public.sport_club_memberships(
+  id, club_id, sport_profile_id, status, display_name_snapshot, accepted_at
+) values
+  ('f4315000-0000-0000-0000-000000000001', 'f4313000-0000-0000-0000-000000000001', (select id from public.sport_profiles where account_id = 'f4310000-0000-0000-0000-000000000002'), 'ACTIVE', 'Approved Player', now()),
+  ('f4315000-0000-0000-0000-000000000002', 'f4313000-0000-0000-0000-000000000001', (select id from public.sport_profiles where account_id = 'f4310000-0000-0000-0000-000000000003'), 'ACTIVE', 'Pending Player', now());
+insert into public.sport_team_memberships(
+  team_id, sport_profile_id, club_membership_id, status, display_name_snapshot, accepted_at
+) values
+  ('f4314000-0000-0000-0000-000000000001', (select id from public.sport_profiles where account_id = 'f4310000-0000-0000-0000-000000000002'), 'f4315000-0000-0000-0000-000000000001', 'ACTIVE', 'Approved Player', now()),
+  ('f4314000-0000-0000-0000-000000000002', (select id from public.sport_profiles where account_id = 'f4310000-0000-0000-0000-000000000003'), 'f4315000-0000-0000-0000-000000000002', 'ACTIVE', 'Pending Player', now());
 
 insert into public.sport_competition_entries(
   id, competition_id, entry_kind, status, accepted_at, approved_at, snapshot
@@ -84,10 +94,10 @@ insert into public.sport_competition_entries(
   ('f4312000-0000-0000-0000-000000000005', 'f4311000-0000-0000-0000-000000000002', 'SQUAD', 'APPROVED', now(), now(), '{"name":"Approved Privacy Team"}'),
   ('f4312000-0000-0000-0000-000000000006', 'f4311000-0000-0000-0000-000000000002', 'SQUAD', 'PENDING', null, null, '{"name":"Pending Privacy Team"}');
 insert into public.sport_tournament_squads(
-  entry_id, competition_id, source_team_id, name_snapshot, captain_account_id
+  entry_id, competition_id, division_key, source_team_id, name_snapshot, captain_account_id
 ) values
-  ('f4312000-0000-0000-0000-000000000005', 'f4311000-0000-0000-0000-000000000002', 'f4314000-0000-0000-0000-000000000001', 'Approved Privacy Team', 'f4310000-0000-0000-0000-000000000006'),
-  ('f4312000-0000-0000-0000-000000000006', 'f4311000-0000-0000-0000-000000000002', 'f4314000-0000-0000-0000-000000000002', 'Pending Privacy Team', 'f4310000-0000-0000-0000-000000000006');
+  ('f4312000-0000-0000-0000-000000000005', 'f4311000-0000-0000-0000-000000000002', 'OPEN', 'f4314000-0000-0000-0000-000000000001', 'Approved Privacy Team', 'f4310000-0000-0000-0000-000000000006'),
+  ('f4312000-0000-0000-0000-000000000006', 'f4311000-0000-0000-0000-000000000002', 'OPEN', 'f4314000-0000-0000-0000-000000000002', 'Pending Privacy Team', 'f4310000-0000-0000-0000-000000000006');
 insert into public.sport_squad_members(
   squad_entry_id, sport_profile_id, display_name_snapshot, eligibility, status, accepted_at, approved_at
 ) values
