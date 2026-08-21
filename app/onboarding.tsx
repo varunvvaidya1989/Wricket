@@ -5,6 +5,7 @@ import { Alert, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/Button';
 import { Text } from '@/components/ui/Text';
+import { isSportReleased } from '@/lib/sports/platform/sportRelease';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { SportOption, sportstageAccountApi } from '@/lib/supabase/sportstageAccountApi';
@@ -15,8 +16,11 @@ export default function OnboardingScreen() {
   const auth = useAuth();
   const metadata = auth.session?.user.user_metadata ?? {};
   const [displayName, setDisplayName] = useState(String(metadata.display_name ?? auth.profile?.displayName ?? ''));
-  const initialPrimaryCode = String(metadata.primary_sport_code ?? 'CRICKET');
-  const metadataSportCodes = Array.isArray(metadata.sport_codes) ? metadata.sport_codes.filter((code): code is string => typeof code === 'string') : [];
+  const metadataPrimaryCode = String(metadata.primary_sport_code ?? 'CRICKET');
+  const initialPrimaryCode = isSportReleased(metadataPrimaryCode) ? metadataPrimaryCode : 'CRICKET';
+  const metadataSportCodes = Array.isArray(metadata.sport_codes)
+    ? metadata.sport_codes.filter((code): code is string => typeof code === 'string' && isSportReleased(code))
+    : [];
   const [primarySportCode, setPrimarySportCode] = useState(initialPrimaryCode);
   const [selectedSportCodes, setSelectedSportCodes] = useState<string[]>(metadataSportCodes.length ? metadataSportCodes : [initialPrimaryCode]);
   const [sports, setSports] = useState<SportOption[]>([]);

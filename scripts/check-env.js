@@ -3,6 +3,7 @@ const path = require('path');
 
 const envExamplePath = path.join(process.cwd(), '.env.example');
 const requiredPublicKeys = [
+  'EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS',
   'EXPO_PUBLIC_SUPABASE_URL',
   'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
   'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY',

@@ -131,7 +131,7 @@ function WricketProfileDrawer({ visible, onClose }: { visible: boolean; onClose:
 
               <DrawerRow icon="account-edit-outline" label={auth.session ? 'Edit player & account' : 'Sign in or create account'} onPress={() => navigate('/account')} />
               {showLegacyLink ? <DrawerRow icon="link-variant" label="Link player from AuctionYodha" accent onPress={() => navigate('/wricket/ay-profile-link')} /> : null}
-              <DrawerRow icon="apps" label="SportStage apps" accent onPress={() => { onClose(); requestAnimationFrame(() => router.replace('/')); }} />
+              <DrawerRow icon="trophy-outline" label="Explore sports" accent onPress={() => { onClose(); requestAnimationFrame(() => router.replace('/apps')); }} />
               <AdPrivacyOptions />
               <DrawerRow
                 icon="information-outline"

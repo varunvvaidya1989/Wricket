@@ -212,7 +212,7 @@ Acceptance criteria:
 
 ## Phase 6 — Results, standings, points, and player statistics
 
-Status: `PENDING`
+Status: `COMPLETE`
 
 Objective: convert validated match results into competition outcomes and a
 cross-sport player record.
@@ -240,7 +240,7 @@ Acceptance criteria:
 
 ## Phase 7 — Public live discovery, following, and detailed viewing
 
-Status: `PENDING`
+Status: `COMPLETE`
 
 Objective: provide a public SportStage front door while preserving the approved
 boundary between guest snapshots and account-only detail.
@@ -269,7 +269,7 @@ Acceptance criteria:
 
 ## Phase 8 — Notifications, operations, and production rollout
 
-Status: `PENDING`
+Status: `COMPLETE`
 
 Objective: harden the completed platform for controlled production release.
 
@@ -362,6 +362,49 @@ Acceptance criteria:
 - Deferred work: ordered team-tie match drafts belong to Phase 4; lineup
   submission, scoring synchronization, results, public live discovery, and
   notifications remain in Phases 4 through 8.
+
+### 2026-08-20 - Phases 4 and 5 completed
+
+- Status changed from `IN PROGRESS` to `COMPLETE`.
+- Commit: `481a204` (`Complete non-cricket team ties and scoring`).
+- Migrations: `20260820140721`, `20260820143930`, and `20260820150350`.
+- Delivered: team-tie templates and lineups, audited tie operations, authorized
+  event-sourced scoring, leases, conflict handling, and offline replay support.
+- Release validation: included in the 367-test full suite and linked RLS review.
+- Deferred work: result projections, public discovery, and production operations
+  were completed in Phases 6 through 8.
+
+### 2026-08-21 - Phases 6, 7, and 8 completed
+
+- Status changed from `PENDING` to `COMPLETE`.
+- Migrations: `20260821060858`, `20260821060902`, `20260821060906`,
+  `20260821062745`, and `20260821064105`; all are applied to the linked
+  Supabase project.
+- Delivered: versioned points and deterministic standings/statistics; audited
+  corrections and manual progression; guest-safe discovery, follows, feeds,
+  and opt-in public cards; notifications, scoped support, retention, recovery,
+  observability, and per-sport rollout plans.
+- Product surfaces: public live discovery and shareable player cards, the
+  authenticated following feed and notification center, cloud standings,
+  unified profile statistics, and manager-scoped recovery tools are wired into
+  Expo Router and the established sport competition screens.
+- Database validation: 36 linked pgTAP authorization/schema assertions, 8
+  linked load/recovery assertions, and 10 linked surface/privacy assertions
+  passed. The load exercise covered 200 public discovery calls and two
+  checksum-equivalent projection rebuilds.
+- Application validation: 80 test files and 376 tests, strict TypeScript, lint,
+  environment, and architecture checks passed. The 112-route web export plus
+  Android and iOS production exports passed; iOS uses Google's sample AdMob app
+  ID until production setup.
+- Advisor review: no error-level findings. Intentional authorized RPC-wrapper,
+  dashboard leaked-password-protection, and legacy policy-performance warnings
+  are recorded in the production runbook.
+- Review corrections: rubber-result revisions now recalculate the team-tie
+  winner, standings, and player statistics in one transaction; rollout
+  validation preserves current feature percentages and does not widen release.
+- Deferred work: replace the sample iOS AdMob ID and enable leaked-password
+  protection before broad production rollout; no roadmap implementation phase
+  remains.
 
 ## Phase completion update template
 

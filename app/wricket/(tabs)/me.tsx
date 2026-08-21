@@ -49,7 +49,7 @@ export default function MeScreen() {
       </Card>
       <MenuCard icon="account-edit-outline" label="Edit player & account" onPress={() => router.push('/account')} />
       {ayLink?.status === 'VERIFIED_MATCH' || ayLink?.status === 'CONTACT_CONFLICT' ? <MenuCard icon="link-variant" label="Link player from AuctionYodha" accent onPress={() => router.push('/wricket/ay-profile-link')} /> : null}
-      <MenuCard icon="apps" label="SportStage apps" accent onPress={() => router.replace('/')} />
+      <MenuCard icon="trophy-outline" label="Explore sports" accent onPress={() => router.replace('/apps')} />
       <AdPrivacyOptions />
       <MenuCard icon="information-outline" label="About SportStage" onPress={() => void Linking.openURL('https://www.sportstageapp.com/about').catch(() => Alert.alert('Could not open About SportStage', 'Please check your connection and try again.'))} />
       <SportStageSignOutActions />

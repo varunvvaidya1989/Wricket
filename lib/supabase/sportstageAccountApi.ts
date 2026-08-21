@@ -1,3 +1,5 @@
+import { isSportReleased, releasedSportCodes } from '@/lib/sports/platform/sportRelease';
+
 import { getSupabaseClient } from './client';
 
 export interface SportOption {
@@ -16,7 +18,7 @@ export const sportstageAccountApi = {
       .neq('availability_status', 'HIDDEN')
       .order('display_order');
     if (error) throw error;
-    return (data ?? []).map(row => ({
+    return (data ?? []).filter((row) => isSportReleased(row.code)).map(row => ({
       id: row.id,
       code: row.code,
       name: row.name,
@@ -26,10 +28,15 @@ export const sportstageAccountApi = {
   },
 
   async saveSports(displayName: string, sportCodes: string[], primarySportCode: string): Promise<void> {
+    const allowedSportCodes = releasedSportCodes(sportCodes);
+    const allowedPrimarySportCode = allowedSportCodes.includes(primarySportCode)
+      ? primarySportCode
+      : allowedSportCodes[0];
+    if (!allowedPrimarySportCode) throw new Error('Select an available sport');
     const { error } = await getSupabaseClient().rpc('save_my_sports', {
       p_display_name: displayName.trim(),
-      p_sport_codes: sportCodes,
-      p_primary_sport_code: primarySportCode,
+      p_sport_codes: allowedSportCodes,
+      p_primary_sport_code: allowedPrimarySportCode,
     });
     if (error) throw error;
   },

@@ -2,6 +2,7 @@ import { useRouter, useSegments } from 'expo-router';
 import React, { useEffect } from 'react';
 
 import { AnimatedSportStageSplash } from '@/components/branding/AnimatedSportStageSplash';
+import { isSportReleased } from '@/lib/sports/platform/sportRelease';
 import { useAuth } from './AuthProvider';
 
 const appSportByRoot: Readonly<Record<string, string>> = {
@@ -25,9 +26,9 @@ export function RootAccessGate({ children }: { children: React.ReactNode }) {
       if (root !== 'auth-link-error') router.replace('/auth-link-error');
       return;
     }
-    const publicAuthRoute = root === 'auth' || root === 'auth-link-error' || root === 'forgot-password' || root === 'reset-password';
+    const publicAuthRoute = root === 'live' || root === 'player' || root === 'auth' || root === 'auth-link-error' || root === 'forgot-password' || root === 'reset-password';
     if (!auth.session) {
-      if (!publicAuthRoute) router.replace('/auth');
+      if (!publicAuthRoute) router.replace('/live');
       return;
     }
     const onboardingComplete = auth.profile?.onboardingStatus === 'COMPLETED' && Boolean(auth.profile.primarySport);
@@ -40,10 +41,12 @@ export function RootAccessGate({ children }: { children: React.ReactNode }) {
       return;
     }
     const requiredSport = root ? appSportByRoot[root] : undefined;
-    const hasSportAccess = !requiredSport || auth.profile?.connectedSports.some(
-      sport => sport.code === requiredSport && sport.accessStatus === 'ACTIVE',
+    const hasSportAccess = !requiredSport || (
+      isSportReleased(requiredSport) && auth.profile?.connectedSports.some(
+        sport => sport.code === requiredSport && sport.accessStatus === 'ACTIVE',
+      )
     );
-    if (!hasSportAccess) router.replace('/');
+    if (!hasSportAccess) router.replace('/apps');
   }, [auth.authLinkError, auth.loading, auth.profile, auth.session, root, router]);
 
   if (auth.loading) return <AnimatedSportStageSplash />;

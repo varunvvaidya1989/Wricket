@@ -38,8 +38,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authLinkError, setAuthLinkError] = useState<{ code: string; message: string } | null>(null);
 
   const loadProfile = useCallback(async (nextSession: Session | null) => {
+    const nextProfile = nextSession ? await getCloudProfile(nextSession.user.id) : null;
+    setProfile(nextProfile);
     setSession(nextSession);
-    setProfile(nextSession ? await getCloudProfile(nextSession.user.id) : null);
   }, []);
 
   useEffect(() => {

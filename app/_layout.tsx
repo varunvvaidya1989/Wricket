@@ -15,6 +15,7 @@ import { colors } from '@/lib/theme/colors';
 import { AuthProvider } from '@/components/providers/AuthProvider';
 import { RootAccessGate } from '@/components/providers/RootAccessGate';
 import { AnimatedSportStageSplash } from '@/components/branding/AnimatedSportStageSplash';
+import { SportProfileDrawerProvider } from '@/components/sports/scoring/SportProfileDrawer';
 
 const ANIMATED_SPLASH_DURATION_MS = 1500;
 
@@ -69,7 +70,8 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <RootAccessGate>
-            <ThemeProvider value={sportStageTheme}>
+            <SportProfileDrawerProvider>
+              <ThemeProvider value={sportStageTheme}>
               <Stack
                 screenOptions={{
                   contentStyle: { backgroundColor: colors.bg },
@@ -79,6 +81,7 @@ export default function RootLayout() {
                 }}
               >
                 <Stack.Screen name="index" options={{ headerShown: false }} />
+                <Stack.Screen name="apps" options={{ headerShown: false }} />
                 <Stack.Screen name="auth" options={{ headerShown: false }} />
                 <Stack.Screen name="auth-link-error" options={{ headerShown: false }} />
                 <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
@@ -86,6 +89,10 @@ export default function RootLayout() {
                 <Stack.Screen name="onboarding" options={{ headerShown: false }} />
                 <Stack.Screen name="account" options={{ headerShown: false }} />
                 <Stack.Screen name="profile" options={{ headerShown: false }} />
+                <Stack.Screen name="live" options={{ headerShown: false }} />
+                <Stack.Screen name="feed" options={{ headerShown: false }} />
+                <Stack.Screen name="notifications" options={{ headerShown: false }} />
+                <Stack.Screen name="player" options={{ headerShown: false }} />
                 <Stack.Screen name="tennis" options={{ headerShown: false }} />
                 <Stack.Screen name="badminton" options={{ headerShown: false }} />
                 <Stack.Screen name="padel" options={{ headerShown: false }} />
@@ -95,7 +102,8 @@ export default function RootLayout() {
                 <Stack.Screen name="wricket" options={{ headerShown: false }} />
               </Stack>
               <StatusBar style="light" />
-            </ThemeProvider>
+              </ThemeProvider>
+            </SportProfileDrawerProvider>
           </RootAccessGate>
         </AuthProvider>
       </SafeAreaProvider>

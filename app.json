@@ -2,7 +2,7 @@
   "expo": {
     "name": "SportStage",
     "slug": "sportstage",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/sportstage/logo/sportstage-icon-1024.png",
     "scheme": "sportstage",
@@ -49,6 +49,7 @@
         "react-native-google-mobile-ads",
         {
           "androidAppId": "ca-app-pub-1107614471405385~7780496634",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
           "delayAppMeasurementInit": true
         }
       ],

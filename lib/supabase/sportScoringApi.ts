@@ -9,7 +9,63 @@ export interface SportScoringLease {
   expiresAt: string;
 }
 
+export interface SportCloudScoringEvent {
+  sequence: number;
+  kind: SportScoringEventKind;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface SportCloudMatchFeed {
+  id: string;
+  sportId: string;
+  competitionId?: string;
+  competitionName: string;
+  participantA: string;
+  participantB: string;
+  matchFormat: string;
+  status: string;
+  headlineScore: string;
+  currentSequence: number;
+  updatedAt: string;
+  events: SportCloudScoringEvent[];
+}
+
 export const sportScoringApi = {
+  async feed(scoringMatchId: string): Promise<SportCloudMatchFeed> {
+    const client = getSupabaseClient();
+    const { data: match, error: matchError } = await client.from('sport_scoring_matches')
+      .select('id, sport_id, competition_id, match_format, status, current_sequence, updated_at')
+      .eq('id', scoringMatchId).single();
+    if (matchError) throw matchError;
+
+    const [snapshotResult, eventResult] = await Promise.all([
+      client.from('sport_public_live_snapshots')
+        .select('competition_name, participant_a, participant_b, headline_score')
+        .eq('scoring_match_id', scoringMatchId).maybeSingle(),
+      client.from('sport_scoring_events')
+        .select('sequence, kind, payload, created_at')
+        .eq('scoring_match_id', scoringMatchId).order('sequence', { ascending: false }).limit(100),
+    ]);
+    if (snapshotResult.error) throw snapshotResult.error;
+    if (eventResult.error) throw eventResult.error;
+    const snapshot = snapshotResult.data;
+    return {
+      id: String(match.id), sportId: String(match.sport_id),
+      competitionId: match.competition_id ? String(match.competition_id) : undefined,
+      competitionName: snapshot?.competition_name ? String(snapshot.competition_name) : 'SportStage match',
+      participantA: snapshot?.participant_a ? String(snapshot.participant_a) : 'Entrant A',
+      participantB: snapshot?.participant_b ? String(snapshot.participant_b) : 'Entrant B',
+      matchFormat: String(match.match_format), status: String(match.status),
+      headlineScore: snapshot?.headline_score ? String(snapshot.headline_score) : '0-0',
+      currentSequence: Number(match.current_sequence), updatedAt: String(match.updated_at),
+      events: (eventResult.data ?? []).map((event) => ({
+        sequence: Number(event.sequence), kind: event.kind as SportScoringEventKind,
+        payload: event.payload as Record<string, unknown>, createdAt: String(event.created_at),
+      })),
+    };
+  },
+
   async create(input: {
     fixtureId: string; fixtureMatchId?: string; matchFormat: 'SINGLES' | 'DOUBLES' | 'MIXED_DOUBLES';
     sideAPlayers: string[]; sideBPlayers: string[]; rulesSnapshot: Record<string, unknown>;

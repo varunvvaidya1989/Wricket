@@ -29,11 +29,13 @@ import {
   type CloudFixtureOfficial,
 } from '@/lib/supabase/sportCompetitionApi';
 import { sportRosterApi, type SportPlayerSearchResult, type SportTeamSummary } from '@/lib/supabase/sportRosterApi';
+import { sportOperationsApi } from '@/lib/supabase/sportOperationsApi';
+import { sportResultsApi, type SportStanding } from '@/lib/supabase/sportResultsApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { SportCloudCompetitionUnavailable } from './SportCloudCompetitionUnavailable';
 
-type Tab = 'overview' | 'entrants' | 'schedule' | 'points' | 'officials' | 'manage';
+type Tab = 'overview' | 'entrants' | 'schedule' | 'standings' | 'points' | 'officials' | 'manage';
 type ManagedResource = { type: 'STAGE' | 'VENUE' | 'DIVISION'; id: string; name: string; address?: string; capacity?: number };
 
 export function SportCloudCompetitionDetailScreen({ sportId }: { sportId: ScoringSportId }) {
@@ -59,6 +61,7 @@ export function SportCloudCompetitionDetailScreen({ sportId }: { sportId: Scorin
   const [players, setPlayers] = useState<SportPlayerSearchResult[]>([]);
   const [organizerResults, setOrganizerResults] = useState<SportPlayerSearchResult[]>([]);
   const [organizers, setOrganizers] = useState<CloudCompetitionOrganizer[]>([]);
+  const [standings, setStandings] = useState<SportStanding[]>([]);
   const [organizerQuery, setOrganizerQuery] = useState('');
   const [teams, setTeams] = useState<SportTeamSummary[]>([]);
   const [ownSportProfileId, setOwnSportProfileId] = useState<string>();
@@ -108,8 +111,10 @@ export function SportCloudCompetitionDetailScreen({ sportId }: { sportId: Scorin
       sportCompetitionApi.get(id),
       accountId ? sportRosterApi.getMySportProfile(accountId, presentation.catalogCode) : undefined,
       accountId ? sportRosterApi.listManageableTeams(presentation.catalogCode) : [],
-    ]).then(async ([nextDetail, profile, manageableTeams]) => {
+      sportResultsApi.listStandings(id),
+    ]).then(async ([nextDetail, profile, manageableTeams, nextStandings]) => {
       setDetail(nextDetail);
+      setStandings(nextStandings);
       setOwnSportProfileId(profile?.id);
       setTeams(manageableTeams);
       setEditName(nextDetail.competition.name);
@@ -416,7 +421,7 @@ export function SportCloudCompetitionDetailScreen({ sportId }: { sportId: Scorin
     <AppHeader title={competition.name} eyebrow={`${config.name.toUpperCase()} · ${competition.lifecycle.replaceAll('_', ' ')}`} back />
     <View style={styles.content}>
       <View style={[styles.hero, { borderColor: presentation.accent }]}><MaterialCommunityIcons name={competition.kind === 'TOURNAMENT' ? 'trophy-outline' : 'table-large'} size={30} color={presentation.accent} /><View style={styles.flex}><Text variant="h1">{competition.name}</Text><Text variant="caption" tone="muted">{competition.kind} · {competition.visibility}</Text></View></View>
-      <View style={styles.tabs}>{(['overview', 'entrants', 'schedule', 'points', 'officials', 'manage'] as const).map((value) => <Pressable key={value} onPress={() => setTab(value)} style={[styles.tab, tab === value && { borderColor: presentation.accent }]}><Text variant="overline" style={tab === value ? { color: presentation.accent } : undefined}>{value}</Text></Pressable>)}</View>
+      <View style={styles.tabs}>{(['overview', 'entrants', 'schedule', 'standings', 'points', 'officials', 'manage'] as const).map((value) => <Pressable key={value} onPress={() => setTab(value)} style={[styles.tab, tab === value && { borderColor: presentation.accent }]}><Text variant="overline" style={tab === value ? { color: presentation.accent } : undefined}>{value}</Text></Pressable>)}</View>
 
       {tab === 'overview' ? <>
         <Info label="STATUS" value={competition.lifecycle.replaceAll('_', ' ')} />
@@ -449,6 +454,13 @@ export function SportCloudCompetitionDetailScreen({ sportId }: { sportId: Scorin
         <Text variant="caption" tone="muted">Published points rules are locked and never silently rewrite standings.</Text>
       </> : null}
 
+      {tab === 'standings' ? <>
+        <View style={styles.heading}><Text variant="overline" tone="dim">LIVE TABLE · RULE VERSION {detail.pointsRule.version}</Text>{detail.canManage ? <Pressable onPress={() => void run(() => sportResultsApi.rebuild(competition.id), 'Could not rebuild standings')}><Text variant="overline" style={{ color: presentation.accent }}>REBUILD</Text></Pressable> : null}</View>
+        <View style={styles.standingsHeader}><Text variant="overline" tone="dim" style={styles.rankCell}>#</Text><Text variant="overline" tone="dim" style={styles.flex}>ENTRANT</Text><Text variant="overline" tone="dim" style={styles.statCell}>P</Text><Text variant="overline" tone="dim" style={styles.statCell}>W</Text><Text variant="overline" tone="dim" style={styles.statCell}>PTS</Text></View>
+        {standings.map((standing) => <View key={standing.entryId} style={styles.standingRow}><Text variant="mono" style={styles.rankCell}>{standing.rank}</Text><View style={styles.flex}><Text variant="bodyStrong" numberOfLines={1}>{entryById.get(standing.entryId)?.displayName ?? 'Entrant'}</Text><Text variant="caption" tone="dim">Rubbers {standing.rubbersWon}-{standing.rubbersLost}</Text></View><Text variant="mono" style={styles.statCell}>{standing.played}</Text><Text variant="mono" style={styles.statCell}>{standing.won}</Text><Text variant="scoreMd" style={[styles.statCell, { color: presentation.accent }]}>{standing.points}</Text></View>)}
+        {!standings.length ? <Empty copy="Standings appear after the first completed result." /> : null}
+      </> : null}
+
       {tab === 'officials' ? <>
         <View style={styles.heading}><Text variant="overline" tone="dim">MATCH OFFICIALS · {detail.officials.length}</Text>{detail.canManage && detail.fixtures.length ? <SmallAction label="ASSIGN" onPress={() => { setOfficialFixtureId(detail.fixtures[0]?.id); setOfficialOpen(true); }} accent={presentation.accent} /> : null}</View>
         {detail.officials.map((official) => <View key={official.id} style={styles.card}><View style={styles.flex}><Text variant="bodyStrong">{official.displayName}</Text><Text variant="caption" tone="muted">{official.role} · {entryById.get(detail.fixtures.find((fixture) => fixture.id === official.fixtureId)?.entrantAId ?? '')?.displayName ?? 'Fixture'} assignment</Text></View>{detail.canManage ? <Pressable onPress={() => void run(() => sportCompetitionApi.revokeOfficial(official.id), 'Could not revoke official')}><Text variant="overline" tone="danger">REVOKE</Text></Pressable> : null}</View>)}
@@ -456,6 +468,12 @@ export function SportCloudCompetitionDetailScreen({ sportId }: { sportId: Scorin
       </> : null}
 
       {tab === 'manage' ? detail.canManage ? <>
+        <Text variant="overline" tone="dim">SCOPED SUPPORT OPERATIONS</Text>
+        <View style={styles.lifecycle}>
+          <Button title="Create recovery checkpoint" variant="secondary" onPress={() => void run(() => sportOperationsApi.supportAction(competition.id, 'CREATE_RECOVERY_CHECKPOINT', 'Competition manager created a pre-change recovery checkpoint.'), 'Could not create checkpoint')} />
+          <Button title="Refresh public snapshots" variant="secondary" onPress={() => void run(() => sportOperationsApi.supportAction(competition.id, 'REFRESH_PUBLIC_SNAPSHOTS', 'Competition manager refreshed public live projections.'), 'Could not refresh public snapshots')} />
+          <Button title="Release expired scoring leases" variant="secondary" onPress={() => void run(() => sportOperationsApi.supportAction(competition.id, 'RELEASE_SCORING_LEASE', 'Competition manager released stale scoring leases during recovery.'), 'Could not release scoring leases')} />
+        </View>
         <View style={styles.heading}><Text variant="overline" tone="dim">STAGES</Text><SmallAction label="ADD" onPress={() => setResourceOpen('STAGE')} accent={presentation.accent} /></View>
         {detail.stages.map((stage, index) => <ResourceRow key={stage.id} name={stage.name} detail={stage.kind} onMoveUp={index ? () => moveResource('STAGE', index, -1) : undefined} onMoveDown={index < detail.stages.length - 1 ? () => moveResource('STAGE', index, 1) : undefined} onEdit={() => setEditingResource({ type: 'STAGE', id: stage.id, name: stage.name })} onDelete={() => deleteResource({ type: 'STAGE', id: stage.id, name: stage.name })} />)}
         <View style={styles.heading}><Text variant="overline" tone="dim">VENUES</Text><SmallAction label="ADD" onPress={() => setResourceOpen('VENUE')} accent={presentation.accent} /></View>
@@ -514,6 +532,7 @@ const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 }, tab: { width: '32%', minHeight: 42, borderBottomWidth: 2, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   heading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }, info: { padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, gap: 4 },
   card: { minHeight: 64, padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm }, checkInControls: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  standingsHeader: { minHeight: 34, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, standingRow: { minHeight: 62, paddingHorizontal: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }, rankCell: { width: 28, textAlign: 'center' }, statCell: { width: 38, textAlign: 'center' },
   smallAction: { minHeight: 34, paddingHorizontal: spacing.sm, borderWidth: 1, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', gap: 4 }, lifecycle: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   tieDraft: { gap: spacing.sm }, tieMatchList: { maxHeight: 300 }, tieMatchListContent: { gap: spacing.sm }, tieLabel: { flex: 1, minHeight: 42 },
   empty: { padding: spacing.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.md, alignItems: 'center' },

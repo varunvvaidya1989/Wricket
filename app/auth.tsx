@@ -158,6 +158,7 @@ export default function AuthScreen() {
         disabled={saving}
         fullWidth
       />
+      <Button title="Back to live scores" variant="secondary" onPress={() => router.replace('/live')} disabled={saving} fullWidth />
     </ScrollView>
   </KeyboardAvoidingView>;
 }

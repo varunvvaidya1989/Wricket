@@ -1,6 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Href, useRouter } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -11,6 +11,7 @@ import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { useGlobalProfile } from '@/hooks/useGlobalProfile';
 import { SportSummary } from '@/lib/supabase/globalProfileApi';
+import { sportResultsApi, type MySportStatistic } from '@/lib/supabase/sportResultsApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 
@@ -18,6 +19,12 @@ export default function GlobalProfileScreen() {
   const auth = useAuth();
   const router = useRouter();
   const { data, loading, error, reload } = useGlobalProfile(auth.session?.user.id);
+  const [cloudStats, setCloudStats] = useState<MySportStatistic[]>([]);
+
+  useEffect(() => {
+    if (!auth.session) { setCloudStats([]); return; }
+    void sportResultsApi.listMine().then(setCloudStats).catch(() => setCloudStats([]));
+  }, [auth.session]);
 
   return <Screen padded={false}>
     <AppHeader title="Global Profile" eyebrow="SPORTSTAGE" back right={<Pressable accessibilityRole="button" accessibilityLabel="Account settings" onPress={() => router.push('/account')} style={styles.headerAction}><MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} /></Pressable>} />
@@ -38,6 +45,9 @@ export default function GlobalProfileScreen() {
       <View style={styles.sectionHeader}><Text variant="overline" tone="muted">CONNECTED SPORTS</Text><Pressable onPress={() => router.push('/account')}><Text variant="caption" tone="accent">MANAGE</Text></Pressable></View>
       {data.sports.length ? data.sports.map(summary => <SportSummaryCard key={summary.sport.id} summary={summary} onOpen={route => router.push(route)} />) : <View style={styles.empty}><MaterialCommunityIcons name="trophy-outline" size={26} color={colors.textDim} /><Text variant="h3">No sports connected</Text><Text tone="muted" style={styles.centerText}>Choose the sports you follow or play to build your SportStage profile.</Text><Pressable onPress={() => router.push('/account')} style={styles.retry}><Text variant="caption" style={{ color: colors.accentInk }}>CHOOSE SPORTS</Text></Pressable></View>}
 
+      <View style={styles.sectionHeader}><Text variant="overline" tone="muted">CROSS-SPORT MATCH RECORD</Text><Text variant="caption" tone="dim">CLOUD RESULTS</Text></View>
+      {cloudStats.length ? <View style={styles.cloudStats}>{cloudStats.map((stat) => <View key={stat.sportCode} style={styles.cloudStatRow}><SportIcon code={stat.sportCode} size={20} color={colors.accent} /><Text variant="bodyStrong" style={styles.flex}>{stat.sportCode.replaceAll('_', ' ')}</Text><CloudValue value={stat.matchesPlayed} label="PLAYED" /><CloudValue value={stat.wins} label="WON" /><CloudValue value={stat.losses} label="LOST" /></View>)}</View> : <View style={styles.emptyRecord}><Text variant="caption" tone="dim">Completed cloud matches across your connected sports will build this record.</Text></View>}
+
       <View style={styles.accountSection}><Text variant="overline" tone="muted">ACCOUNT</Text><Pressable onPress={() => router.push('/account')} style={styles.accountRow}><MaterialCommunityIcons name="shield-account-outline" size={21} color={colors.textMuted} /><View style={styles.flex}><Text variant="bodyStrong">Account and privacy</Text><Text variant="caption" tone="dim">Identity, security and data controls</Text></View><MaterialCommunityIcons name="chevron-right" size={21} color={colors.textDim} /></Pressable></View>
     </ScrollView> : null}
   </Screen>;
@@ -54,6 +64,10 @@ function SportSummaryCard({ summary, onOpen }: { summary: SportSummary; onOpen: 
 
 function ActivityValue({ value, label }: { value: number; label: string }) {
   return <View style={styles.activityValue}><Text variant="h2">{value}</Text><Text variant="overline" tone="dim">{label}</Text></View>;
+}
+
+function CloudValue({ value, label }: { value: number; label: string }) {
+  return <View style={styles.cloudValue}><Text variant="bodyStrong">{value}</Text><Text variant="overline" tone="dim">{label}</Text></View>;
 }
 
 function initials(name: string) { return name.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'S'; }
@@ -79,6 +93,10 @@ const styles = StyleSheet.create({
   sportStat: { flex: 1, alignItems: 'center', gap: 2 },
   unavailableCard: { opacity: 0.72 },
   noActivity: { marginTop: spacing.md },
+  cloudStats: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surface, overflow: 'hidden' },
+  cloudStatRow: { minHeight: 64, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  cloudValue: { width: 46, alignItems: 'center', gap: 2 },
+  emptyRecord: { padding: spacing.md, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.md },
   empty: { alignItems: 'center', gap: spacing.sm, padding: spacing.xl, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg },
   retry: { marginTop: spacing.sm, backgroundColor: colors.accent, borderRadius: radius.pill, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   accountSection: { marginTop: spacing.lg, gap: spacing.sm },

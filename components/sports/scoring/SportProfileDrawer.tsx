@@ -25,7 +25,7 @@ import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 
 interface SportProfileDrawerContextValue {
-  readonly sportId: ScoringSportId;
+  readonly sportId?: ScoringSportId;
   openProfileDrawer(): void;
 }
 
@@ -35,7 +35,7 @@ export function SportProfileDrawerProvider({
   sportId,
   children,
 }: {
-  sportId: ScoringSportId;
+  sportId?: ScoringSportId;
   children: React.ReactNode;
 }) {
   const [visible, setVisible] = useState(false);
@@ -47,26 +47,28 @@ export function SportProfileDrawerProvider({
   );
 }
 
-export function SportAvatarButton() {
+export function SportAvatarButton({ compact = false }: { compact?: boolean }) {
   const context = useContext(SportProfileDrawerContext);
   const auth = useAuth();
   if (!context) throw new Error('SportAvatarButton must be used within SportProfileDrawerProvider.');
-  const presentation = SPORT_PRESENTATION[context.sportId];
+  const presentation = context.sportId ? SPORT_PRESENTATION[context.sportId] : undefined;
+  const accent = presentation?.accent ?? colors.accent;
   const name = auth.profile?.displayName ?? auth.session?.user.email ?? 'Player';
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open ${SPORT_CONFIGS[context.sportId].name} profile`}
+      accessibilityLabel={context.sportId ? `Open ${SPORT_CONFIGS[context.sportId].name} profile` : 'Open profile'}
       onPress={context.openProfileDrawer}
       style={({ pressed }) => [
         styles.avatarButton,
-        { borderColor: presentation.accent, backgroundColor: `${presentation.accent}18` },
+        compact && styles.avatarButtonCompact,
+        { borderColor: accent, backgroundColor: `${accent}18` },
         pressed && styles.pressed,
       ]}
     >
       {auth.profile?.avatarUrl
         ? <Image source={{ uri: auth.profile.avatarUrl }} style={styles.avatarImage} />
-        : <Text variant="bodyStrong" style={{ color: presentation.accent }}>{initials(name)}</Text>}
+        : <Text variant="bodyStrong" style={{ color: accent }}>{initials(name)}</Text>}
     </Pressable>
   );
 }
@@ -76,14 +78,15 @@ function SportProfileDrawer({
   visible,
   onClose,
 }: {
-  sportId: ScoringSportId;
+  sportId?: ScoringSportId;
   visible: boolean;
   onClose: () => void;
 }) {
   const router = useRouter();
   const auth = useAuth();
-  const config = SPORT_CONFIGS[sportId];
-  const presentation = SPORT_PRESENTATION[sportId];
+  const config = sportId ? SPORT_CONFIGS[sportId] : undefined;
+  const presentation = sportId ? SPORT_PRESENTATION[sportId] : undefined;
+  const accent = presentation?.accent ?? colors.accent;
   const { width } = useWindowDimensions();
   const drawerWidth = Math.min(width * 0.88, 380);
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
@@ -107,29 +110,29 @@ function SportProfileDrawer({
         <Animated.View style={[styles.drawer, { width: drawerWidth, transform: [{ translateX }] }]}>
           <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
             <View style={styles.drawerHeader}>
-              <Text variant="overline" tone="muted">{config.name.toUpperCase()} PROFILE</Text>
+              <Text variant="overline" tone="muted">{config ? `${config.name.toUpperCase()} PROFILE` : 'SPORTSTAGE PROFILE'}</Text>
               <Pressable accessibilityRole="button" accessibilityLabel="Close profile" onPress={onClose} style={styles.closeButton}>
                 <MaterialCommunityIcons name="close" size={22} color={colors.text} />
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.drawerContent}>
               <Pressable onPress={() => navigate('/profile')} style={({ pressed }) => [styles.profileCard, pressed && styles.pressed]}>
-                <View style={[styles.largeAvatar, { backgroundColor: `${presentation.accent}18` }]}>
+                <View style={[styles.largeAvatar, { backgroundColor: `${accent}18` }]}>
                   {auth.profile?.avatarUrl
                     ? <Image source={{ uri: auth.profile.avatarUrl }} style={styles.avatarImage} />
-                    : <Text variant="h2" style={{ color: presentation.accent }}>{initials(name)}</Text>}
+                    : <Text variant="h2" style={{ color: accent }}>{initials(name)}</Text>}
                 </View>
                 <View style={styles.profileCopy}>
                   <Text variant="h3" numberOfLines={1}>{name}</Text>
                   <Text variant="caption" tone="muted" numberOfLines={1}>{auth.session?.user.email}</Text>
-                  <Text variant="caption" style={{ color: presentation.accent }}>{config.name} profile</Text>
+                  <Text variant="caption" style={{ color: accent }}>{config ? `${config.name} profile` : 'Your profile across every sport'}</Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} />
               </Pressable>
 
-              <DrawerRow icon="account-outline" label={`My ${config.name}`} onPress={() => navigate(`/${presentation.routeSegment}/my-sport` as Href, true)} />
+              {config && presentation ? <DrawerRow icon="account-outline" label={`My ${config.name}`} onPress={() => navigate(`/${presentation.routeSegment}/my-sport` as Href, true)} /> : null}
               <DrawerRow icon="account-edit-outline" label="Edit profile & account" onPress={() => navigate('/account')} />
-              <DrawerRow icon="apps" label="SportStage apps" accent={presentation.accent} onPress={() => navigate('/', true)} />
+              <DrawerRow icon="trophy-outline" label="Explore sports" accent={accent} onPress={() => navigate('/apps', true)} />
               <AdPrivacyOptions />
               <DrawerRow
                 icon="information-outline"
@@ -174,6 +177,7 @@ function initials(name: string): string {
 
 const styles = StyleSheet.create({
   avatarButton: { width: 42, height: 42, borderRadius: 21, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  avatarButtonCompact: { width: 38, height: 38, borderRadius: 19 },
   avatarImage: { width: '100%', height: '100%' },
   pressed: { opacity: 0.72 },
   modalRoot: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end' },

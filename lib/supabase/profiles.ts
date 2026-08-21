@@ -1,5 +1,7 @@
 import type { User } from '@supabase/supabase-js';
 
+import { isSportReleased } from '@/lib/sports/platform/sportRelease';
+
 import { getSupabaseClient } from './client';
 
 export interface CloudSport {
@@ -40,7 +42,7 @@ export async function getCloudProfile(userId: string): Promise<CloudProfile | nu
     : { data: [], error: null };
   if (sportError) throw sportError;
   const relationshipBySport = new Map((relationships ?? []).map(item => [item.sport_id, item]));
-  const connectedSports: CloudSport[] = (sports ?? []).map(sport => {
+  const connectedSports: CloudSport[] = (sports ?? []).filter((sport) => isSportReleased(sport.code)).map(sport => {
     const relationship = relationshipBySport.get(sport.id)!;
     return {
       id: sport.id,

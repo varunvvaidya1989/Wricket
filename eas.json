@@ -10,7 +10,8 @@
       "env": {
         "APP_ENV": "development",
         "EXPO_PUBLIC_SUPABASE_URL": "https://lzgnuqwvsioinwwrsdvn.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_fJTEMeoW5pPTS2MFYSvRjA_GpRoFN2I"
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_fJTEMeoW5pPTS2MFYSvRjA_GpRoFN2I",
+        "EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS": "true"
       },
       "android": {
         "buildType": "apk"
@@ -22,7 +23,8 @@
       "env": {
         "APP_ENV": "preview",
         "EXPO_PUBLIC_SUPABASE_URL": "https://lzgnuqwvsioinwwrsdvn.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_fJTEMeoW5pPTS2MFYSvRjA_GpRoFN2I"
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_fJTEMeoW5pPTS2MFYSvRjA_GpRoFN2I",
+        "EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS": "false"
       },
       "android": {
         "buildType": "apk"
@@ -32,7 +34,8 @@
       "environment": "production",
       "autoIncrement": true,
       "env": {
-        "APP_ENV": "production"
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS": "false"
       }
     }
   },
