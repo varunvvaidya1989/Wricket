@@ -1,5 +1,5 @@
-import { SportLiveScoreScreen } from '@/components/sports/scoring/SportLiveScoreScreen';
+import { SportCloudLiveScoreScreen } from '@/components/sports/scoring/SportCloudLiveScoreScreen';
 
 export default function ScoreMatch() {
-  return <SportLiveScoreScreen sportId="table_tennis" />;
+  return <SportCloudLiveScoreScreen sportId="table_tennis" />;
 }

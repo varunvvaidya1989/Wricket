@@ -12,6 +12,29 @@ vi.mock('./client', () => ({
 describe('matchSetupApi', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('creates matches through the validated server-side creation RPC', async () => {
+    client.rpc.mockResolvedValue({ data: 'match-id', error: null });
+
+    await expect(matchSetupApi.createMatch({
+      tournamentId: null,
+      teamAId: 'team-a',
+      teamBId: 'team-b',
+      format: 'T20',
+      scheduledAt: '2026-08-22T12:00:00.000Z',
+      venue: 'Main ground',
+    })).resolves.toBe('match-id');
+
+    expect(client.rpc).toHaveBeenCalledWith('create_owned_match', {
+      p_tournament_id: null,
+      p_team_a_id: 'team-a',
+      p_team_b_id: 'team-b',
+      p_format: 'T20',
+      p_rules: {},
+      p_scheduled_at: '2026-08-22T12:00:00.000Z',
+      p_venue: 'Main ground',
+    });
+  });
+
   it('sends cloud player IDs and toss details to the transactional setup RPC', async () => {
     client.rpc.mockResolvedValue({
       data: {

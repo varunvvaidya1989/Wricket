@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.72 },
   modalRoot: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.58)' },
-  drawer: { height: '100%', backgroundColor: colors.bg, borderLeftWidth: 1, borderLeftColor: colors.border, elevation: 24, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 18, shadowOffset: { width: -6, height: 0 } },
+  drawer: { height: '100%', backgroundColor: colors.bg, borderLeftWidth: 1, borderLeftColor: colors.border, boxShadow: '-6px 0px 18px rgba(0, 0, 0, 0.35)' },
   safeArea: { flex: 1 },
   drawerHeader: { minHeight: 64, paddingHorizontal: spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border },
   closeButton: { width: 40, height: 40, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated },

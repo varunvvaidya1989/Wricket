@@ -14,8 +14,6 @@ import { sportScoringApi, type SportCloudMatchFeed, type SportCloudScoringEvent 
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 
-const REFRESH_INTERVAL_MS = 5000;
-
 export function SportCloudMatchFeedScreen({ sportId }: { sportId: ScoringSportId }) {
   const { id } = useLocalSearchParams<{ id: string }>();
   const auth = useAuth();
@@ -49,9 +47,9 @@ export function SportCloudMatchFeedScreen({ sportId }: { sportId: ScoringSportId
 
   useFocusEffect(useCallback(() => {
     void load();
-    const timer = setInterval(() => void load(true), REFRESH_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [load]));
+    if (!id) return undefined;
+    return sportScoringApi.subscribe(id, () => void load(true), (message) => setError(message));
+  }, [id, load]));
 
   if (loading && !feed) return <Screen><View style={styles.center}><ActivityIndicator color={presentation.accent} /><Text tone="muted">Opening match feed...</Text></View></Screen>;
   if (!feed) return <Screen padded={false}><AppHeader title="Match feed" eyebrow={config.name.toUpperCase()} back /><View style={styles.center}><MaterialCommunityIcons name="scoreboard-outline" size={38} color={colors.textDim} /><Text variant="h3">Match feed unavailable</Text><Text tone="muted" style={styles.centerCopy}>{friendlyFeedError(error)}</Text></View></Screen>;
@@ -66,7 +64,7 @@ export function SportCloudMatchFeedScreen({ sportId }: { sportId: ScoringSportId
         <View style={styles.meta}><Text variant="overline" tone="dim">{feed.matchFormat.replaceAll('_', ' ')}</Text><Text variant="overline" tone="dim">EVENT {feed.currentSequence}</Text><Text variant="overline" style={{ color: feed.status === 'LIVE' ? colors.live : colors.textMuted }}>{feed.status}</Text></View>
       </View>
 
-      <View style={styles.sectionTitle}><Text variant="overline" tone="muted">{liveContent.timelineLabel.toUpperCase()}</Text><Text variant="caption" tone="dim">Newest first - refreshes every 5s</Text></View>
+      <View style={styles.sectionTitle}><Text variant="overline" tone="muted">{liveContent.timelineLabel.toUpperCase()}</Text><Text variant="caption" tone="dim">Live updates</Text></View>
       {feed.events.length ? <View style={styles.timeline}>{feed.events.map((event) => <FeedEvent key={event.sequence} event={event} accent={presentation.accent} />)}</View> : <View style={styles.empty}><MaterialCommunityIcons name="timeline-clock-outline" size={30} color={colors.textDim} /><Text variant="bodyStrong">Waiting for the first event</Text><Text variant="caption" tone="muted">The feed will update automatically when scoring starts.</Text></View>}
     </View>
   </Screen>;

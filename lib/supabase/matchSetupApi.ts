@@ -26,23 +26,18 @@ export const matchSetupApi = {
     scheduledAt?: string;
     venue?: string;
   }): Promise<string> {
-    const { data: authData, error: authError } = await getSupabaseClient().auth.getUser();
-    if (authError) throw authError;
-    if (!authData.user) throw new Error('Sign in before creating a match');
-    const { data, error } = await getSupabaseClient().from('matches').insert({
-      tournament_id: input.tournamentId,
-      team_a_id: input.teamAId,
-      team_b_id: input.teamBId,
-      format: input.format,
-      status: 'SETUP',
-      visibility: 'PRIVATE',
-      rules: input.rules ?? {},
-      created_by: authData.user.id,
-      scheduled_at: input.scheduledAt ?? null,
-      venue: input.venue?.trim() || null,
-    }).select('id').single();
+    const { data, error } = await getSupabaseClient().rpc('create_owned_match', {
+      p_tournament_id: input.tournamentId,
+      p_team_a_id: input.teamAId,
+      p_team_b_id: input.teamBId,
+      p_format: input.format,
+      p_rules: input.rules ?? {},
+      p_scheduled_at: input.scheduledAt ?? null,
+      p_venue: input.venue?.trim() || null,
+    });
     if (error) throw error;
-    return data.id;
+    if (!data) throw new Error('Server did not return the new match');
+    return data;
   },
 
   async updateMatchDetails(matchId: string, input: {

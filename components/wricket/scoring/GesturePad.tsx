@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, type TextStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -238,9 +238,8 @@ const styles = StyleSheet.create({
   hintText: {
     color: 'rgba(255,255,255,0.82)',
     fontWeight: '800',
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    // React Native Web supports the consolidated prop before its native typings catch up.
+    ...({ textShadow: '0px 1px 2px rgba(0,0,0,0.45)' } as unknown as TextStyle),
   },
   hintTopLeft: { position: 'absolute', top: spacing.md, left: spacing.md },
   hintTopRight: { position: 'absolute', top: spacing.md, right: spacing.md },

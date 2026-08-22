@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { aggregateTournamentMvp, calculateMatchMvp } from './calculator';
+import { aggregateTournamentMvp, calculateMatchMvp, getMatchMvpAwards } from './calculator';
 import { battingPositionBand, DEFAULT_MVP_CONFIG, valueForMatchLength } from './config';
 import type { MatchMvpInput, MvpDelivery } from './types';
 
@@ -122,14 +122,19 @@ describe('bowling and fielding MVP', () => {
 });
 
 describe('awards, rankings, and aggregation', () => {
-  it('uses top-three winning-team precedence and losing-team fighter eligibility', () => {
+  it('uses the top MVP row as Player of the Match, regardless of team', () => {
     const result = calculateMatchMvp(match([
-      ...Array.from({ length: 6 }, () => delivery({ strikerId: 'a1', runsBat: 1 })),
-      ...Array.from({ length: 3 }, () => delivery({ strikerId: 'a2', runsBat: 1 })),
+      delivery({ strikerId: 'a1', runsBat: 4 }),
+      ...(['a1', 'a2', 'a3'] as const).map(outPlayerId => delivery({
+        wicket: { kind: 'CAUGHT', outPlayerId, creditedToBowler: true, fielders: ['b2'] },
+      })),
     ]));
-    expect(result.rankings.find(row => row.isPlayerOfTheMatch)?.teamId).toBe('a');
-    // No losing-team scorer in the top three in this fixture.
-    expect(result.fighterOfTheMatchId).toBeUndefined();
+    expect(result.rankings[0].playerId).toBe('b1');
+    expect(result.playerOfTheMatchId).toBe(result.rankings[0].playerId);
+    expect(result.rankings.find(row => row.isPlayerOfTheMatch)?.teamId).toBe('b');
+    expect(getMatchMvpAwards(result).bestBatter?.playerId).toBe('a1');
+    expect(getMatchMvpAwards(result).bestBowler?.playerId).toBe('b1');
+    expect(getMatchMvpAwards(result).bestFielder?.playerId).toBe('b2');
   });
   it('skips awards for no-result and fighter for ties', () => {
     const result = calculateMatchMvp(match([delivery({ runsBat: 6 })], {

@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Text } from '@/components/ui/Text';
 import { getMatchMvp, recalculateMatchMvp } from '@/lib/wricket/app/mvp';
 import { getMatchXI, getTeam } from '@/lib/wricket/db/repo';
-import type { MatchMvpResult } from '@/lib/wricket/domain/mvp';
+import { getMatchMvpAwards, type MatchMvpResult } from '@/lib/wricket/domain/mvp';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 
@@ -36,15 +36,35 @@ export function MatchMvpSection({
   }, [completed, matchId, teamAId, teamBId]);
 
   if (!completed || !result?.rankings.length) return null;
-  const pom = result.rankings.find(row => row.isPlayerOfTheMatch);
-  const fighter = result.rankings.find(row => row.isFighterOfTheMatch);
+  const awards = getMatchMvpAwards(result);
 
   return (
     <View style={styles.container}>
       <Text variant="h2">Match awards</Text>
       <View style={styles.awards}>
-        {pom && <Award title="Player of the Match" icon="trophy-award" row={pom} names={names} teams={teams} />}
-        {fighter && <Award title="Fighter of the Match" icon="shield-star" row={fighter} names={names} teams={teams} />}
+        {awards.playerOfTheMatch && (
+          <Award title="Player of the Match" icon="trophy-award" row={awards.playerOfTheMatch}
+            names={names} teams={teams} score={awards.playerOfTheMatch.totalPoints} scoreLabel="MVP points" />
+        )}
+        {awards.bestBatter && (
+          <Award title="Best Batter of the Match" icon="cricket" row={awards.bestBatter}
+            names={names} teams={teams} score={awards.bestBatter.battingPoints} scoreLabel="batting points"
+            detail={`${awards.bestBatter.battingBreakdown.runs} runs from ${awards.bestBatter.battingBreakdown.legalBalls} balls`} />
+        )}
+        {awards.bestBowler && (
+          <Award title="Best Bowler of the Match" icon="target" row={awards.bestBowler}
+            names={names} teams={teams} score={awards.bestBowler.bowlingPoints} scoreLabel="bowling points"
+            detail={`${awards.bestBowler.bowlingBreakdown.wickets}/${awards.bestBowler.bowlingBreakdown.runsConceded} in ${formatOvers(awards.bestBowler.bowlingBreakdown.legalBalls)} overs`} />
+        )}
+        {awards.bestFielder && (
+          <Award title="Best Fielder of the Match" icon="account-star" row={awards.bestFielder}
+            names={names} teams={teams} score={awards.bestFielder.fieldingPoints} scoreLabel="fielding points"
+            detail={fieldingDetail(awards.bestFielder)} />
+        )}
+        {awards.fighterOfTheMatch && (
+          <Award title="Fighter of the Match" icon="shield-star" row={awards.fighterOfTheMatch}
+            names={names} teams={teams} score={awards.fighterOfTheMatch.totalPoints} scoreLabel="MVP points" />
+        )}
       </View>
       <Card>
         <Text variant="h3">MVP leaderboard</Text>
@@ -92,25 +112,44 @@ export function MatchMvpSection({
   );
 }
 
-function Award({ title, icon, row, names, teams }: {
-  title: string; icon: 'trophy-award' | 'shield-star';
+function Award({ title, icon, row, names, teams, score, scoreLabel, detail }: {
+  title: string;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
   row: MatchMvpResult['rankings'][number];
-  names: Record<string, string>; teams: Record<string, string>;
+  names: Record<string, string>;
+  teams: Record<string, string>;
+  score: number;
+  scoreLabel: string;
+  detail?: string;
 }) {
-  const summary = [
+  const summary = detail ?? [
     row.battingBreakdown.runs ? `${row.battingBreakdown.runs} runs` : '',
     row.bowlingBreakdown.wickets ? `${row.bowlingBreakdown.wickets} wickets` : '',
     row.fieldingBreakdown.catches ? `${row.fieldingBreakdown.catches} catches` : '',
-  ].filter(Boolean).join(' · ');
+  ].filter(Boolean).join(' / ');
   return (
     <Card style={styles.award}>
       <MaterialCommunityIcons name={icon} size={24} color={colors.accent} />
       <Text variant="overline" tone="muted" style={{ marginTop: spacing.sm }}>{title}</Text>
       <Text variant="h3">{names[row.playerId] ?? 'Unknown player'}</Text>
-      <Text variant="caption" tone="muted">{teams[row.teamId]} · {row.totalPoints.toFixed(2)} MVP points</Text>
+      <Text variant="caption" tone="muted">{teams[row.teamId]} / {score.toFixed(2)} {scoreLabel}</Text>
       {!!summary && <Text variant="caption" style={{ marginTop: spacing.sm }}>{summary}</Text>}
     </Card>
   );
+}
+
+function formatOvers(legalBalls: number): string {
+  return `${Math.floor(legalBalls / 6)}.${legalBalls % 6}`;
+}
+
+function fieldingDetail(row: MatchMvpResult['rankings'][number]): string {
+  const fielding = row.fieldingBreakdown;
+  return [
+    fielding.catches && `${fielding.catches} ${fielding.catches === 1 ? 'catch' : 'catches'}`,
+    fielding.stumpings && `${fielding.stumpings} ${fielding.stumpings === 1 ? 'stumping' : 'stumpings'}`,
+    fielding.directHitRunOuts && `${fielding.directHitRunOuts} direct-hit ${fielding.directHitRunOuts === 1 ? 'run-out' : 'run-outs'}`,
+    fielding.assistedRunOuts && `${fielding.assistedRunOuts} assisted ${fielding.assistedRunOuts === 1 ? 'run-out' : 'run-outs'}`,
+  ].filter(Boolean).join(' / ');
 }
 
 const styles = StyleSheet.create({

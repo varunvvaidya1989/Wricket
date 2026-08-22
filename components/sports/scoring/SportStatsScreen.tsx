@@ -3,62 +3,73 @@ import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { useAuth } from '@/components/providers/AuthProvider';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import {
   SPORT_CONFIGS,
   SPORT_PRESENTATION,
-  listScoringSessions,
+  activePointEvents,
   replay,
-  type ScoringSessionRecord,
   type ScoringSportId,
 } from '@/lib/sports/scoring';
+import { sportScoringApi, type SportCloudMatchFeed } from '@/lib/supabase/sportScoringApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { SportAvatarButton } from './SportProfileDrawer';
 
 export function SportStatsScreen({ sportId }: { sportId: ScoringSportId }) {
+  const auth = useAuth();
   const config = SPORT_CONFIGS[sportId];
   const presentation = SPORT_PRESENTATION[sportId];
-  const [sessions, setSessions] = useState<readonly ScoringSessionRecord[]>([]);
+  const [matches, setMatches] = useState<readonly SportCloudMatchFeed[]>([]);
   const reload = useCallback(() => {
-    void listScoringSessions()
-      .then((stored) => setSessions(stored.filter((session) => session.sportId === sportId)))
-      .catch(() => setSessions([]));
-  }, [sportId]);
+    const connectedSport = auth.profile?.connectedSports.find((sport) => sport.code === presentation.catalogCode);
+    const accountId = auth.session?.user.id;
+    if (!connectedSport || !accountId) { setMatches([]); return; }
+    void sportScoringApi.listOwned({ sportId: connectedSport.id, accountId })
+      .then(setMatches)
+      .catch(() => setMatches([]));
+  }, [auth.profile?.connectedSports, auth.session?.user.id, presentation.catalogCode]);
   useFocusEffect(reload);
 
   const stats = useMemo(() => {
-    const completed = sessions.flatMap((session) => {
-      const state = replay(config, session.events, { initialServer: session.initialServer, options: session.options });
-      return state.isComplete && state.winner !== undefined ? [{ session, state }] : [];
+    const scoredMatches = matches.flatMap((match) => {
+      const initialServer = match.rulesSnapshot.initial_server === 1 ? 1 : 0;
+      const options = match.rulesSnapshot.options && typeof match.rulesSnapshot.options === 'object'
+        && !Array.isArray(match.rulesSnapshot.options)
+        ? match.rulesSnapshot.options as Record<string, boolean | number | string | undefined>
+        : {};
+      const state = replay(config, activePointEvents(match.events), { initialServer, options });
+      return [{ match, state }];
     });
+    const completed = scoredMatches.filter(({ state }) => state.isComplete && state.winner !== undefined);
     const wins = new Map<string, number>();
-    completed.forEach(({ session, state }) => {
-      const winner = session.sideNames[state.winner!];
+    completed.forEach(({ match, state }) => {
+      const winner = state.winner === 0 ? match.sideAPlayers.join(' / ') : match.sideBPlayers.join(' / ');
       wins.set(winner, (wins.get(winner) ?? 0) + 1);
     });
     return {
       completed: completed.length,
-      rallies: sessions.reduce((total, session) => total + session.events.length, 0),
-      inProgress: sessions.length - completed.length,
+      rallies: scoredMatches.reduce((total, { match }) => total + activePointEvents(match.events).length, 0),
+      inProgress: matches.length - completed.length,
       leaders: [...wins.entries()].sort((left, right) => right[1] - left[1]),
     };
-  }, [config, sessions]);
+  }, [config, matches]);
 
   return (
     <Screen scroll padded={false}>
       <AppHeader title="Stats" eyebrow={config.name.toUpperCase()} right={<SportAvatarButton />} />
       <View style={styles.content}>
         <View style={styles.metricGrid}>
-          <Metric value={sessions.length} label="MATCHES" accent={presentation.accent} />
+          <Metric value={matches.length} label="MATCHES" accent={presentation.accent} />
           <Metric value={stats.completed} label="COMPLETED" accent={presentation.accent} />
           <Metric value={stats.inProgress} label="IN PROGRESS" accent={presentation.accent} />
           <Metric value={stats.rallies} label="RALLIES" accent={presentation.accent} />
         </View>
 
-        <Text variant="overline" tone="dim">LOCAL MATCH LEADERS</Text>
+        <Text variant="overline" tone="dim">MATCH LEADERS</Text>
         {stats.leaders.length ? (
           <View style={styles.leaderboard}>
             {stats.leaders.map(([name, wins], index) => (
@@ -75,13 +86,13 @@ export function SportStatsScreen({ sportId }: { sportId: ScoringSportId }) {
           <View style={styles.empty}>
             <MaterialCommunityIcons name="chart-box-outline" size={32} color={colors.textDim} />
             <Text variant="bodyStrong">Stats begin after a result</Text>
-            <Text variant="caption" tone="muted" style={styles.emptyCopy}>Complete a match to populate wins and local leaders.</Text>
+            <Text variant="caption" tone="muted" style={styles.emptyCopy}>Complete a match to populate wins and leaders.</Text>
           </View>
         )}
 
-        <View style={styles.localNote}>
-          <MaterialCommunityIcons name="cellphone" size={19} color={colors.textMuted} />
-          <Text variant="caption" tone="muted" style={styles.flex}>These stats are calculated from match event logs stored on this device.</Text>
+        <View style={styles.syncNote}>
+          <MaterialCommunityIcons name="cloud-check-outline" size={19} color={colors.textMuted} />
+          <Text variant="caption" tone="muted" style={styles.flex}>These stats are calculated from your synchronized SportStage match logs.</Text>
         </View>
       </View>
     </Screen>
@@ -101,6 +112,6 @@ const styles = StyleSheet.create({
   avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   empty: { padding: spacing.xl, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg, alignItems: 'center', gap: spacing.sm },
   emptyCopy: { textAlign: 'center' },
-  localNote: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  syncNote: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   flex: { flex: 1, minWidth: 0 },
 });

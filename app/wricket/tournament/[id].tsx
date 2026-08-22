@@ -54,8 +54,7 @@ import {
 import { TournamentShareBanner } from '@/components/wricket/tournament/TournamentShareBanner';
 import { tournamentManagementApi } from '@/lib/supabase/tournamentManagementApi';
 import { teamManagementApi } from '@/lib/supabase/teamManagementApi';
-import type { MyTeamSummary } from '@/lib/supabase/teamManagementApi';
-import { syncTournamentData } from '@/lib/wricket/sync/tournamentSync';
+import { WricketAvatarButton } from '@/components/wricket/navigation/WricketProfileDrawer';
 
 type Tab = 'fixtures' | 'table' | 'teams' | 'stats' | 'settings';
 
@@ -98,9 +97,7 @@ export default function TournamentDetailScreen() {
   const [collapsed, setCollapsed] = useState(Boolean(linkedTab));
   const [overviewHeight, setOverviewHeight] = useState(620);
   const revealProgress = useRef(new Animated.Value(linkedTab ? 0 : 1)).current;
-  const handleNudge = useRef(new Animated.Value(0)).current;
   const tabScrollY = useRef(0);
-  const hasNudgedHandle = useRef(false);
   const [tabsAtEnd, setTabsAtEnd] = useState(false);
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showShareBanner, setShowShareBanner] = useState(false);
@@ -181,25 +178,30 @@ export default function TournamentDetailScreen() {
     }).start(({ finished }) => { if (finished) onEnd?.(); });
   }, [revealProgress]);
 
+  useEffect(() => {
+    const nextTab = linkedTab && ['fixtures', 'table', 'teams', 'stats', 'settings'].includes(linkedTab)
+      ? linkedTab
+      : 'fixtures';
+    setTab(nextTab);
+    setCollapsed(Boolean(linkedTab));
+    revealProgress.setValue(linkedTab ? 0 : 1);
+  }, [linkedTab, revealProgress]);
+
   const expandOverview = useCallback(() => {
     if (!collapsed) return;
+    if (linkedTab) {
+      router.replace({ pathname: '/wricket/tournament/[id]', params: { id } });
+      return;
+    }
     springReveal(1, () => setCollapsed(false));
-  }, [collapsed, springReveal]);
+  }, [collapsed, id, linkedTab, router, springReveal]);
 
   const selectTab = useCallback((next: Tab) => {
-    setTab(next);
-    if (collapsed) return;
-    setCollapsed(true);
-    revealProgress.setValue(1);
-    springReveal(0, () => {
-      if (hasNudgedHandle.current) return;
-      hasNudgedHandle.current = true;
-      Animated.sequence([
-        Animated.timing(handleNudge, { toValue: -4, duration: 130, useNativeDriver: true }),
-        Animated.spring(handleNudge, { toValue: 0, stiffness: 280, damping: 18, mass: 0.7, useNativeDriver: true }),
-      ]).start();
-    });
-  }, [collapsed, handleNudge, revealProgress, springReveal]);
+    if (!id || (linkedTab === next && tab === next)) return;
+    const destination = { pathname: '/wricket/tournament/[id]' as const, params: { id, tab: next } };
+    if (linkedTab) router.replace(destination);
+    else router.push(destination);
+  }, [id, linkedTab, router, tab]);
 
   const handlePanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => false,
@@ -244,7 +246,6 @@ export default function TournamentDetailScreen() {
         <View style={styles.quickActions}>
           <Pressable style={styles.quickAction} onPress={() => setShowShareBanner(true)}><MaterialCommunityIcons name="share-variant-outline" size={18} color={colors.textMuted} /><Text variant="caption">SHARE</Text></Pressable>
           {tournament.organizerProfileId === auth.session?.user.id ? <Pressable style={styles.quickAction} onPress={() => selectTab('settings')}><MaterialCommunityIcons name="pencil-outline" size={18} color={colors.textMuted} /><Text variant="caption">EDIT</Text></Pressable> : <Pressable style={styles.quickAction} onPress={() => router.push({ pathname: '/wricket/tournament/[id]/moments', params: { id: tournament.id } })}><MaterialCommunityIcons name="image-multiple-outline" size={18} color={colors.gold} /><Text variant="caption">MOMENTS</Text></Pressable>}
-          {tournament.organizerProfileId === auth.session?.user.id ? <Pressable style={styles.quickAction} onPress={() => setShowAddTeam(true)}><MaterialCommunityIcons name="account-plus-outline" size={18} color={colors.accent} /><Text variant="caption" tone="accent">ADD TEAM</Text></Pressable> : null}
         </View>
         <View style={styles.overviewMetrics}>
           <OverviewMetric value={String(teams.length)} label="TEAMS" icon="account-group-outline" />
@@ -364,10 +365,8 @@ export default function TournamentDetailScreen() {
               standings={points}
               generatedSetup={generatedSetup}
               plannedTeamCount={tournament.plannedTeamCount}
-              tournamentCloudId={tournament.cloudId}
               canManage={tournament.organizerProfileId === auth.session?.user.id}
               onAdd={() => setShowAddTeam(true)}
-              onChanged={refresh}
             />
           )}
           {tab === 'stats' && (
@@ -392,7 +391,7 @@ export default function TournamentDetailScreen() {
 
   const handleNode = <View style={styles.dragHandleZone} {...handlePanResponder.panHandlers}>
     <Pressable accessibilityRole="button" accessibilityLabel="Show tournament information" onPress={expandOverview} hitSlop={8}>
-      <Animated.View style={[styles.dragHandle, { transform: [{ translateY: handleNudge }] }]} />
+      <View style={styles.dragHandle} />
     </Pressable>
   </View>;
 
@@ -404,11 +403,7 @@ export default function TournamentDetailScreen() {
         : <AppHeader
             title={tournament.name}
             back
-            right={tournament.organizerProfileId === auth.session?.user.id ? (
-              <Pressable accessibilityRole="button" accessibilityLabel="Tournament settings" onPress={() => selectTab('settings')} style={styles.headerAction}>
-                <MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} />
-              </Pressable>
-            ) : undefined}
+            right={<WricketAvatarButton />}
           />}
       <ChampionCelebration team={championTeam} visible={showChampionCelebration} onClose={() => setShowChampionCelebration(false)} />
       {collapsed ? <View style={styles.collapsedPage}>
@@ -438,14 +433,14 @@ export default function TournamentDetailScreen() {
         {tabContentNode}
       </ScrollView>}
 
-      <AddTeamModal
+      <AddTournamentTeamModal
         visible={showAddTeam}
         tournament={tournament}
-        usedColors={teams.map(t => t.colorHex)}
+        usedColors={teams.map(team => team.colorHex)}
         onClose={() => setShowAddTeam(false)}
         onSaved={() => {
           setShowAddTeam(false);
-          refresh();
+          void refresh();
         }}
       />
       <TournamentShareBanner
@@ -470,6 +465,7 @@ function CompactTournamentHeader({ tournament, hasLiveMatch, onBack, onExpand }:
       <Text variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>{tournament.name}</Text>
       <View style={[styles.compactStatus, hasLiveMatch && styles.compactStatusLive]}><Text variant="overline" tone={hasLiveMatch || tournament.status === 'ACTIVE' ? 'accent' : 'muted'}>● {label}</Text></View>
     </Pressable>
+    <WricketAvatarButton />
   </View>;
 }
 
@@ -1481,6 +1477,83 @@ function matchSectionLabel(match: Match): 'LIVE' | 'UPCOMING' | 'PAST' {
   return rank === 0 ? 'LIVE' : rank === 1 ? 'UPCOMING' : 'PAST';
 }
 
+function AddTournamentTeamModal({
+  visible,
+  tournament,
+  usedColors,
+  onClose,
+  onSaved,
+}: {
+  visible: boolean;
+  tournament: Tournament;
+  usedColors: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const auth = useAuth();
+  const [name, setName] = useState('');
+  const [shortName, setShortName] = useState('');
+  const [color, setColor] = useState<string>(palette.team[0]);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!name.trim() || !shortName.trim()) {
+      Alert.alert('Missing team details', 'Enter a team name and short name.');
+      return;
+    }
+    if (!auth.session) return;
+    setSaving(true);
+    try {
+      await createOnlineTeam({
+        tournament,
+        name: name.trim(),
+        shortName: shortName.trim().toUpperCase().slice(0, 4),
+        colorHex: color,
+        userId: auth.session.user.id,
+      });
+      setName('');
+      setShortName('');
+      onSaved();
+    } catch (cause) {
+      Alert.alert('Could not create team', cause instanceof Error ? cause.message : 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalSheet}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.lg }}>
+            <View><Text variant="h2">Create tournament team</Text><Text variant="caption" tone="muted">Available only to the tournament owner.</Text></View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close team creation" onPress={onClose}>
+              <MaterialCommunityIcons name="close" size={24} color={colors.text} />
+            </Pressable>
+          </View>
+          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.xs }}>TEAM NAME</Text>
+          <TextInput value={name} onChangeText={setName} placeholder="Mumbai Mavericks" placeholderTextColor={colors.textDim} style={styles.input} />
+          <Text variant="caption" tone="muted" style={{ marginTop: spacing.md, marginBottom: spacing.xs }}>SHORT NAME</Text>
+          <TextInput value={shortName} onChangeText={value => setShortName(value.toUpperCase().slice(0, 4))} placeholder="MUM" placeholderTextColor={colors.textDim} autoCapitalize="characters" style={styles.input} />
+          <Text variant="caption" tone="muted" style={{ marginTop: spacing.md, marginBottom: spacing.sm }}>TEAM COLOR</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+            {palette.team.map(item => (
+              <Pressable
+                key={item}
+                accessibilityRole="button"
+                accessibilityLabel="Choose team color"
+                onPress={() => setColor(item)}
+                style={[styles.colorDot, { backgroundColor: item }, color === item && styles.colorDotActive, usedColors.includes(item) && color !== item && { opacity: 0.45 }]}
+              />
+            ))}
+          </View>
+          <Button title="Create team" loading={saving} onPress={() => void save()} fullWidth size="lg" style={{ marginTop: spacing.xl }} />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function showFixtureError(cause: unknown) {
   Alert.alert('Fixture update failed', cause instanceof Error ? cause.message : 'Please try again.');
 }
@@ -1528,19 +1601,15 @@ function TeamsView({
   standings,
   generatedSetup,
   plannedTeamCount,
-  tournamentCloudId,
   canManage,
   onAdd,
-  onChanged,
 }: {
   teams: Team[];
   standings: PointsRow[];
   generatedSetup: GeneratedFixtureSetup;
   plannedTeamCount: number;
-  tournamentCloudId?: string;
   canManage: boolean;
   onAdd: () => void;
-  onChanged: () => Promise<void>;
 }) {
   const router = useRouter();
   const bracketRounds = generatedSetup.bracket?.rounds ?? [];
@@ -1553,22 +1622,15 @@ function TeamsView({
 
   return (
     <View style={{ flex: 1, paddingTop: spacing.md }}>
-      {canManage ? (
-        <ReusableTeamsTournamentCard
-          tournamentId={tournamentCloudId}
-          hasCapacity={teams.length < plannedTeamCount}
-          onAdded={onChanged}
-        />
-      ) : null}
-      {canManage && teams.length < plannedTeamCount && (
+      {canManage && teams.length < plannedTeamCount ? (
         <Button title="Create tournament team" variant="secondary" onPress={onAdd} fullWidth style={{ marginBottom: spacing.lg }} />
-      )}
+      ) : null}
       <Text variant="caption" tone="muted" style={{ marginBottom: spacing.md }}>
-        {teams.length}/{plannedTeamCount} teams added. Owners assign one captain; captains add registered players.
+        {teams.length}/{plannedTeamCount} teams entered. Owners can create another team from this tab.
       </Text>
       {teams.length === 0 ? (
         <Text variant="body" tone="muted" style={{ textAlign: 'center', marginTop: spacing.xl }}>
-          No teams yet. Add at least 2 to schedule matches.
+          No teams have entered this tournament yet. Create at least two to schedule matches.
         </Text>
       ) : (
         <FlatList
@@ -1601,99 +1663,6 @@ function TeamsView({
         />
       )}
     </View>
-  );
-}
-
-function ReusableTeamsTournamentCard({ tournamentId, hasCapacity, onAdded }: {
-  tournamentId?: string;
-  hasCapacity: boolean;
-  onAdded: () => Promise<void>;
-}) {
-  const auth = useAuth();
-  const [teams, setTeams] = useState<MyTeamSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string>();
-  const [addingTeamId, setAddingTeamId] = useState<string>();
-
-  const load = useCallback(async () => {
-    if (!auth.session || !tournamentId) {
-      setTeams([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setLoadError(undefined);
-    try {
-      setTeams(await teamManagementApi.listReusableForTournament(auth.session.user.id, tournamentId));
-    } catch (cause) {
-      setLoadError(cause instanceof Error ? cause.message : 'Could not load reusable teams.');
-    } finally {
-      setLoading(false);
-    }
-  }, [auth.session, tournamentId]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const addTeam = async (teamId: string) => {
-    if (!auth.session || !tournamentId || !hasCapacity) return;
-    setAddingTeamId(teamId);
-    try {
-      await teamManagementApi.enterTournament(teamId, tournamentId);
-      await syncTournamentData(auth.session.user.id, { forceRetry: true });
-      await onAdded();
-      await load();
-    } catch (cause) {
-      Alert.alert('Could not add team', cause instanceof Error ? cause.message : 'Please try again.');
-    } finally {
-      setAddingTeamId(undefined);
-    }
-  };
-
-  return (
-    <Card style={styles.reusableTeamsCard} accentColor={colors.accent}>
-      <View style={styles.reusableTeamsHeader}>
-        <View style={styles.reusableTeamsIcon}><MaterialCommunityIcons name="account-multiple-plus-outline" size={22} color={colors.accent} /></View>
-        <View style={{ flex: 1 }}>
-          <Text variant="h3">Add from My Teams</Text>
-          <Text variant="caption" tone="muted">Reuse a team and copy its current roster.</Text>
-        </View>
-      </View>
-      {!tournamentId ? (
-        <Text variant="caption" tone="muted" style={styles.reusableTeamsMessage}>Sync this tournament before adding a reusable team.</Text>
-      ) : loading ? (
-        <Text variant="caption" tone="muted" style={styles.reusableTeamsMessage}>Loading your teams…</Text>
-      ) : loadError ? (
-        <View style={styles.reusableTeamsMessageRow}>
-          <Text variant="caption" style={{ color: colors.danger, flex: 1 }}>{loadError}</Text>
-          <Button title="Retry" size="sm" variant="ghost" onPress={() => void load()} />
-        </View>
-      ) : teams.length === 0 ? (
-        <Text variant="caption" tone="muted" style={styles.reusableTeamsMessage}>
-          No reusable teams are available. Create one from your cricket profile, or use the button below.
-        </Text>
-      ) : (
-        <View style={styles.reusableTeamsList}>
-          {teams.map(team => (
-            <View key={team.id} style={styles.reusableTeamRow}>
-              <View style={[styles.teamListSwatch, { backgroundColor: team.colorHex }]}>
-                {team.logoUrl ? <Image source={{ uri: team.logoUrl }} style={styles.teamLogo} /> : <Text variant="caption" style={{ color: palette.black }}>{team.shortName}</Text>}
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text variant="bodyStrong" numberOfLines={1}>{team.name}</Text>
-                <Text variant="caption" tone="muted" numberOfLines={1}>{team.tournamentName ?? 'Reusable team'}</Text>
-              </View>
-              <Button
-                title={addingTeamId === team.id ? 'Adding…' : 'Add'}
-                size="sm"
-                disabled={!hasCapacity || Boolean(addingTeamId)}
-                onPress={() => void addTeam(team.id)}
-              />
-            </View>
-          ))}
-        </View>
-      )}
-      {!hasCapacity ? <Text variant="caption" tone="muted" style={styles.reusableTeamsMessage}>This tournament has reached its planned team capacity.</Text> : null}
-    </Card>
   );
 }
 
@@ -1863,135 +1832,7 @@ function isBowlerWicket(ball: Ball): boolean {
   );
 }
 
-function AddTeamModal({
-  visible,
-  tournament,
-  usedColors,
-  onClose,
-  onSaved,
-}: {
-  visible: boolean;
-  tournament: Tournament;
-  usedColors: string[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const auth = useAuth();
-  const [name, setName] = useState('');
-  const [shortName, setShortName] = useState('');
-  const [color, setColor] = useState<string>(palette.team[0]);
-  const [saving, setSaving] = useState(false);
-  const [logoUri, setLogoUri] = useState<string>();
-
-  const reset = () => {
-    setName('');
-    setShortName('');
-    setColor(palette.team[0]);
-    setLogoUri(undefined);
-  };
-
-  const pickLogo = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return Alert.alert('Photo permission needed', 'Allow photo access to choose a team logo.');
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-    if (!result.canceled) setLogoUri(result.assets[0].uri);
-  };
-
-  const onSave = async () => {
-    if (!name.trim() || !shortName.trim()) {
-      Alert.alert('Missing info', 'Name and short name are required.');
-      return;
-    }
-    if (!auth.session || tournament.organizerProfileId !== auth.session.user.id) {
-      Alert.alert('Owner access required', 'Only the tournament owner can add teams.');
-      return;
-    }
-    setSaving(true);
-    try {
-      await createOnlineTeam({
-        tournament,
-        name: name.trim(),
-        shortName: shortName.trim().toUpperCase().slice(0, 4),
-        colorHex: color,
-        logoLocalUri: logoUri,
-        userId: auth.session.user.id,
-      });
-      reset();
-      onSaved();
-    } catch (cause) {
-      Alert.alert('Could not add team', cause instanceof Error ? cause.message : 'Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalSheet}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg }}>
-            <Text variant="h2">Add team</Text>
-            <Pressable onPress={onClose}>
-              <MaterialCommunityIcons name="close" size={24} color={colors.text} />
-            </Pressable>
-          </View>
-
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>TEAM LOGO (OPTIONAL)</Text>
-          <Pressable onPress={() => void pickLogo()} style={[styles.teamLogoPicker, { backgroundColor: color }]}>
-            {logoUri ? <Image source={{ uri: logoUri }} style={styles.teamLogoPreview} /> : <><MaterialCommunityIcons name="image-plus" size={26} color={palette.black} /><Text variant="caption" style={{ color: palette.black }}>CHOOSE LOGO</Text></>}
-          </Pressable>
-
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>TEAM NAME</Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Mumbai Mavericks"
-            placeholderTextColor={colors.textDim}
-            style={styles.input}
-          />
-
-          <Text variant="caption" tone="muted" style={{ marginTop: spacing.lg, marginBottom: spacing.sm }}>SHORT NAME (4 chars)</Text>
-          <TextInput
-            value={shortName}
-            onChangeText={t => setShortName(t.toUpperCase().slice(0, 4))}
-            placeholder="MUM"
-            placeholderTextColor={colors.textDim}
-            style={styles.input}
-            autoCapitalize="characters"
-          />
-
-          <Text variant="caption" tone="muted" style={{ marginTop: spacing.lg, marginBottom: spacing.sm }}>COLOR</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-            {palette.team.map(c => (
-              <Pressable
-                key={c}
-                onPress={() => setColor(c)}
-                style={[
-                  styles.colorDot,
-                  { backgroundColor: c },
-                  color === c && styles.colorDotActive,
-                  usedColors.includes(c) && !{}.hasOwnProperty.call({}, 'x') && { opacity: 0.4 },
-                ]}
-              />
-            ))}
-          </View>
-
-          <Button title="Add team" onPress={onSave} loading={saving} fullWidth size="lg" style={{ marginTop: spacing.xl }} />
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
-  reusableTeamsCard: { marginBottom: spacing.md },
-  reusableTeamsHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  reusableTeamsIcon: { width: 42, height: 42, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentMuted },
-  reusableTeamsMessage: { marginTop: spacing.md },
-  reusableTeamsMessageRow: { marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  reusableTeamsList: { marginTop: spacing.md, gap: spacing.sm },
-  reusableTeamRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surfaceElevated },
-  headerAction: { width: 40, height: 40, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   compactHeader: { height: 48, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.border, zIndex: 20 },
   compactBack: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   compactContext: { flex: 1, minWidth: 0, height: 48, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -2079,16 +1920,12 @@ const styles = StyleSheet.create({
   tabBarShell: {
     position: 'relative',
     zIndex: 10,
-    elevation: 8,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.bg,
-    shadowColor: palette.black,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
+    boxShadow: `0px 3px 6px rgba(0, 0, 0, 0.18)`,
   },
   stickyGapCover: { position: 'absolute', left: 0, right: 0, top: -10, height: 10, backgroundColor: colors.bg },
   tabContent: {

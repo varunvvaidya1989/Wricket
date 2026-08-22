@@ -1,5 +1,6 @@
 export * from './configs';
 export * from './competitionStorage';
+export * from './cloudEvents';
 export * from './engine';
 export * from './formatters';
 export * from './presentation';

@@ -118,8 +118,7 @@ export const fixturesApi = {
         name: savedGroup.name,
         teamIds: savedGroup.team_ids,
       });
-      const { error: matchError } = await client.from('fixture_matches').insert(fixtures.map(toFixtureRow));
-      if (matchError) throw matchError;
+      await saveFixtureMatches(groupStage.id, fixtures);
     }
     await client.from('fixture_stages').update({ status: 'IN_PROGRESS' }).eq('id', groupStage.id);
   },
@@ -265,11 +264,7 @@ export const fixturesApi = {
     const knockoutMatches = refreshed.matches.filter(match => match.stageId === knockoutStage.id);
     const firstRound = bracket.rounds[0];
     if (firstRound?.matches.length && !knockoutMatches.some(match => match.roundId === firstRound.id)) {
-      const { error } = await client.from('fixture_matches').upsert(firstRound.matches.map(toFixtureRow), {
-        onConflict: 'stage_id,round_id,team_a_id,team_b_id,leg',
-        ignoreDuplicates: true,
-      });
-      if (error) throw error;
+      await saveFixtureMatches(knockoutStage.id, firstRound.matches);
       await client.from('fixture_stages').update({ status: 'IN_PROGRESS' }).eq('id', knockoutStage.id);
       return true;
     }
@@ -356,12 +351,7 @@ export const fixturesApi = {
     if (next && next.name !== '3RD_PLACE' && next.matches.length === 0) {
       const nextMatches = new KnockoutBracketBuilder().resolveNextRound(bracket, current.index);
       if (nextMatches.length) {
-        const { error: matchError } = await client.from('fixture_matches')
-          .upsert(nextMatches.map(toFixtureRow), {
-            onConflict: 'stage_id,round_id,team_a_id,team_b_id,leg',
-            ignoreDuplicates: true,
-          });
-        if (matchError) throw matchError;
+        await saveFixtureMatches(knockoutStage.id, nextMatches);
         const { error: bracketError } = await client.from('knockout_brackets')
           .update({ rounds: bracket.rounds, updated_at: new Date().toISOString() })
           .eq('stage_id', knockoutStage.id);
@@ -495,7 +485,7 @@ export const fixturesApi = {
     return data;
   },
 
-  async addManualFixture(input: ManualFixtureInput): Promise<void> {
+  async addManualFixture(input: ManualFixtureInput): Promise<FixtureMatch> {
     if (!input.teamAId || !input.teamBId || input.teamAId === input.teamBId) {
       throw new Error('Select two different teams');
     }
@@ -530,24 +520,42 @@ export const fixturesApi = {
       (match.team_a_id === input.teamAId && match.team_b_id === input.teamBId) ||
       (match.team_a_id === input.teamBId && match.team_b_id === input.teamAId));
     if (duplicate) throw new Error('These teams already meet in this round');
+    const roundId = input.roundName?.trim() || `MANUAL_R${input.round}`;
     const fixture: FixtureMatch = {
       id: '',
       stageId: input.stageId,
       groupId: input.groupId,
-      roundId: input.roundName?.trim() || `MANUAL_R${input.round}`,
+      roundId,
       teamA: input.teamAId,
       teamB: input.teamBId,
       round: input.round,
       leg: 1,
       status: 'SCHEDULED',
     };
-    const { error } = await client.from('fixture_matches').insert(toFixtureRow(fixture));
-    if (error) throw error;
+    await saveFixtureMatches(input.stageId, [fixture]);
     if (stage.type === 'KNOCKOUT') await syncManualBracket(input.stageId);
     const { error: statusError } = await client.from('fixture_stages')
       .update({ status: 'IN_PROGRESS' })
       .eq('id', input.stageId);
     if (statusError) throw statusError;
+    let createdQuery = client.from('fixture_matches')
+      .select('id, stage_id, group_id, round_id, team_a_id, team_b_id, round, leg, weight, status, score_a, score_b')
+      .eq('stage_id', input.stageId)
+      .eq('round_id', roundId)
+      .eq('team_a_id', input.teamAId)
+      .eq('team_b_id', input.teamBId)
+      .eq('round', input.round)
+      .eq('leg', 1);
+    createdQuery = input.groupId
+      ? createdQuery.eq('group_id', input.groupId)
+      : createdQuery.is('group_id', null);
+    const { data: created, error: createdError } = await createdQuery.maybeSingle();
+    if (createdError) throw createdError;
+    if (!created) throw new Error('Fixture was created but could not be loaded');
+    const canonical = await getCanonicalMatches([created.id]);
+    const mapped = mapFixtureMatch(created, canonical.get(created.id));
+    if (!mapped.canonicalMatchId) throw new Error('Fixture was created but its match setup is not available');
+    return mapped;
   },
 
   async patchMatchResult(matchId: string, scoreA: number, scoreB: number, walkover = false) {
@@ -952,22 +960,24 @@ async function saveBracketAndMatches(bracket: KnockoutBracket) {
     byes: bracket.byes,
   }, { onConflict: 'stage_id', ignoreDuplicates: true });
   if (bracketError) throw bracketError;
-  const { error: matchError } = await client.from('fixture_matches')
-    .upsert(bracket.rounds[0].matches.map(toFixtureRow), {
-      onConflict: 'stage_id,round_id,team_a_id,team_b_id,leg',
-      ignoreDuplicates: true,
-    });
-  if (matchError) throw matchError;
+  await saveFixtureMatches(bracket.stageId, bracket.rounds[0].matches);
 }
 
 async function saveAdvancedRound(stageId: string, bracket: KnockoutBracket, matches: FixtureMatch[]) {
   const client = getSupabaseClient();
-  const { error: matchError } = await client.from('fixture_matches').insert(matches.map(toFixtureRow));
-  if (matchError) throw matchError;
+  await saveFixtureMatches(stageId, matches);
   const { error: bracketError } = await client.from('knockout_brackets')
     .update({ rounds: bracket.rounds, updated_at: new Date().toISOString() })
     .eq('stage_id', stageId);
   if (bracketError) throw bracketError;
+}
+
+async function saveFixtureMatches(stageId: string, matches: FixtureMatch[]): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('upsert_owned_fixture_matches', {
+    p_stage_id: stageId,
+    p_matches: matches.map(toFixtureRow),
+  });
+  if (error) throw error;
 }
 
 function fixtureWinner(match: FixtureMatch): string {

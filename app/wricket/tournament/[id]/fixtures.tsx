@@ -280,6 +280,27 @@ export default function TournamentFixturesSetupScreen() {
 
   if (!tournament || !selected) return <Screen><Text tone="muted">Loading…</Text></Screen>;
 
+  const openFixtureMatch = (match: GeneratedFixtureSetup['matches'][number], edit: boolean) => {
+    const teamA = teams.find(team => team.cloudId === match.teamA);
+    const teamB = teams.find(team => team.cloudId === match.teamB);
+    if (!tournament || !match.canonicalMatchId || !teamA || !teamB) return;
+    router.push({
+      pathname: '/wricket/match/new',
+      params: {
+        tournamentId: tournament.id,
+        teamAId: teamA.id,
+        teamBId: teamB.id,
+        canonicalMatchId: match.canonicalMatchId,
+        format: tournament.format,
+        ...(edit ? {
+          editFixtureId: match.id,
+          scheduledAt: match.scheduledAt,
+          venue: tournament.location,
+        } : {}),
+      },
+    });
+  };
+
   const choices = formatChoices.length ? formatChoices : [selected];
   return (
     <Screen scroll>
@@ -309,10 +330,13 @@ export default function TournamentFixturesSetupScreen() {
               setup={setup!}
               teams={teams}
               manual={manualSchedule}
+              canManage={tournament.organizerProfileId === auth.session?.user.id}
               onUndo={undoGeneration}
               onResetKnockout={resetKnockout}
               undoing={saving}
               onGenerateKnockout={generateKnockout}
+              onStartFixture={match => openFixtureMatch(match, false)}
+              onScheduleFixture={match => openFixtureMatch(match, true)}
             />
             {generationError && (
               <Text variant="caption" style={{ color: colors.danger, textAlign: 'center' }}>
@@ -501,14 +525,19 @@ export default function TournamentFixturesSetupScreen() {
   );
 }
 
-function GeneratedSummary({ setup, teams, manual, onUndo, onResetKnockout, undoing, onGenerateKnockout }: {
+function GeneratedSummary({
+  setup, teams, manual, canManage, onUndo, onResetKnockout, undoing, onGenerateKnockout, onStartFixture, onScheduleFixture,
+}: {
   setup: GeneratedFixtureSetup;
   teams: Team[];
   manual: boolean;
+  canManage: boolean;
   onUndo: () => void;
   onResetKnockout: () => void;
   undoing: boolean;
   onGenerateKnockout: (preset: KnockoutPreset, qualifierTeamIds?: string[]) => Promise<void>;
+  onStartFixture: (match: GeneratedFixtureSetup['matches'][number]) => void;
+  onScheduleFixture: (match: GeneratedFixtureSetup['matches'][number]) => void;
 }) {
   const names = new Map(teams.filter(team => team.cloudId).map(team => [team.cloudId!, team.name]));
   const groupStage = setup.stages.find(stage => stage.type === 'GROUP');
@@ -517,7 +546,6 @@ function GeneratedSummary({ setup, teams, manual, onUndo, onResetKnockout, undoi
   const knockoutStage = setup.stages.find(stage => stage.type === 'KNOCKOUT');
   const knockoutMatches = setup.matches.filter(match => match.stageId === knockoutStage?.id);
   const hasGeneratedKnockout = Boolean(setup.bracket || knockoutMatches.length);
-  const knockoutPlanned = Boolean(groupStage?.config?.knockoutPlanned || knockoutStage);
   const canResetAll = groupMatches.every(match => match.status === 'SCHEDULED');
   const allMatchesUnstarted = setup.matches.every(match => match.status === 'SCHEDULED');
   return (
@@ -537,11 +565,19 @@ function GeneratedSummary({ setup, teams, manual, onUndo, onResetKnockout, undoi
         </Card>
       ))}
       {setup.matches.map(match => (
-        <View key={match.id} style={styles.fixtureRow}>
-          <Text variant="caption" tone="dim">R{match.round}</Text>
-          <Text variant="bodyStrong" style={{ flex: 1, textAlign: 'right' }}>{names.get(match.teamA) ?? 'TBD'}</Text>
-          <Text variant="caption" tone="muted">vs</Text>
-          <Text variant="bodyStrong" style={{ flex: 1 }}>{match.teamB ? names.get(match.teamB) ?? 'TBD' : 'BYE'}</Text>
+        <View key={match.id} style={{ gap: spacing.sm }}>
+          <View style={styles.fixtureRow}>
+            <Text variant="caption" tone="dim">R{match.round}</Text>
+            <Text variant="bodyStrong" style={{ flex: 1, textAlign: 'right' }}>{names.get(match.teamA) ?? 'TBD'}</Text>
+            <Text variant="caption" tone="muted">vs</Text>
+            <Text variant="bodyStrong" style={{ flex: 1 }}>{match.teamB ? names.get(match.teamB) ?? 'TBD' : 'BYE'}</Text>
+          </View>
+          {canManage && match.status === 'SCHEDULED' && match.teamB && match.canonicalMatchId && (
+            <View style={styles.fixtureActions}>
+              <Button title="Schedule" size="sm" variant="secondary" style={{ flex: 1 }} onPress={() => onScheduleFixture(match)} />
+              <Button title="Start match" size="sm" style={{ flex: 1 }} onPress={() => onStartFixture(match)} />
+            </View>
+          )}
         </View>
       ))}
       {setup.bracket?.rounds.map(round => (
@@ -564,7 +600,7 @@ function GeneratedSummary({ setup, teams, manual, onUndo, onResetKnockout, undoi
           </View>
         </Card>
       ))}
-      {!manual && groupStage && knockoutPlanned && !hasGeneratedKnockout ? (
+      {!manual && groupStage && !hasGeneratedKnockout ? (
         groupsComplete
           ? <KnockoutBuilder setup={setup} teams={teams} saving={undoing} onGenerate={onGenerateKnockout} />
           : <Card><Text variant="h3">Knockouts unlock after the groups</Text><Text variant="body" tone="muted" style={{ marginTop: spacing.sm }}>Complete every group match, then the owner can select and confirm the knockout format.</Text></Card>
@@ -734,4 +770,5 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  fixtureActions: { flexDirection: 'row', gap: spacing.sm, paddingBottom: spacing.md },
 });

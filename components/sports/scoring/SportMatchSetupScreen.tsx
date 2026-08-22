@@ -13,12 +13,11 @@ import { Text } from '@/components/ui/Text';
 import {
   SPORT_CONFIGS,
   SPORT_PRESENTATION,
-  createScoringSession,
-  saveScoringSession,
   type ScoringSportId,
   type MatchFormat,
   type Side,
 } from '@/lib/sports/scoring';
+import { sportScoringApi } from '@/lib/supabase/sportScoringApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 
@@ -60,17 +59,14 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
     }
     setSaving(true);
     try {
-      const session = createScoringSession({
-        sportId,
+      const scoringMatchId = await sportScoringApi.createStandalone({
+        sportCode: presentation.catalogCode,
         matchFormat,
-        sideNames: scoringSideNames,
-        sidePlayers,
-        initialServer,
-        createdByAccountId,
-        options,
+        sideAPlayers: sidePlayers[0],
+        sideBPlayers: sidePlayers[1],
+        rulesSnapshot: { initial_server: initialServer, options },
       });
-      await saveScoringSession(session);
-      router.replace(`/${presentation.routeSegment}/match/${session.id}/score` as Href);
+      router.replace(`/${presentation.routeSegment}/match/${scoringMatchId}/score` as Href);
     } catch (cause) {
       Alert.alert('Could not start match', cause instanceof Error ? cause.message : 'Please try again.');
     } finally {
@@ -172,10 +168,10 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
           </View>
         ) : null}
 
-        <View style={styles.offlineNote}>
-          <MaterialCommunityIcons name="cloud-off-outline" size={19} color={colors.textMuted} />
+        <View style={styles.syncNote}>
+          <MaterialCommunityIcons name="cloud-check-outline" size={19} color={colors.textMuted} />
           <Text variant="caption" tone="muted" style={styles.flex}>
-            Match events are stored on this device and rebuilt from the rally log whenever you resume.
+            Match setup and rally scoring are saved to SportStage, so you can safely resume from another device.
           </Text>
         </View>
 
@@ -235,7 +231,7 @@ const styles = StyleSheet.create({
   selectedSegmentText: { color: colors.accentInk },
   optionCard: { minHeight: 78, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   optionCopy: { flex: 1 },
-  offlineNote: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  syncNote: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   disabled: { opacity: 0.4 },
   flex: { flex: 1, minWidth: 0 },
 });

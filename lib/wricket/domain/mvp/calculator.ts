@@ -271,14 +271,43 @@ function rate(value: number, denominator: number): number {
 function selectAwards(rows: PlayerMvpResult[], input: MatchMvpInput, config: MvpConfig): void {
   if (input.status !== 'COMPLETED' || !rows.length || input.result?.kind === 'NO_RESULT') return;
   const winner = input.result?.winnerTeamId;
-  const eligible = rows.slice(0, config.awards.playerOfMatchWinningTeamTopRankLimit);
-  const pom = winner ? eligible.find(row => row.teamId === winner) ?? rows[0]
-    : input.result?.kind === 'TIE' && config.awards.awardPlayerOfMatchForCompletedTie ? rows[0] : undefined;
-  if (pom) pom.isPlayerOfTheMatch = true;
+  // The MVP leaderboard is the single source of truth for Player of the Match.
+  const pom = rows[0];
+  pom.isPlayerOfTheMatch = true;
   if (!winner) return;
   const loser = rows.find(row => row.teamId !== winner &&
     row.order <= config.awards.fighterOfMatchTopRankLimit && row.playerId !== pom?.playerId);
   if (loser) loser.isFighterOfTheMatch = true;
+}
+
+export interface MatchMvpAwards {
+  playerOfTheMatch?: PlayerMvpResult;
+  fighterOfTheMatch?: PlayerMvpResult;
+  bestBatter?: PlayerMvpResult;
+  bestBowler?: PlayerMvpResult;
+  bestFielder?: PlayerMvpResult;
+}
+
+/** Derives each match award from the deterministic MVP leaderboard. */
+export function getMatchMvpAwards(result: MatchMvpResult): MatchMvpAwards {
+  if (!result.playerOfTheMatchId) return {};
+  const rankings = result.rankings;
+  return {
+    playerOfTheMatch: rankings[0],
+    fighterOfTheMatch: rankings.find(row => row.isFighterOfTheMatch),
+    bestBatter: bestInCategory(rankings, row => row.battingPoints),
+    bestBowler: bestInCategory(rankings, row => row.bowlingPoints),
+    bestFielder: bestInCategory(rankings, row => row.fieldingPoints),
+  };
+}
+
+function bestInCategory(
+  rankings: readonly PlayerMvpResult[],
+  score: (row: PlayerMvpResult) => number,
+): PlayerMvpResult | undefined {
+  return rankings
+    .filter(row => score(row) > 0)
+    .sort((a, b) => score(b) - score(a) || a.order - b.order)[0];
 }
 
 export function aggregateTournamentMvp(matches: readonly MatchMvpResult[]): TournamentMvpRow[] {
@@ -308,4 +337,3 @@ export function aggregateTournamentMvp(matches: readonly MatchMvpResult[]): Tour
     b.fieldingDismissals - a.fieldingDismissals || a.matchesPlayed - b.matchesPlayed ||
     a.playerId.localeCompare(b.playerId)).map((row, index) => ({ ...row, rank: index + 1 }));
 }
-

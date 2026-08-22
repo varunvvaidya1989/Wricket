@@ -34,11 +34,12 @@ import { Team, User, MatchFormat, FORMAT_LABEL, DEFAULT_RULES, TossChoice, Forma
 import { followOnThresholdForOvers } from '@/lib/wricket/domain/test-match';
 import { matchSetupApi } from '@/lib/supabase/matchSetupApi';
 import { teamManagementApi } from '@/lib/supabase/teamManagementApi';
-import { fixturesApi } from '@/lib/supabase/fixturesApi';
+import { fixturesApi, type GeneratedFixtureSetup } from '@/lib/supabase/fixturesApi';
 import { googleStaticMapUrl } from '@/lib/maps/googlePlaces';
 import { VirtualCoinToss } from '@/components/sports/VirtualCoinToss';
 
 type Step = 'teams' | 'players' | 'toss' | 'review';
+type TournamentMatchType = 'RANDOM' | 'GROUP' | 'KNOCKOUT';
 
 const FORMATS: MatchFormat[] = ['BOX', 'TURF', 'TURF_TEST', 'T20', 'T10', 'ODI'];
 
@@ -93,8 +94,19 @@ export default function NewMatchScreen() {
   );
   const [isTournamentMatch, setIsTournamentMatch] = useState(Boolean(tournamentId));
   const [selectedTournament, setSelectedTournament] = useState<Awaited<ReturnType<typeof getTournament>>>(null);
+  const [fixtureSetup, setFixtureSetup] = useState<GeneratedFixtureSetup>();
+  const [tournamentMatchType, setTournamentMatchType] = useState<TournamentMatchType>('RANDOM');
+  const [linkedGroupId, setLinkedGroupId] = useState('');
+  const [linkedRound, setLinkedRound] = useState('1');
+  const [knockoutRoundName, setKnockoutRoundName] = useState('QF');
   const teamA = allTeams.find(t => t.id === teamAId);
   const teamB = allTeams.find(t => t.id === teamBId);
+  const manualGroupStage = fixtureSetup?.stages.find(stage => stage.type === 'GROUP' && stage.config?.manual);
+  const manualKnockoutStage = fixtureSetup?.stages.find(stage => stage.type === 'KNOCKOUT' && stage.config?.manual);
+  const linkedGroup = fixtureSetup?.groups.find(group => group.id === linkedGroupId && group.stage_id === manualGroupStage?.id);
+  const selectableTeams = tournamentMatchType === 'GROUP' && linkedGroup
+    ? allTeams.filter(team => team.cloudId && linkedGroup.team_ids.includes(team.cloudId))
+    : allTeams;
 
   useEffect(() => {
     (async () => {
@@ -113,6 +125,7 @@ export default function NewMatchScreen() {
           // Tournament fixtures always inherit the canonical tournament venue.
           setVenue(tournament.location ?? '');
           setIsTournamentMatch(true);
+          if (tournament.cloudId) setFixtureSetup(await fixturesApi.getFixtureSetup(tournament.cloudId));
         }
         return;
       }
@@ -160,6 +173,18 @@ export default function NewMatchScreen() {
     void loadEligibility().catch(cause => Alert.alert('Could not load roster roles', cause instanceof Error ? cause.message : 'Please try again.'));
   }, [teamA?.cloudId, teamB?.cloudId]);
 
+  useEffect(() => {
+    if (tournamentMatchType !== 'GROUP') return;
+    const groups = fixtureSetup?.groups.filter(group => group.stage_id === manualGroupStage?.id) ?? [];
+    if (!groups.some(group => group.id === linkedGroupId)) setLinkedGroupId(groups[0]?.id ?? '');
+  }, [fixtureSetup?.groups, linkedGroupId, manualGroupStage?.id, tournamentMatchType]);
+
+  useEffect(() => {
+    if (canonicalMatchId || editFixtureId) return;
+    setTeamAId(null);
+    setTeamBId(null);
+  }, [canonicalMatchId, editFixtureId, linkedGroupId, tournamentMatchType]);
+
   const playingCount = Number(playingCountInput);
   const oversPerInnings = Number(oversInput);
   const rules = {
@@ -197,12 +222,34 @@ export default function NewMatchScreen() {
       if (selectedPlayersA.some(player => !player.cloudId) || selectedPlayersB.some(player => !player.cloudId)) {
         throw new Error('Every selected player must be available online before starting the match');
       }
+      const tournament = tournamentId ? await getTournament(tournamentId) : null;
+      if (tournamentId && !tournament?.cloudId) {
+        throw new Error('Tournament is not available online');
+      }
       let cloudMatchId = canonicalMatchId;
-      if (!cloudMatchId) {
-        const tournament = tournamentId ? await getTournament(tournamentId) : null;
-        if (tournamentId && !tournament?.cloudId) {
-          throw new Error('Tournament is not available online');
+      if (!cloudMatchId && tournamentMatchType !== 'RANDOM') {
+        const round = Number(linkedRound);
+        if (!Number.isInteger(round) || round < 1) {
+          throw new Error('Enter a valid round number for the linked fixture');
         }
+        const stageId = tournamentMatchType === 'GROUP' ? manualGroupStage?.id : manualKnockoutStage?.id;
+        if (!stageId) {
+          throw new Error(`Add a manual ${tournamentMatchType === 'GROUP' ? 'group' : 'knockout'} stage before starting this match`);
+        }
+        if (tournamentMatchType === 'GROUP' && !linkedGroupId) {
+          throw new Error('Choose the group this match belongs to');
+        }
+        const fixture = await fixturesApi.addManualFixture({
+          stageId,
+          groupId: tournamentMatchType === 'GROUP' ? linkedGroupId : undefined,
+          teamAId: teamA.cloudId,
+          teamBId: teamB.cloudId,
+          round,
+          roundName: tournamentMatchType === 'KNOCKOUT' ? knockoutRoundName : undefined,
+        });
+        cloudMatchId = fixture.canonicalMatchId;
+      }
+      if (!cloudMatchId) {
         cloudMatchId = await matchSetupApi.createMatch({
           tournamentId: tournament?.cloudId ?? null,
           teamAId: teamA.cloudId,
@@ -324,22 +371,37 @@ export default function NewMatchScreen() {
         <StepBadge step={step} />
 
         {step === 'teams' && (
-          <TeamsStep
-            format={format}
-            setFormat={setFormat}
-            teams={allTeams}
-            teamAId={teamAId}
-            teamBId={teamBId}
-            setTeamAId={setTeamAId}
-            setTeamBId={setTeamBId}
-            teamReasons={teamReasons}
-            lockFormat={isTournamentMatch}
-            venue={venue}
-            scheduledAt={scheduledAt}
-            setVenue={setVenue}
-            setScheduledAt={setScheduledAt}
-            tournament={selectedTournament}
-          />
+          <View style={{ gap: spacing.lg }}>
+            {Boolean(tournamentId && !canonicalMatchId && !editFixtureId) && (
+              <TournamentMatchTypePicker
+                type={tournamentMatchType}
+                setType={setTournamentMatchType}
+                setup={fixtureSetup}
+                groupId={linkedGroupId}
+                setGroupId={setLinkedGroupId}
+                round={linkedRound}
+                setRound={setLinkedRound}
+                knockoutRoundName={knockoutRoundName}
+                setKnockoutRoundName={setKnockoutRoundName}
+              />
+            )}
+            <TeamsStep
+              format={format}
+              setFormat={setFormat}
+              teams={selectableTeams}
+              teamAId={teamAId}
+              teamBId={teamBId}
+              setTeamAId={setTeamAId}
+              setTeamBId={setTeamBId}
+              teamReasons={teamReasons}
+              lockFormat={isTournamentMatch}
+              venue={venue}
+              scheduledAt={scheduledAt}
+              setVenue={setVenue}
+              setScheduledAt={setScheduledAt}
+              tournament={selectedTournament}
+            />
+          </View>
         )}
 
         {step === 'players' && teamA && teamB && (
@@ -457,6 +519,113 @@ function StepBadge({ step }: { step: Step }) {
       <Text variant="overline" tone="muted">Step {stepNum} of 4</Text>
       <Text variant="h1">{title}</Text>
     </View>
+  );
+}
+
+function TournamentMatchTypePicker({
+  type, setType, setup, groupId, setGroupId, round, setRound, knockoutRoundName, setKnockoutRoundName,
+}: {
+  type: TournamentMatchType;
+  setType: (type: TournamentMatchType) => void;
+  setup?: GeneratedFixtureSetup;
+  groupId: string;
+  setGroupId: (id: string) => void;
+  round: string;
+  setRound: (value: string) => void;
+  knockoutRoundName: string;
+  setKnockoutRoundName: (value: string) => void;
+}) {
+  const groupStage = setup?.stages.find(stage => stage.type === 'GROUP' && stage.config?.manual);
+  const knockoutStage = setup?.stages.find(stage => stage.type === 'KNOCKOUT' && stage.config?.manual);
+  const groups = setup?.groups.filter(group => group.stage_id === groupStage?.id) ?? [];
+  const groupAvailable = Boolean(groupStage && groups.length);
+  const knockoutAvailable = Boolean(knockoutStage);
+  const selectKnockoutRound = (name: string) => {
+    setKnockoutRoundName(name);
+    setRound(name === 'QF' ? '1' : name === 'SF' ? '2' : '3');
+  };
+  return (
+    <Card>
+      <Text variant="h3">Match type</Text>
+      <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
+        Link this match to a manual group or knockout stage, or keep it as an independent tournament match.
+      </Text>
+      <View style={[styles.matchTypeChoices, { marginTop: spacing.md }]}>
+        {([
+          ['RANDOM', 'Independent'],
+          ['GROUP', 'Group fixture'],
+          ['KNOCKOUT', 'Knockout fixture'],
+        ] as const).map(([value, label]) => {
+          const disabled = (value === 'GROUP' && !groupAvailable) || (value === 'KNOCKOUT' && !knockoutAvailable);
+          return (
+            <Pressable
+              key={value}
+              disabled={disabled}
+              onPress={() => setType(value)}
+              style={[styles.chip, type === value && styles.chipActive, disabled && styles.teamRowLocked]}
+            >
+              <Text variant="caption" style={type === value ? { color: colors.accentInk } : undefined}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {!groupAvailable && !knockoutAvailable && (
+        <Text variant="caption" tone="dim" style={{ marginTop: spacing.sm }}>
+          Add manual stages in Tournament fixtures to link a match to the schedule.
+        </Text>
+      )}
+      {type === 'GROUP' && (
+        <View style={{ marginTop: spacing.md }}>
+          <Text variant="caption" tone="muted">GROUP</Text>
+          <View style={[styles.matchTypeChoices, { marginTop: spacing.sm }]}>
+            {groups.map(group => (
+              <Pressable
+                key={group.id}
+                onPress={() => setGroupId(group.id)}
+                style={[styles.chip, groupId === group.id && styles.chipActive]}
+              >
+                <Text variant="caption" style={groupId === group.id ? { color: colors.accentInk } : undefined}>
+                  {group.name}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+      {type === 'KNOCKOUT' && (
+        <View style={{ marginTop: spacing.md }}>
+          <Text variant="caption" tone="muted">KNOCKOUT ROUND</Text>
+          <View style={[styles.matchTypeChoices, { marginTop: spacing.sm }]}>
+            {([
+              ['QF', 'Quarter-final'],
+              ['SF', 'Semi-final'],
+              ['F', 'Final'],
+            ] as const).map(([value, label]) => (
+              <Pressable
+                key={value}
+                onPress={() => selectKnockoutRound(value)}
+                style={[styles.chip, knockoutRoundName === value && styles.chipActive]}
+              >
+                <Text variant="caption" style={knockoutRoundName === value ? { color: colors.accentInk } : undefined}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+      {type !== 'RANDOM' && (
+        <View style={{ marginTop: spacing.md }}>
+          <Text variant="caption" tone="muted">ROUND ORDER</Text>
+          <TextInput
+            value={round}
+            onChangeText={setRound}
+            keyboardType="number-pad"
+            style={[styles.input, { marginTop: spacing.sm, marginBottom: 0, width: 96 }]}
+          />
+        </View>
+      )}
+    </Card>
   );
 }
 
@@ -980,6 +1149,7 @@ function ReviewStep({
 }
 
 const styles = StyleSheet.create({
+  matchTypeChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   searchInput: { minHeight: 46, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: spacing.md, fontSize: 15 },
   rulesCard: { gap: spacing.sm },
   ruleInputs: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },

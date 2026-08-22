@@ -200,7 +200,8 @@ export const liveMatchApi = {
       client.from('match_mvp_results')
         .select('player_id, batting_points, bowling_points, fielding_points, players(display_name)')
         .eq('match_id', matchId)
-        .eq('is_player_of_match', true)
+        .order('deterministic_order')
+        .limit(1)
         .maybeSingle(),
     ]);
     if (xiError) throw xiError;
