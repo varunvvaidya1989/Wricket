@@ -258,6 +258,7 @@ export default function AccountScreen() {
     </View>
     <Button title="Save changes" onPress={() => void save()} loading={saving} fullWidth />
     <Button title="Change password" variant="secondary" onPress={() => router.push('/change-password')} disabled={saving} fullWidth />
+    <Button title="How to use SportStage" variant="secondary" onPress={() => router.push('/manual')} disabled={saving} fullWidth />
     <View style={styles.dangerSection}>
       <Text variant="overline" style={styles.dangerText}>DATA & ACCOUNT</Text>
       <Text variant="bodyStrong">Clear data on this device</Text>

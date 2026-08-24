@@ -23,6 +23,7 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -1007,7 +1008,7 @@ export default function ScoreScreen() {
               </View>
             </>
           ) : (
-            <Text tone="muted">Loading match…</Text>
+            <SportStageLoader variant="section" message="Preparing the scorer" detail="Restoring the innings, playing XI, and live session" />
           )}
         </View>
       </Screen>

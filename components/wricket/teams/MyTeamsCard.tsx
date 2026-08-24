@@ -6,6 +6,7 @@ import { Alert, Image, Modal, Pressable, StyleSheet, TextInput, View } from 'rea
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Text } from '@/components/ui/Text';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { colors, palette } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { MyTeamSummary, teamManagementApi } from '@/lib/supabase/teamManagementApi';
@@ -50,7 +51,7 @@ export function MyTeamsCard({
       </View>
 
       {loading ? (
-        <Text variant="caption" tone="muted" style={styles.message}>Loading teams…</Text>
+        <SportStageLoader variant="compact" message="Loading your teams" detail="" />
       ) : teams.length === 0 ? (
         <View style={styles.empty}>
           <MaterialCommunityIcons name="account-group-outline" size={24} color={colors.textMuted} />

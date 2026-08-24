@@ -1,5 +1,5 @@
 export const NON_CRICKET_SPORTS_ENABLED =
-  process.env.EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS === 'true';
+  process.env.EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS !== 'false';
 
 export function isSportReleased(
   sportCode: string,

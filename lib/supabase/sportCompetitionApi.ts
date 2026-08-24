@@ -25,6 +25,12 @@ export interface CloudCompetition {
   registrationOpensAt?: string;
   registrationClosesAt?: string;
   scheduleVersion: number;
+  rules: Record<string, unknown>;
+  logoUrl?: string;
+  bannerUrl?: string;
+  organizerPhone?: string;
+  socialMediaUrl?: string;
+  plannedEntryCount?: number;
 }
 
 export interface CloudCompetitionEntry {
@@ -37,6 +43,15 @@ export interface CloudCompetitionEntry {
   displayName: string;
   sourceTeamId?: string;
   sportProfileId?: string;
+  logoUrl?: string;
+  squadPlayers: CloudSquadPlayer[];
+}
+
+export interface CloudSquadPlayer {
+  sportProfileId: string;
+  displayName: string;
+  eligibility: ('SINGLES' | 'DOUBLES')[];
+  status: CloudRegistrationStatus;
 }
 
 export interface CloudCompetitionStage {
@@ -60,6 +75,10 @@ export interface CloudCompetitionVenue {
   address?: string;
   courtCount?: number;
   displayOrder: number;
+  latitude?: number;
+  longitude?: number;
+  googlePlaceId?: string;
+  googleMapsUrl?: string;
 }
 
 export interface CloudFixture {
@@ -79,6 +98,8 @@ export interface CloudFixture {
   status: 'SCHEDULED' | 'CANCELLED';
   cancellationReason?: string;
   rowVersion: number;
+  scoringMatchId?: string;
+  scoringStatus?: string;
   matches: CloudFixtureMatch[];
 }
 
@@ -88,6 +109,8 @@ export interface CloudFixtureMatch {
   displayOrder: number;
   format: 'SINGLES' | 'DOUBLES' | 'MIXED_DOUBLES';
   label: string;
+  scoringMatchId?: string;
+  scoringStatus?: string;
 }
 
 export type CloudFixtureMatchDraft = Pick<CloudFixtureMatch, 'format' | 'label'>;
@@ -159,10 +182,22 @@ export interface CloudCompetitionDetail {
   checkIns: CloudFixtureCheckIn[];
   pointsRule: CloudCompetitionPointsRule;
   officials: CloudFixtureOfficial[];
+  lineups: CloudFixtureLineup[];
   canManage: boolean;
+  ownerContact: { displayName: string; phone?: string };
 }
 
-const competitionFields = 'id, sport_id, kind, name, description, visibility, lifecycle, owner_account_id, timezone, match_format, starts_at, ends_at, registration_opens_at, registration_closes_at, schedule_version';
+export interface CloudFixtureLineup {
+  id: string;
+  fixtureId: string;
+  fixtureMatchId: string;
+  entryId: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'LOCKED';
+  version: number;
+  playerProfileIds: string[];
+}
+
+const competitionFields = 'id, sport_id, kind, name, description, visibility, lifecycle, owner_account_id, timezone, match_format, starts_at, ends_at, registration_opens_at, registration_closes_at, rules, schedule_version, logo_url, banner_url, organizer_phone, social_media_url, planned_entry_count';
 
 export const sportCompetitionApi = {
   async listInvitations(sportCode: string): Promise<CloudCompetitionInvitation[]> {
@@ -177,31 +212,34 @@ export const sportCompetitionApi = {
   },
 
   async list(sportCode: string): Promise<CloudCompetition[]> {
-    const { data, error } = await getSupabaseClient().from('sport_competitions')
-      .select(`${competitionFields}, sports!inner(code)`)
-      .eq('sports.code', sportCode)
-      .order('updated_at', { ascending: false });
+    const { data, error } = await getSupabaseClient().rpc('list_sport_competitions', {
+      p_sport_code: sportCode,
+    });
     if (error) throw error;
-    return (data ?? []).map((row) => mapCompetition(row as Record<string, unknown>));
+    return (data ?? []).map((row: Record<string, unknown>) => mapCompetition(row));
   },
 
   async get(competitionId: string): Promise<CloudCompetitionDetail> {
     const client = getSupabaseClient();
-    const [competitionResult, entriesResult, stagesResult, divisionsResult, venuesResult, fixturesResult, matchesResult, checkInsResult, pointsResult, officialsResult, manageResult] = await Promise.all([
+    const [competitionResult, entriesResult, stagesResult, divisionsResult, venuesResult, fixturesResult, matchesResult, scoringResult, checkInsResult, pointsResult, officialsResult, lineupsResult, lineupPlayersResult, manageResult, ownerContactResult] = await Promise.all([
       client.from('sport_competitions').select(competitionFields).eq('id', competitionId).single(),
-      client.from('sport_competition_entries').select('id, competition_id, entry_kind, division_key, status, seed, snapshot, sport_tournament_squads(source_team_id, name_snapshot), sport_league_players(sport_profile_id, display_name_snapshot)').eq('competition_id', competitionId).order('created_at'),
+      client.from('sport_competition_entries').select('id, competition_id, entry_kind, division_key, status, seed, snapshot, sport_tournament_squads(source_team_id, name_snapshot, logo_url_snapshot, sport_squad_members(sport_profile_id, display_name_snapshot, eligibility, status)), sport_league_players(sport_profile_id, display_name_snapshot)').eq('competition_id', competitionId).order('created_at'),
       client.from('sport_competition_stages').select('id, name, kind, display_order').eq('competition_id', competitionId).order('display_order'),
       client.from('sport_competition_divisions').select('id, division_key, name, display_order, registration_capacity').eq('competition_id', competitionId).order('display_order'),
-      client.from('sport_competition_venues').select('id, name, address, court_count, display_order').eq('competition_id', competitionId).order('display_order'),
+      client.from('sport_competition_venues').select('id, name, address, court_count, display_order, latitude, longitude, google_place_id, google_maps_url').eq('competition_id', competitionId).order('display_order'),
       client.from('sport_fixtures').select('id, competition_id, stage_id, division_key, entrant_a_id, entrant_b_id, venue_id, court, scheduled_at, check_in_opens_at, check_in_closes_at, duration_minutes, display_order, status, cancellation_reason, row_version').eq('competition_id', competitionId).order('display_order'),
       client.from('sport_fixture_matches').select('id, fixture_id, display_order, match_format, label').eq('competition_id', competitionId).order('display_order'),
+      client.from('sport_scoring_matches').select('id, fixture_id, fixture_match_id, status').eq('competition_id', competitionId),
       client.from('sport_fixture_check_ins').select('id, fixture_id, entry_id, status, checked_at').eq('competition_id', competitionId),
       client.from('sport_competition_points_rules').select('win_points, draw_points, loss_points, walkover_points, version').eq('competition_id', competitionId).single(),
       client.from('sport_fixture_officials').select('id, fixture_id, account_id, display_name_snapshot, role').eq('competition_id', competitionId).order('created_at'),
+      client.from('sport_fixture_match_lineups').select('id, fixture_id, fixture_match_id, entry_id, status, version').eq('competition_id', competitionId),
+      client.from('sport_fixture_match_lineup_players').select('lineup_id, sport_profile_id, display_order').order('display_order'),
       client.rpc('can_manage_sport_competition', { p_competition_id: competitionId }),
+      client.rpc('get_sport_competition_owner_contact', { p_competition_id: competitionId }),
     ]);
     if (competitionResult.error) throw competitionResult.error;
-    for (const result of [entriesResult, stagesResult, divisionsResult, venuesResult, fixturesResult, matchesResult, checkInsResult, pointsResult, officialsResult, manageResult]) {
+    for (const result of [entriesResult, stagesResult, divisionsResult, venuesResult, fixturesResult, matchesResult, scoringResult, checkInsResult, pointsResult, officialsResult, lineupsResult, lineupPlayersResult, manageResult]) {
       if (result.error) throw result.error;
     }
     if (!pointsResult.data) throw new Error('Competition points rules were not found.');
@@ -220,10 +258,13 @@ export const sportCompetitionApi = {
         id: String(row.id), name: String(row.name), address: optionalString(row.address),
         courtCount: optionalNumber(row.court_count),
         displayOrder: Number(row.display_order),
+        latitude: optionalNumber(row.latitude), longitude: optionalNumber(row.longitude),
+        googlePlaceId: optionalString(row.google_place_id), googleMapsUrl: optionalString(row.google_maps_url),
       })),
       fixtures: (fixturesResult.data ?? []).map((row) => mapFixture(
         row as Record<string, unknown>,
         (matchesResult.data ?? []).filter((match) => match.fixture_id === row.id),
+        (scoringResult.data ?? []).filter((match) => match.fixture_id === row.id),
       )),
       checkIns: (checkInsResult.data ?? []).map((row) => ({
         id: String(row.id), fixtureId: String(row.fixture_id), entryId: String(row.entry_id),
@@ -238,18 +279,36 @@ export const sportCompetitionApi = {
         id: String(row.id), fixtureId: String(row.fixture_id), accountId: String(row.account_id),
         displayName: String(row.display_name_snapshot), role: String(row.role) as CloudFixtureOfficial['role'],
       })),
+      lineups: (lineupsResult.data ?? []).map((row) => ({
+        id: String(row.id), fixtureId: String(row.fixture_id), fixtureMatchId: String(row.fixture_match_id),
+        entryId: String(row.entry_id), status: String(row.status) as CloudFixtureLineup['status'],
+        version: Number(row.version),
+        playerProfileIds: (lineupPlayersResult.data ?? [])
+          .filter((player) => player.lineup_id === row.id)
+          .map((player) => String(player.sport_profile_id)),
+      })),
       canManage: Boolean(manageResult.data),
+      ownerContact: {
+        displayName: String(ownerContactResult.error ? 'Competition organizer' : ownerContactResult.data?.[0]?.display_name ?? 'Competition organizer'),
+        phone: ownerContactResult.error ? undefined : optionalString(ownerContactResult.data?.[0]?.phone),
+      },
     };
   },
 
   async create(input: {
     sportCode: string; kind: CloudCompetitionKind; name: string;
-    visibility: 'PUBLIC' | 'PRIVATE'; timezone: string;
+    visibility: 'PUBLIC' | 'PRIVATE'; timezone: string; rules: Readonly<Record<string, unknown>>;
+    description?: string; organizerPhone?: string; socialMediaUrl?: string; plannedEntryCount?: number;
   }): Promise<string> {
-    const { data, error } = await getSupabaseClient().rpc('create_sport_competition', {
+    const { data, error } = await getSupabaseClient().rpc('create_sport_competition_profile', {
       p_sport_code: input.sportCode, p_kind: input.kind, p_name: input.name.trim(),
       p_match_format: 'SINGLES',
       p_visibility: input.visibility, p_timezone: input.timezone.trim(),
+      p_rules: input.rules,
+      p_description: input.description?.trim() || null,
+      p_organizer_phone: input.organizerPhone?.trim() || null,
+      p_social_media_url: input.socialMediaUrl?.trim() || null,
+      p_planned_entry_count: input.plannedEntryCount ?? null,
     });
     if (error) throw error;
     return String(data);
@@ -409,6 +468,44 @@ export const sportCompetitionApi = {
     if (error) throw error;
   },
 
+  async updateProfile(competitionId: string, input: { organizerPhone?: string; socialMediaUrl?: string; plannedEntryCount?: number }): Promise<void> {
+    const { error } = await getSupabaseClient().rpc('update_sport_competition_profile', {
+      p_competition_id: competitionId, p_organizer_phone: input.organizerPhone?.trim() || null,
+      p_social_media_url: input.socialMediaUrl?.trim() || null,
+      p_planned_entry_count: input.plannedEntryCount ?? null,
+    });
+    if (error) throw error;
+  },
+
+  async uploadMedia(input: { competitionId: string; ownerId: string; localUri: string; kind: 'logo' | 'banner' }): Promise<string> {
+    const client = getSupabaseClient();
+    const response = await fetch(input.localUri);
+    if (!response.ok) throw new Error(`Could not read the selected competition ${input.kind}.`);
+    const extension = imageExtension(input.localUri);
+    const path = `${input.ownerId}/sport-competitions/${input.competitionId}/${input.kind}-${Date.now()}.${extension}`;
+    const upload = await client.storage.from('tournament-media').upload(path, await response.arrayBuffer(), {
+      contentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`, cacheControl: '3600',
+    });
+    if (upload.error) throw upload.error;
+    const url = client.storage.from('tournament-media').getPublicUrl(path).data.publicUrl;
+    const update = await client.rpc('update_sport_competition_media', {
+      p_competition_id: input.competitionId, p_kind: input.kind, p_url: url,
+    });
+    if (update.error) {
+      await client.storage.from('tournament-media').remove([path]);
+      throw update.error;
+    }
+    return url;
+  },
+
+  async updateMatchRules(competitionId: string, rules: Readonly<Record<string, unknown>>): Promise<void> {
+    const { error } = await getSupabaseClient().rpc('update_sport_competition_match_rules', {
+      p_competition_id: competitionId,
+      p_rules: rules,
+    });
+    if (error) throw error;
+  },
+
   async submitTeamTieLineup(input: {
     fixtureMatchId: string; entryId: string; playerProfileIds: string[]; expectedVersion: number;
   }): Promise<string> {
@@ -420,6 +517,15 @@ export const sportCompetitionApi = {
     });
     if (error) throw new Error(normalizeCompetitionRpcMessage(error));
     return String(data);
+  },
+
+  async setVenuePlace(venueId: string, place: { name: string; address: string; latitude: number; longitude: number; placeId: string; googleMapsUrl: string }): Promise<void> {
+    const { error } = await getSupabaseClient().rpc('set_sport_competition_venue_place', {
+      p_venue_id: venueId, p_name: place.name, p_address: place.address,
+      p_latitude: place.latitude, p_longitude: place.longitude,
+      p_google_place_id: place.placeId, p_google_maps_url: place.googleMapsUrl,
+    });
+    if (error) throw error;
   },
 
   async upsertTeamTieTemplate(input: {
@@ -571,7 +677,12 @@ function mapCompetition(row: Record<string, unknown>): CloudCompetition {
     startsAt: optionalString(row.starts_at), endsAt: optionalString(row.ends_at),
     registrationOpensAt: optionalString(row.registration_opens_at),
     registrationClosesAt: optionalString(row.registration_closes_at),
+    rules: row.rules && typeof row.rules === 'object' && !Array.isArray(row.rules)
+      ? row.rules as Record<string, unknown> : {},
     scheduleVersion: Number(row.schedule_version),
+    logoUrl: optionalString(row.logo_url), bannerUrl: optionalString(row.banner_url),
+    organizerPhone: optionalString(row.organizer_phone), socialMediaUrl: optionalString(row.social_media_url),
+    plannedEntryCount: optionalNumber(row.planned_entry_count),
   };
 }
 
@@ -579,6 +690,9 @@ function mapEntry(row: Record<string, unknown>): CloudCompetitionEntry {
   const squad = one(row.sport_tournament_squads);
   const player = one(row.sport_league_players);
   const snapshot = row.snapshot && typeof row.snapshot === 'object' ? row.snapshot as Record<string, unknown> : {};
+  const squadMembers = squad && Array.isArray(squad.sport_squad_members)
+    ? squad.sport_squad_members as Record<string, unknown>[]
+    : [];
   return {
     id: String(row.id), competitionId: String(row.competition_id),
     entryKind: String(row.entry_kind) as CloudCompetitionEntry['entryKind'],
@@ -587,10 +701,24 @@ function mapEntry(row: Record<string, unknown>): CloudCompetitionEntry {
     displayName: String(squad?.name_snapshot ?? player?.display_name_snapshot ?? snapshot.name ?? snapshot.display_name ?? 'Entrant'),
     sourceTeamId: squad ? String(squad.source_team_id) : undefined,
     sportProfileId: player ? String(player.sport_profile_id) : undefined,
+    logoUrl: optionalString(squad?.logo_url_snapshot) ?? optionalString(snapshot.logo_url) ?? optionalString(snapshot.avatar_url),
+    squadPlayers: squadMembers.flatMap((member) => member.sport_profile_id ? [{
+      sportProfileId: String(member.sport_profile_id),
+      displayName: String(member.display_name_snapshot),
+      eligibility: Array.isArray(member.eligibility)
+        ? member.eligibility.filter((value): value is 'SINGLES' | 'DOUBLES' => value === 'SINGLES' || value === 'DOUBLES')
+        : [],
+      status: String(member.status) as CloudRegistrationStatus,
+    }] : []),
   };
 }
 
-function mapFixture(row: Record<string, unknown>, matches: Record<string, unknown>[]): CloudFixture {
+function mapFixture(
+  row: Record<string, unknown>,
+  matches: Record<string, unknown>[],
+  scoringMatches: Record<string, unknown>[],
+): CloudFixture {
+  const fixtureScoring = scoringMatches.find((match) => match.fixture_id === row.id && !match.fixture_match_id);
   return {
     id: String(row.id), competitionId: String(row.competition_id), stageId: optionalString(row.stage_id),
     divisionKey: String(row.division_key), entrantAId: String(row.entrant_a_id),
@@ -600,7 +728,12 @@ function mapFixture(row: Record<string, unknown>, matches: Record<string, unknow
     durationMinutes: optionalNumber(row.duration_minutes), displayOrder: Number(row.display_order),
     status: String(row.status) as CloudFixture['status'],
     cancellationReason: optionalString(row.cancellation_reason), rowVersion: Number(row.row_version),
+    scoringMatchId: optionalString(fixtureScoring?.id), scoringStatus: optionalString(fixtureScoring?.status),
     matches: matches.map((match) => ({
+      ...(() => {
+        const scoring = scoringMatches.find((candidate) => candidate.fixture_match_id === match.id);
+        return { scoringMatchId: optionalString(scoring?.id), scoringStatus: optionalString(scoring?.status) };
+      })(),
       id: String(match.id), fixtureId: String(match.fixture_id),
       displayOrder: Number(match.display_order),
       format: String(match.match_format) as CloudFixtureMatch['format'], label: String(match.label),
@@ -624,3 +757,7 @@ function one(value: unknown): Record<string, unknown> | undefined {
 }
 function optionalString(value: unknown): string | undefined { return typeof value === 'string' && value ? value : undefined; }
 function optionalNumber(value: unknown): number | undefined { return typeof value === 'number' ? value : undefined; }
+function imageExtension(uri: string): 'jpg' | 'png' | 'webp' {
+  const value = uri.split('?')[0].split('.').pop()?.toLowerCase();
+  return value === 'png' || value === 'webp' ? value : 'jpg';
+}

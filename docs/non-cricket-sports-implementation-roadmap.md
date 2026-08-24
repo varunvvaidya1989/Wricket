@@ -406,6 +406,31 @@ Acceptance criteria:
   protection before broad production rollout; no roadmap implementation phase
   remains.
 
+### 2026-08-24 - Account-backed cloud scoring integration completed
+
+- Status remains `COMPLETE`; this correction closes the gap between the Phase 2
+  identity rule and the Phase 5 standalone scoring surface.
+- Migration: `20260824063335_require_account_backed_sport_match_players.sql`
+  deployed to the linked Supabase project on 2026-08-24.
+- Delivered: account-only standalone player selection, immutable match-player
+  snapshots linked to sport profiles, participant-aware cloud history and stats,
+  tournament/league fixture scoring preparation, team-tie lineup management,
+  realtime feed navigation, and validated fixture-winner completion events for
+  Badminton, Tennis, Padel, Table Tennis, and Pickleball.
+- Application validation: 99 test files and 442 tests, strict TypeScript, lint,
+  architecture checks, and migration source checks passed.
+- Activation validation: Badminton, Tennis, Padel, Table Tennis, and Pickleball
+  are `AVAILABLE` with app routes; cloud competitions and the shared offline
+  scoring, public live, and follows/insights flags are enabled at 100%. All four
+  rollout plans report five sports at stage 100, and no reserved sport link
+  remains `COMING_SOON`.
+- Database validation: the migration's transactional assertions passed on the
+  linked project and a 12-assertion pgTAP test was added. The CLI pgTAP helper
+  still requires the unavailable local Docker engine, even with `--linked`.
+- Review corrections: standalone feeds are no longer readable by every signed-in
+  account; creators and participating player accounts retain detailed access,
+  while guest discovery continues to use the safe public snapshot surface.
+
 ## Phase completion update template
 
 Copy this section into the implementation log when a phase is completed:

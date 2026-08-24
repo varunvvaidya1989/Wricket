@@ -27,6 +27,8 @@ export interface SportCloudMatchFeed {
   id: string;
   sportId: string;
   competitionId?: string;
+  entrantAId?: string;
+  entrantBId?: string;
   competitionName: string;
   participantA: string;
   participantB: string;
@@ -37,6 +39,8 @@ export interface SportCloudMatchFeed {
   updatedAt: string;
   sideAPlayers: string[];
   sideBPlayers: string[];
+  sideAProfileIds: string[];
+  sideBProfileIds: string[];
   rulesSnapshot: Record<string, unknown>;
   createdBy: string;
   events: SportCloudScoringEvent[];
@@ -44,60 +48,58 @@ export interface SportCloudMatchFeed {
 
 export const sportScoringApi = {
   async listOwned(input: { sportId: string; accountId: string; limit?: number }): Promise<SportCloudMatchFeed[]> {
-    const client = getSupabaseClient();
-    const { data: matches, error: matchError } = await client.from('sport_scoring_matches')
-      .select('id, sport_id, competition_id, match_format, status, current_sequence, updated_at, side_a_players, side_b_players, rules_snapshot, created_by')
-      .eq('sport_id', input.sportId)
-      .eq('created_by', input.accountId)
-      .order('updated_at', { ascending: false })
-      .limit(input.limit ?? 100);
-    if (matchError) throw matchError;
-    const matchIds = (matches ?? []).map((match) => String(match.id));
-    if (!matchIds.length) return [];
-    const { data: events, error: eventError } = await client.from('sport_scoring_events')
-      .select('scoring_match_id, sequence, client_event_id, kind, payload, reverses_client_event_id, created_at')
-      .in('scoring_match_id', matchIds)
-      .order('sequence', { ascending: false });
-    if (eventError) throw eventError;
-    const eventsByMatch = new Map<string, SportCloudScoringEvent[]>();
-    (events ?? []).forEach((event) => {
-      const scoringMatchId = String(event.scoring_match_id);
-      const current = eventsByMatch.get(scoringMatchId) ?? [];
-      current.push(toCloudEvent(event));
-      eventsByMatch.set(scoringMatchId, current);
-    });
-    return (matches ?? []).map((match) => toCloudFeed(match, undefined, eventsByMatch.get(String(match.id)) ?? []));
+    return listAccountMatches(input, true);
+  },
+
+  async listMine(input: { sportId: string; accountId: string; limit?: number }): Promise<SportCloudMatchFeed[]> {
+    return listAccountMatches(input, false);
   },
 
   async feed(scoringMatchId: string): Promise<SportCloudMatchFeed> {
     const client = getSupabaseClient();
     const { data: match, error: matchError } = await client.from('sport_scoring_matches')
-      .select('id, sport_id, competition_id, match_format, status, current_sequence, updated_at, side_a_players, side_b_players, rules_snapshot, created_by')
+      .select('id, sport_id, competition_id, entrant_a_id, entrant_b_id, match_format, status, current_sequence, updated_at, side_a_players, side_b_players, rules_snapshot, created_by')
       .eq('id', scoringMatchId).single();
     if (matchError) throw matchError;
 
-    const [snapshotResult, eventResult] = await Promise.all([
+    const [snapshotResult, eventResult, playerResult] = await Promise.all([
       client.from('sport_public_live_snapshots')
         .select('competition_name, participant_a, participant_b, headline_score')
         .eq('scoring_match_id', scoringMatchId).maybeSingle(),
       client.from('sport_scoring_events')
         .select('sequence, client_event_id, kind, payload, reverses_client_event_id, created_at')
-        .eq('scoring_match_id', scoringMatchId).order('sequence', { ascending: false }).limit(100),
+        .eq('scoring_match_id', scoringMatchId).order('sequence', { ascending: false }),
+      client.from('sport_scoring_match_players')
+        .select('side, player_order, sport_profile_id, display_name_snapshot')
+        .eq('scoring_match_id', scoringMatchId).order('side').order('player_order'),
     ]);
     if (snapshotResult.error) throw snapshotResult.error;
     if (eventResult.error) throw eventResult.error;
-    return toCloudFeed(match, snapshotResult.data, (eventResult.data ?? []).map(toCloudEvent));
+    if (playerResult.error) throw playerResult.error;
+    return toCloudFeed(match, snapshotResult.data, (eventResult.data ?? []).map(toCloudEvent), playerResult.data ?? []);
   },
 
   async createStandalone(input: {
-    sportCode: string; matchFormat: 'SINGLES' | 'DOUBLES'; sideAPlayers: readonly string[];
-    sideBPlayers: readonly string[]; rulesSnapshot: Record<string, unknown>;
+    sportCode: string; matchFormat: 'SINGLES' | 'DOUBLES'; sideAProfileIds: readonly string[];
+    sideBProfileIds: readonly string[]; rulesSnapshot: Record<string, unknown>;
   }): Promise<string> {
     const { data, error } = await getSupabaseClient().rpc('create_standalone_sport_scoring_match', {
       p_sport_code: input.sportCode,
       p_match_format: input.matchFormat,
-      p_side_a_players: input.sideAPlayers,
-      p_side_b_players: input.sideBPlayers,
+      p_side_a_profile_ids: input.sideAProfileIds,
+      p_side_b_profile_ids: input.sideBProfileIds,
+      p_rules_snapshot: input.rulesSnapshot,
+    });
+    if (error) throw error;
+    return String(data);
+  },
+
+  async prepareFixture(input: {
+    fixtureId: string; fixtureMatchId?: string; rulesSnapshot: Record<string, unknown>;
+  }): Promise<string> {
+    const { data, error } = await getSupabaseClient().rpc('prepare_sport_fixture_scoring', {
+      p_fixture_id: input.fixtureId,
+      p_fixture_match_id: input.fixtureMatchId ?? null,
       p_rules_snapshot: input.rulesSnapshot,
     });
     if (error) throw error;
@@ -142,7 +144,12 @@ export const sportScoringApi = {
     return { duplicate: Boolean(result.duplicate), sequence: Number(result.sequence) };
   },
 
-  subscribe(scoringMatchId: string, onChange: () => void, onError?: (message: string) => void): () => void {
+  subscribe(
+    scoringMatchId: string,
+    onChange: () => void,
+    onError?: (message: string) => void,
+    onConnectionChange?: (connected: boolean) => void,
+  ): () => void {
     const client = getSupabaseClient();
     channelInstance += 1;
     const channel = client
@@ -157,6 +164,23 @@ export const sportScoringApi = {
         event: '*', schema: 'public', table: 'sport_public_live_snapshots', filter: `scoring_match_id=eq.${scoringMatchId}`,
       }, onChange)
       .subscribe((status, error) => {
+        onConnectionChange?.(status === 'SUBSCRIBED');
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          onError?.(error?.message ?? 'Live updates are temporarily unavailable.');
+        }
+      });
+    return () => { onConnectionChange?.(false); void client.removeChannel(channel); };
+  },
+
+  subscribeSportLive(sportId: string, onChange: () => void, onError?: (message: string) => void): () => void {
+    const client = getSupabaseClient();
+    channelInstance += 1;
+    const channel = client
+      .channel(`sport-live:${sportId}:${channelInstance}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'sport_public_live_snapshots', filter: `sport_id=eq.${sportId}`,
+      }, onChange)
+      .subscribe((status, error) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           onError?.(error?.message ?? 'Live updates are temporarily unavailable.');
         }
@@ -164,6 +188,61 @@ export const sportScoringApi = {
     return () => { void client.removeChannel(channel); };
   },
 };
+
+async function listAccountMatches(
+  input: { sportId: string; accountId: string; limit?: number },
+  creatorOnly: boolean,
+): Promise<SportCloudMatchFeed[]> {
+  const client = getSupabaseClient();
+  let participantMatchIds: string[] = [];
+  if (!creatorOnly) {
+    const { data, error } = await client.from('sport_scoring_match_players')
+      .select('scoring_match_id').eq('account_id', input.accountId);
+    if (error) throw error;
+    participantMatchIds = [...new Set((data ?? []).map((row) => String(row.scoring_match_id)))];
+  }
+  let matchQuery = client.from('sport_scoring_matches')
+    .select('id, sport_id, competition_id, entrant_a_id, entrant_b_id, match_format, status, current_sequence, updated_at, side_a_players, side_b_players, rules_snapshot, created_by')
+    .eq('sport_id', input.sportId);
+  matchQuery = creatorOnly || !participantMatchIds.length
+    ? matchQuery.eq('created_by', input.accountId)
+    : matchQuery.or(`created_by.eq.${input.accountId},id.in.(${participantMatchIds.join(',')})`);
+  const { data: matches, error: matchError } = await matchQuery
+    .order('updated_at', { ascending: false }).limit(input.limit ?? 100);
+  if (matchError) throw matchError;
+  const matchIds = (matches ?? []).map((match) => String(match.id));
+  if (!matchIds.length) return [];
+  const [eventResult, playerResult, snapshotResult] = await Promise.all([
+    client.from('sport_scoring_events')
+      .select('scoring_match_id, sequence, client_event_id, kind, payload, reverses_client_event_id, created_at')
+      .in('scoring_match_id', matchIds).order('sequence', { ascending: false }),
+    client.from('sport_scoring_match_players')
+      .select('scoring_match_id, side, player_order, sport_profile_id, display_name_snapshot')
+      .in('scoring_match_id', matchIds).order('side').order('player_order'),
+    client.from('sport_public_live_snapshots')
+      .select('scoring_match_id, competition_name, participant_a, participant_b, headline_score')
+      .in('scoring_match_id', matchIds),
+  ]);
+  if (eventResult.error) throw eventResult.error;
+  if (playerResult.error) throw playerResult.error;
+  if (snapshotResult.error) throw snapshotResult.error;
+  const eventsByMatch = new Map<string, SportCloudScoringEvent[]>();
+  (eventResult.data ?? []).forEach((event) => {
+    const matchId = String(event.scoring_match_id);
+    const current = eventsByMatch.get(matchId) ?? [];
+    current.push(toCloudEvent(event));
+    eventsByMatch.set(matchId, current);
+  });
+  return (matches ?? []).map((match) => {
+    const matchId = String(match.id);
+    return toCloudFeed(
+      match,
+      (snapshotResult.data ?? []).find((snapshot) => String(snapshot.scoring_match_id) === matchId),
+      eventsByMatch.get(matchId) ?? [],
+      (playerResult.data ?? []).filter((player) => String(player.scoring_match_id) === matchId),
+    );
+  });
+}
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
@@ -190,6 +269,7 @@ function toCloudFeed(
   match: Record<string, unknown>,
   snapshot: Record<string, unknown> | null | undefined,
   events: SportCloudScoringEvent[],
+  players: readonly Record<string, unknown>[],
 ): SportCloudMatchFeed {
   const sideAPlayers = stringArray(match.side_a_players);
   const sideBPlayers = stringArray(match.side_b_players);
@@ -197,6 +277,8 @@ function toCloudFeed(
     id: String(match.id),
     sportId: String(match.sport_id),
     competitionId: match.competition_id ? String(match.competition_id) : undefined,
+    entrantAId: match.entrant_a_id ? String(match.entrant_a_id) : undefined,
+    entrantBId: match.entrant_b_id ? String(match.entrant_b_id) : undefined,
     competitionName: snapshot?.competition_name ? String(snapshot.competition_name) : 'SportStage match',
     participantA: snapshot?.participant_a ? String(snapshot.participant_a) : sideAPlayers.join(' / ') || 'Entrant A',
     participantB: snapshot?.participant_b ? String(snapshot.participant_b) : sideBPlayers.join(' / ') || 'Entrant B',
@@ -207,6 +289,12 @@ function toCloudFeed(
     updatedAt: String(match.updated_at),
     sideAPlayers,
     sideBPlayers,
+    sideAProfileIds: players.filter((player) => Number(player.side) === 0)
+      .sort((left, right) => Number(left.player_order) - Number(right.player_order))
+      .map((player) => String(player.sport_profile_id)),
+    sideBProfileIds: players.filter((player) => Number(player.side) === 1)
+      .sort((left, right) => Number(left.player_order) - Number(right.player_order))
+      .map((player) => String(player.sport_profile_id)),
     rulesSnapshot: objectValue(match.rules_snapshot),
     createdBy: String(match.created_by),
     events,

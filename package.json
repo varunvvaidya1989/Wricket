@@ -1,7 +1,7 @@
 {
   "name": "mobile",
   "main": "expo-router/entry",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "packageManager": "npm@10.8.2",
   "scripts": {
     "start": "expo start -c",
@@ -18,6 +18,9 @@
     "check:architecture": "node scripts/check-architecture.js",
     "migrate:auction-yodha-players": "node scripts/migrate-auction-yodha-players.mjs",
     "recalculate-mvp": "node scripts/recalculate-mvp.mjs",
+    "demo:non-cricket:seed": "node scripts/manage-non-cricket-demo.mjs seed --production",
+    "demo:non-cricket:status": "node scripts/manage-non-cricket-demo.mjs status --production",
+    "demo:non-cricket:clear": "node scripts/manage-non-cricket-demo.mjs clear --production",
     "build:check": "npm run lint && npm run typecheck && npm run test && npm run check:env && npm run check:architecture && npx expo export --platform web --output-dir dist"
   },
   "dependencies": {

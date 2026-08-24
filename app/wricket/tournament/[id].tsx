@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { googleStaticMapUrl } from '@/lib/maps/googlePlaces';
@@ -34,6 +35,7 @@ import {
   listMatches,
   listBalls,
   listInningsForMatch,
+  listTeamCaptains,
   listUsers,
 } from '@/lib/wricket/db/repo';
 import { Tournament, Team, Match, Ball, User, FORMAT_LABEL } from '@/lib/wricket/domain/types';
@@ -91,6 +93,7 @@ export default function TournamentDetailScreen() {
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [captainByTeamId, setCaptainByTeamId] = useState<Map<string, string>>(new Map());
   const [points, setPoints] = useState<PointsRow[]>([]);
   const initialTab = linkedTab && ['fixtures', 'table', 'teams', 'stats', 'settings'].includes(linkedTab) ? linkedTab : 'fixtures';
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -120,12 +123,16 @@ export default function TournamentDetailScreen() {
       listUsers(),
     ]);
     const cloudTeamIds = teamList.flatMap(team => team.cloudId ? [team.cloudId] : []);
-    const cloudLogos = cloudTeamIds.length ? await teamManagementApi.listTeamLogos(cloudTeamIds) : new Map<string, string | undefined>();
+    const [cloudLogos, captainNames] = await Promise.all([
+      cloudTeamIds.length ? teamManagementApi.listTeamLogos(cloudTeamIds) : Promise.resolve(new Map<string, string | undefined>()),
+      listTeamCaptains(teamList.map(team => team.id)),
+    ]);
     const refreshedTeams = teamList.map(team => team.cloudId && cloudLogos.has(team.cloudId)
       ? { ...team, logoUrl: cloudLogos.get(team.cloudId) }
       : team);
     setTournament(t);
     setTeams(refreshedTeams);
+    setCaptainByTeamId(captainNames);
     if (t?.cloudId) {
       setOrganizerContact(await tournamentManagementApi.getOrganizerContact(t.cloudId));
       setCanScore(auth.session?.user.id
@@ -223,7 +230,7 @@ export default function TournamentDetailScreen() {
   }, []);
 
   if (!tournament) {
-    return <Screen><Text tone="muted">Loading…</Text></Screen>;
+    return <Screen padded={false}><SportStageLoader message="Opening tournament stage" detail="Loading teams, fixtures, and standings" /></Screen>;
   }
 
   const overviewNode = <View style={styles.overview} onLayout={event => setOverviewHeight(event.nativeEvent.layout.height)}>
@@ -445,8 +452,9 @@ export default function TournamentDetailScreen() {
       />
       <TournamentShareBanner
         tournament={tournament}
-        teamCount={teams.length}
-        matchCount={matches.length}
+        teams={teams}
+        captainByTeamId={captainByTeamId}
+        fixtureSetup={generatedSetup}
         visible={showShareBanner}
         onClose={() => setShowShareBanner(false)}
       />

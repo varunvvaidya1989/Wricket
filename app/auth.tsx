@@ -1,6 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -13,11 +13,14 @@ import { SportStageLogo } from '@/components/branding/SportStageLogo';
 import { authErrorMessage } from '@/lib/supabase/authErrors';
 import { SportMultiSelect } from '@/components/sports/SportMultiSelect';
 import { normalizePhoneParts } from '@/lib/auth/phone';
+import { safeAuthReturnTo } from '@/lib/auth/returnTo';
 import { SignupField, validateSignup } from '@/lib/auth/signupValidation';
 
 export default function AuthScreen() {
   const auth = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams<{ returnTo?: string }>();
+  const returnTo = safeAuthReturnTo(params.returnTo);
   const [creating, setCreating] = useState(false);
   const [passwordSignIn, setPasswordSignIn] = useState(false);
   const [email, setEmail] = useState('');
@@ -59,7 +62,7 @@ export default function AuthScreen() {
     setFormError(undefined);
     try {
       if (creating) {
-        const signedIn = await auth.signUp(email, password, { displayName, sportCodes: selectedSportCodes, primarySportCode, phoneE164: phoneE164! });
+        const signedIn = await auth.signUp(email, password, { displayName, sportCodes: selectedSportCodes, primarySportCode, phoneE164: phoneE164! }, returnTo);
         if (!signedIn) {
           setAwaitingVerification(true);
           Alert.alert('Verify your email', 'We sent a verification link. Confirm your email to finish setup.');
@@ -88,7 +91,7 @@ export default function AuthScreen() {
     setSaving(true);
     setFormError(undefined);
     try {
-      await auth.sendMagicLink(email);
+      await auth.sendMagicLink(email, returnTo);
       setMagicLinkSent(true);
     } catch (cause) {
       const message = authErrorMessage(cause, 'Could not send a sign-in link. Please try again.');

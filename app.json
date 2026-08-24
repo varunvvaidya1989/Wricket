@@ -2,7 +2,7 @@
   "expo": {
     "name": "SportStage",
     "slug": "sportstage",
-    "version": "1.0.3",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/sportstage/logo/sportstage-icon-1024.png",
     "scheme": "sportstage",
@@ -11,11 +11,28 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.vcreativestudio.sportstage",
-      "buildNumber": "1"
+      "buildNumber": "2",
+      "associatedDomains": [
+        "applinks:sportstageapp.com"
+      ]
     },
     "android": {
       "package": "com.vcreativestudio.sportstage",
-      "versionCode": 4,
+      "versionCode": 7,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "sportstageapp.com",
+              "pathPrefix": "/tournament"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO"
       ],

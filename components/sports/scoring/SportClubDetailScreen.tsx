@@ -2,12 +2,13 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { SPORT_CONFIGS, SPORT_PRESENTATION, type ScoringSportId } from '@/lib/sports/scoring';
 import {
@@ -138,7 +139,7 @@ export function SportClubDetailScreen({ sportId }: { sportId: ScoringSportId }) 
     ]);
   };
 
-  if (loading) return <Screen><View style={styles.center}><ActivityIndicator color={presentation.accent} /><Text variant="caption" tone="muted">Loading club…</Text></View></Screen>;
+  if (loading) return <Screen padded={false}><SportStageLoader message={`Opening ${config.name} club`} detail="Loading members, teams, and invitations" accent={presentation.accent} /></Screen>;
   if (!club) return <Screen padded={false}><AppHeader title="Club" back /><View style={styles.center}><Text variant="h3">Club unavailable</Text></View></Screen>;
 
   return (

@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { Card } from '@/components/ui/Card';
 import { colors } from '@/lib/theme/colors';
@@ -90,7 +91,7 @@ export default function ScorecardScreen() {
   );
 
   if (!match || !teamA || !teamB) {
-    return <Screen><Text tone="muted">Loading…</Text></Screen>;
+    return <Screen padded={false}><SportStageLoader message="Assembling scorecard" detail="Replaying innings and player figures" /></Screen>;
   }
 
   const result = match.result;

@@ -1,13 +1,13 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { MatchMoments } from '@/components/wricket/moments/MatchMoments';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Screen } from '@/components/ui/Screen';
-import { colors } from '@/lib/theme/colors';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { spacing } from '@/lib/theme/spacing';
 import { getTournament } from '@/lib/wricket/db/repo';
 import { Tournament } from '@/lib/wricket/domain/types';
@@ -23,7 +23,7 @@ export default function TournamentMomentsScreen() {
   return <Screen padded={false}>
     <Stack.Screen options={{ headerShown: false }} />
     <AppHeader title="Match Moments" eyebrow={tournament?.name} back />
-    {loading ? <ActivityIndicator color={colors.accent} style={styles.loader} /> : (
+    {loading ? <SportStageLoader variant="section" message="Loading match moments" detail="Gathering photos, reactions, and highlights" /> : (
       <ScrollView refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />} contentContainerStyle={styles.content}>
         <MatchMoments cloudTournamentId={tournament?.cloudId} profileId={auth.session?.user.id} canModerate={tournament?.organizerProfileId === auth.session?.user.id} />
       </ScrollView>

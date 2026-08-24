@@ -23,6 +23,9 @@ export interface UnitConfig {
   readonly target: number;
   readonly winBy: number;
   readonly cap?: number;
+  readonly targetOption?: string;
+  readonly winByOption?: string;
+  readonly capOption?: string;
   readonly variant?: string;
   readonly child?: UnitConfig;
   readonly selectChild?: (context: ChildSelectionContext) => UnitConfig;

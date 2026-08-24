@@ -2,7 +2,6 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   Modal,
@@ -12,6 +11,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -257,7 +258,7 @@ export function MatchMoments({
         </Card>
       )}
       {loading ? (
-        <ActivityIndicator color={colors.accent} style={{ marginVertical: spacing.xl }} />
+        <SportStageLoader variant="compact" message="Loading match moments" detail="" />
       ) : !moments.length && !error ? (
         <Card style={styles.emptyCard}>
           <MaterialCommunityIcons name="camera-outline" size={30} color={colors.textDim} />

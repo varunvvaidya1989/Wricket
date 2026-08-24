@@ -2,19 +2,24 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { SportIcon } from '@/components/sports/SportIcon';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import {
   SPORT_CONFIGS,
   SPORT_PRESENTATION,
   activePointEvents,
   appendPointEvent,
+  formatLiveHeadline,
+  pointDetailChoiceLabel,
+  pointDetailOptions,
+  type PointDetail,
   lastActivePointEvent,
   replay,
   type ScoringEffect,
@@ -44,11 +49,12 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<ScoringEffect>();
+  const [pendingWinner, setPendingWinner] = useState<Side>();
   const queue = useRef<Promise<void>>(Promise.resolve());
 
   const load = useCallback(async (silent = false) => {
     if (!id) {
-      setError('The cloud match ID is missing.');
+      setError('The match ID is missing.');
       setLoading(false);
       return;
     }
@@ -109,8 +115,16 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
       .catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not save this rally.'));
   };
 
-  const pointTo = (winner: Side) => {
+  const choosePointWinner = (winner: Side) => {
     if (!feed || !setup || !state || !lease || state.isComplete || submitting) return;
+    setPendingWinner(winner);
+  };
+
+  const confirmPoint = (selectedPointDetail: PointDetail) => {
+    const winner = pendingWinner;
+    setPendingWinner(undefined);
+    if (!feed || !setup || !state || !lease || state.isComplete || submitting) return;
+    if (winner === undefined) return;
     const nextEvents = appendPointEvent(setup.events, {
       type: 'POINT', sequence: feed.currentSequence + 1, winner, occurredAt: Date.now(),
     });
@@ -124,7 +138,11 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
           expectedSequence: feed.currentSequence,
           leaseToken: lease.leaseToken,
           kind: 'POINT',
-          payload: { winner },
+          payload: {
+            winner,
+            point_type: selectedPointDetail,
+            headline_score: formatLiveHeadline(config, nextState),
+          },
         });
         if (nextState.isComplete && nextState.winner !== undefined) {
           await sportScoringApi.append({
@@ -133,7 +151,11 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
             expectedSequence: point.sequence,
             leaseToken: lease.leaseToken,
             kind: 'COMPLETED',
-            payload: { winner_side: nextState.winner },
+            payload: {
+              winner_side: nextState.winner,
+              winner_entry_id: nextState.winner === 0 ? feed.entrantAId : feed.entrantBId,
+              headline_score: formatLiveHeadline(config, nextState),
+            },
           });
         }
         setNotice(nextState.effectsByEvent.at(-1)?.[0]);
@@ -146,7 +168,14 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
 
   const undo = () => {
     const target = feed ? lastActivePointEvent(feed.events) : undefined;
-    if (!feed || !lease || !target || submitting) return;
+    if (!feed || !setup || !lease || !target || submitting) return;
+    const remainingEvents = activePointEvents(
+      feed.events.filter((event) => event.clientEventId !== target.clientEventId),
+    );
+    const nextState = replay(config, remainingEvents, {
+      initialServer: setup.initialServer,
+      options: setup.options,
+    });
     setSubmitting(true);
     record(async () => {
       try {
@@ -156,7 +185,10 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
           expectedSequence: feed.currentSequence,
           leaseToken: lease.leaseToken,
           kind: 'UNDO',
-          payload: { reversed_client_event_id: target.clientEventId },
+          payload: {
+            reversed_client_event_id: target.clientEventId,
+            headline_score: formatLiveHeadline(config, nextState),
+          },
           reversesClientEventId: target.clientEventId,
         });
         setNotice(undefined);
@@ -168,7 +200,7 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
   };
 
   if (loading && !feed) {
-    return <Screen><View style={styles.center}><ActivityIndicator color={presentation.accent} /><Text variant="caption" tone="muted">Opening synchronized scorecard...</Text></View></Screen>;
+    return <Screen padded={false}><SportStageLoader message="Opening synchronized scorecard" detail="Connecting scorer lease and live event stream" accent={presentation.accent} /></Screen>;
   }
   if (!feed || !setup || !state) {
     return <Screen padded={false}><AppHeader title={`${config.name} score`} back /><View style={styles.center}><MaterialCommunityIcons name="scoreboard-outline" size={38} color={colors.textDim} /><Text variant="h3">Match unavailable</Text><Text tone="muted" style={styles.centerText}>{error ?? 'This match could not be restored.'}</Text></View></Screen>;
@@ -200,10 +232,33 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
 
         <RacquetScorePanel config={config} state={state} sideNames={setup.sideNames} accent={presentation.accent} />
 
-        {state.isComplete ? <View style={[styles.completeCard, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="trophy-outline" size={34} color={presentation.accent} /><Text variant="overline" style={{ color: presentation.accent }}>MATCH WINNER</Text><Text variant="h1" style={styles.winner}>{setup.sideNames[state.winner!]}</Text><Text variant="caption" tone="muted">Final score {state.root.score[0]}-{state.root.score[1]}</Text><Button title="New match" onPress={() => router.replace(`/${presentation.routeSegment}/match/new` as Href)} style={{ backgroundColor: presentation.accent }} /></View> : canScore ? <TwoZonePointPad sideNames={setup.sideNames} sideOrder={padOrder} servingSide={state.serve.servingSide} accent={presentation.accent} onPoint={pointTo} /> : null}
+        {state.isComplete ? <View style={[styles.completeCard, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="trophy-outline" size={34} color={presentation.accent} /><Text variant="overline" style={{ color: presentation.accent }}>MATCH WINNER</Text><Text variant="h1" style={styles.winner}>{setup.sideNames[state.winner!]}</Text><Text variant="caption" tone="muted">Final score {state.root.score[0]}-{state.root.score[1]}</Text><Button title="New match" onPress={() => router.replace(`/${presentation.routeSegment}/match/new` as Href)} style={{ backgroundColor: presentation.accent }} /></View> : canScore ? <TwoZonePointPad sideNames={setup.sideNames} sideOrder={padOrder} servingSide={state.serve.servingSide} accent={presentation.accent} onPoint={choosePointWinner} /> : null}
 
         {!state.isComplete && canScore ? <View style={styles.controls}><Button title="Undo last rally" variant="secondary" disabled={!undoTarget} loading={submitting} onPress={undo} style={styles.flexButton} /></View> : null}
       </ScrollView>
+      <Modal visible={pendingWinner !== undefined} transparent animationType="fade" onRequestClose={() => setPendingWinner(undefined)}>
+        <View style={styles.detailOverlay}>
+          {pendingWinner !== undefined ? <View style={styles.detailDialog}>
+            <View style={styles.detailHeader}>
+              <View style={styles.flex}>
+                <Text variant="overline" style={{ color: presentation.accent }}>POINT TO</Text>
+                <Text variant="h2" numberOfLines={2}>{setup.sideNames[pendingWinner]}</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Cancel point" onPress={() => setPendingWinner(undefined)} style={styles.detailClose}>
+                <MaterialCommunityIcons name="close" size={22} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <Text variant="body" tone="muted">How was the point decided?</Text>
+            <View style={styles.detailOptions}>
+              {pointDetailOptions(sportId).map((option) => <Pressable key={option.value} accessibilityRole="button" onPress={() => confirmPoint(option.value)} style={({ pressed }) => [styles.detailOption, pressed && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}14` }]}>
+                <Text variant="bodyStrong" style={styles.flex}>{pointDetailChoiceLabel(option.value, pendingWinner, setup.sideNames)}</Text>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={presentation.accent} />
+              </Pressable>)}
+            </View>
+            <Button title="Cancel" variant="secondary" onPress={() => setPendingWinner(undefined)} fullWidth />
+          </View> : null}
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -219,6 +274,12 @@ const styles = StyleSheet.create({
   errorBanner: { padding: spacing.sm, borderRadius: radius.md, backgroundColor: 'rgba(224,57,75,0.10)', flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   lineupCard: { padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', gap: spacing.sm },
   lineupSide: { flex: 1, minWidth: 0, gap: 3 },
+  detailOverlay: { flex: 1, padding: spacing.md, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center' },
+  detailDialog: { maxHeight: '90%', padding: spacing.lg, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.lg, backgroundColor: colors.surface, gap: spacing.md },
+  detailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  detailClose: { width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated },
+  detailOptions: { gap: spacing.sm },
+  detailOption: { minHeight: 48, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   switchBanner: { padding: spacing.md, borderWidth: 1, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   viewerBanner: { padding: spacing.md, borderWidth: 1, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   completeCard: { padding: spacing.xl, borderWidth: 1, borderRadius: radius.lg, backgroundColor: colors.surface, alignItems: 'center', gap: spacing.sm },

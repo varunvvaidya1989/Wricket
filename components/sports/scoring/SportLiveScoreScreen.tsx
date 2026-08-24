@@ -2,13 +2,14 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { SportIcon } from '@/components/sports/SportIcon';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import {
   SPORT_CONFIGS,
@@ -149,7 +150,7 @@ export function SportLiveScoreScreen({ sportId }: { sportId: ScoringSportId }) {
   };
 
   if (loading) {
-    return <Screen><View style={styles.center}><ActivityIndicator color={presentation.accent} /><Text variant="caption" tone="muted">Replaying rally log…</Text></View></Screen>;
+    return <Screen padded={false}><SportStageLoader message="Replaying the rally log" detail="Reconstructing every point in sequence" accent={presentation.accent} /></Screen>;
   }
   if (!session || !state) {
     return (

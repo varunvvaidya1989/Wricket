@@ -5,6 +5,7 @@ import { Animated, AppState, Easing, Pressable, RefreshControl, ScrollView, Styl
 
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { CloudLiveMatch, CloudMatchContext, CloudMatchEvent, CloudMatchSquadPlayer, liveMatchApi } from '@/lib/supabase/liveMatchApi';
 import { colors } from '@/lib/theme/colors';
@@ -95,7 +96,7 @@ export default function CloudLiveMatchScreen() {
   }, [load]);
 
   const scorecard = useMemo(() => match ? buildCompleteScorecard(match) : null, [match]);
-  if (loading && !match) return <Screen><Text tone="muted">Loading live feed…</Text></Screen>;
+  if (loading && !match) return <Screen padded={false}><SportStageLoader message="Connecting to the live feed" detail="Tuning into score, commentary, and match signals" /></Screen>;
   if (!match) {
     return <Screen><Stack.Screen options={{ title: 'Live match' }} /><View style={styles.centered}>
       <Text variant="h2">Match unavailable</Text><Text tone="muted">{error}</Text>

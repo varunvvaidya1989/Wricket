@@ -1,9 +1,10 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, View, StyleSheet, FlatList, Image, Pressable, TextInput } from 'react-native';
+import { View, StyleSheet, FlatList, Image, Pressable, TextInput } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { Card } from '@/components/ui/Card';
 import { colors } from '@/lib/theme/colors';
@@ -187,7 +188,7 @@ export default function TournamentsScreen({ embedded = false }: { embedded?: boo
         {searchHasMore ? <Pressable disabled={searchingMore} onPress={() => void loadMoreSearchResults()} style={styles.searchMore}><Text variant="caption" tone="accent">{searchingMore ? 'LOADING…' : 'LOAD MORE'}</Text></Pressable> : null}
       </View> : null}
 
-      {loading ? <ActivityIndicator color={colors.accent} style={styles.loadingIndicator} /> : tournaments.length === 0 ? (
+      {loading ? <SportStageLoader variant="section" message="Loading your tournaments" detail="Syncing fixtures, teams, and live matches" /> : tournaments.length === 0 ? (
         <EmptyState onCreate={() => router.push('/wricket/tournament/new')} />
       ) : (
         <FlatList

@@ -85,18 +85,13 @@ export const sportRosterApi = {
 
   async searchPlayers(sportCode: string, query: string): Promise<SportPlayerSearchResult[]> {
     if (query.trim().length < 2) return [];
-    const { data, error } = await getSupabaseClient().rpc('search_sport_players', {
-      p_sport_code: sportCode,
-      p_query: query.trim(),
-      p_limit: 20,
-    });
-    if (error) throw error;
-    return (data ?? []).map((row: Record<string, unknown>) => ({
-      sportProfileId: String(row.sport_profile_id),
-      accountId: String(row.account_id),
-      displayName: String(row.display_name),
-      avatarUrl: optionalString(row.avatar_url),
-    }));
+    return listSportPlayers(sportCode, query);
+  },
+
+  async listMatchOpponents(sportCode: string, query = ''): Promise<SportPlayerSearchResult[]> {
+    const cleanQuery = query.trim();
+    if (cleanQuery.length === 1) return [];
+    return listSportPlayers(sportCode, cleanQuery);
   },
 
   async listMyClubs(accountId: string, sportCode: string): Promise<SportClubSummary[]> {
@@ -429,16 +424,44 @@ export const sportRosterApi = {
   },
 };
 
+async function listSportPlayers(
+  sportCode: string,
+  query: string,
+): Promise<SportPlayerSearchResult[]> {
+  const { data, error } = await getSupabaseClient().rpc('search_sport_players', {
+    p_sport_code: sportCode,
+    p_query: query.trim(),
+    p_limit: 20,
+  });
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    sportProfileId: String(row.sport_profile_id),
+    accountId: String(row.account_id),
+    displayName: String(row.display_name),
+    avatarUrl: optionalString(row.avatar_url),
+  }));
+}
+
 async function getMySportProfile(
   accountId: string,
   sportCode: string,
 ): Promise<{ id: string; sportId: string } | undefined> {
-  const { data, error } = await getSupabaseClient().from('sport_profiles')
-    .select('id, sport_id, sports!inner(code)')
-    .eq('account_id', accountId).eq('status', 'ACTIVE')
-    .eq('sports.code', sportCode).maybeSingle();
-  if (error) throw error;
-  return data ? { id: data.id, sportId: data.sport_id } : undefined;
+  const client = getSupabaseClient();
+  const { data: sport, error: sportError } = await client.from('sports')
+    .select('id')
+    .eq('code', sportCode)
+    .maybeSingle();
+  if (sportError) throw sportError;
+  if (!sport) return undefined;
+
+  const { data: profile, error: profileError } = await client.from('sport_profiles')
+    .select('id, sport_id')
+    .eq('account_id', accountId)
+    .eq('sport_id', sport.id)
+    .eq('status', 'ACTIVE')
+    .maybeSingle();
+  if (profileError) throw profileError;
+  return profile ? { id: profile.id, sportId: profile.sport_id } : undefined;
 }
 
 function mapClub(row: Record<string, unknown>): SportClubSummary {

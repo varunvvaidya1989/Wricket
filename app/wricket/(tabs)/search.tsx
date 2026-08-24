@@ -2,9 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Href, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Image, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { globalSearchApi, GlobalSearchResult, GlobalSearchType } from '@/lib/supabase/globalSearchApi';
 import { colors } from '@/lib/theme/colors';
@@ -120,10 +121,7 @@ export default function GlobalSearchScreen() {
       <Text variant="caption" tone={filter === item.id ? 'accent' : 'muted'} style={styles.filterLabel}>{item.label}</Text>
     </Pressable>)}</View>
 
-    {query.trim().length < 2 ? <SearchStart recent={recent} onRecent={runRecent} onClear={clearRecent} /> : searching && !visibleResults.length ? <View style={styles.center}>
-      <ActivityIndicator color={colors.accent} />
-      <Text variant="caption" tone="muted">Searching Wricket...</Text>
-    </View> : error ? <View style={styles.center}>
+    {query.trim().length < 2 ? <SearchStart recent={recent} onRecent={runRecent} onClear={clearRecent} /> : searching && !visibleResults.length ? <SportStageLoader variant="compact" message="Searching SportStage" detail="" /> : error ? <View style={styles.center}>
       <MaterialCommunityIcons name="cloud-alert-outline" size={30} color={colors.textMuted} />
       <Text variant="h3">Search is unavailable</Text>
       <Text tone="muted" style={styles.centerText}>Check your connection and try again.</Text>

@@ -1,10 +1,11 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { globalSearchApi, SearchProfile } from '@/lib/supabase/globalSearchApi';
 import { colors } from '@/lib/theme/colors';
@@ -33,7 +34,7 @@ export default function SearchProfileScreen() {
 
   return <Screen scroll>
     <Stack.Screen options={{ title: profile?.displayName ?? 'Member' }} />
-    {loading ? <ActivityIndicator color={colors.accent} style={styles.loader} /> : error || !profile ? <View style={styles.empty}>
+    {loading ? <SportStageLoader variant="section" message="Finding SportStage member" detail="Loading profile and connected sports" /> : error || !profile ? <View style={styles.empty}>
       <MaterialCommunityIcons name="account-alert-outline" size={34} color={colors.textDim} />
       <Text variant="h3">Member unavailable</Text>
       <Text tone="muted" style={styles.centerText}>This profile may no longer be visible.</Text>

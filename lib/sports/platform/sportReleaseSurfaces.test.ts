@@ -14,9 +14,9 @@ const easConfig = JSON.parse(read('../../../eas.json')) as {
 };
 
 describe('non-cricket release surfaces', () => {
-  it('keeps production and preview builds closed while development can opt in', () => {
-    expect(easConfig.build.production.env.EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS).toBe('false');
-    expect(easConfig.build.preview.env.EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS).toBe('false');
+  it('ships every build profile with the implemented non-cricket sports enabled', () => {
+    expect(easConfig.build.production.env.EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS).toBe('true');
+    expect(easConfig.build.preview.env.EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS).toBe('true');
     expect(easConfig.build.development.env.EXPO_PUBLIC_ENABLE_NON_CRICKET_SPORTS).toBe('true');
   });
 

@@ -7,15 +7,20 @@ describe('sport release gate', () => {
     expect(isSportReleased('CRICKET', false)).toBe(true);
   });
 
-  it('keeps every non-cricket sport hidden while the rollout flag is off', () => {
+  it('still supports an explicit emergency disable switch', () => {
     for (const code of ['BADMINTON', 'TENNIS', 'PADEL', 'TABLE_TENNIS', 'PICKLEBALL']) {
       expect(isSportReleased(code, false)).toBe(false);
     }
     expect(releasedSportCodes(['CRICKET', 'TENNIS', 'PADEL'], false)).toEqual(['CRICKET']);
-    expect(isSportReleased('TENNIS')).toBe(false);
   });
 
-  it('restores the resident implementations when the rollout flag is enabled', () => {
+  it('releases the resident implementations by default and when explicitly enabled', () => {
+    expect(isSportReleased('TENNIS')).toBe(true);
+    expect(releasedSportCodes(['CRICKET', 'TENNIS', 'PADEL'])).toEqual([
+      'CRICKET',
+      'TENNIS',
+      'PADEL',
+    ]);
     expect(releasedSportCodes(['CRICKET', 'TENNIS', 'PADEL'], true)).toEqual([
       'CRICKET',
       'TENNIS',

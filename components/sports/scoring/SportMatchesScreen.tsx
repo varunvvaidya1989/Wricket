@@ -32,7 +32,7 @@ export function SportMatchesScreen({ sportId }: { sportId: ScoringSportId }) {
     const connectedSport = auth.profile?.connectedSports.find((sport) => sport.code === presentation.catalogCode);
     const accountId = auth.session?.user.id;
     if (!connectedSport || !accountId) { setMatches([]); return; }
-    void sportScoringApi.listOwned({ sportId: connectedSport.id, accountId })
+    void sportScoringApi.listMine({ sportId: connectedSport.id, accountId })
       .then(setMatches)
       .catch(() => setMatches([]));
   }, [auth.profile?.connectedSports, auth.session?.user.id, presentation.catalogCode]);

@@ -7,6 +7,7 @@ import { SportStageBannerAd } from '../../../components/ads/SportStageBannerAd';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { SectionLabel } from '@/components/ui/SectionLabel';
 import { Text } from '@/components/ui/Text';
 import { CloudLiveMatch, LiveMatchCursor, liveMatchApi } from '@/lib/supabase/liveMatchApi';
@@ -133,7 +134,7 @@ export default function HomeScreen() {
       </Pressable>
 
       <View style={styles.section}><SectionLabel live>Live now</SectionLabel>{matches.length > 0 ? <Text variant="caption" tone="muted">{matches.length} MATCH{matches.length === 1 ? '' : 'ES'}</Text> : null}</View>
-      {loading && matches.length === 0 ? <ActivityIndicator color={colors.accent} /> : matches.length > 0 ? (
+      {loading && matches.length === 0 ? <SportStageLoader variant="section" message="Finding live cricket" detail="Connecting scores, tournaments, and commentary" /> : matches.length > 0 ? (
         <LiveMatchesCarousel
           matches={matches}
           cardWidth={liveCardWidth}

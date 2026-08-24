@@ -28,7 +28,8 @@ describe('cloud sport scoring flow', () => {
   it('creates new sport matches in Supabase instead of local session storage', () => {
     expect(setup).toContain('sportScoringApi.createStandalone');
     expect(setup).not.toContain('saveScoringSession');
-    expect(setup).toContain('rulesSnapshot: { initial_server: initialServer, options }');
+    expect(setup).toContain('rulesSnapshot: { initial_server: initialServer, options: rules }');
+    expect(setup).toContain('<SportMatchRulesEditor');
   });
 
   it('replays cloud events and appends points, undo records, and completion records', () => {
@@ -45,11 +46,11 @@ describe('cloud sport scoring flow', () => {
     expect(migration).toContain("and match.fixture_id is not null then");
   });
 
-  it('derives match history and sport statistics from owned cloud match logs', () => {
-    expect(matchesScreen).toContain('sportScoringApi.listOwned');
+  it('derives match history and sport statistics from participating cloud match logs', () => {
+    expect(matchesScreen).toContain('sportScoringApi.listMine');
     expect(matchesScreen).toContain('activePointEvents(match.events)');
     expect(matchesScreen).not.toContain('listScoringSessions');
-    expect(statsScreen).toContain('sportScoringApi.listOwned');
+    expect(statsScreen).toContain('sportScoringApi.listMine');
     expect(statsScreen).toContain('activePointEvents(match.events)');
     expect(statsScreen).not.toContain('listScoringSessions');
   });

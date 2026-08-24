@@ -2,10 +2,11 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { sportOperationsApi, type SportNotification } from '@/lib/supabase/sportOperationsApi';
 import { colors } from '@/lib/theme/colors';
@@ -40,7 +41,7 @@ export function SportNotificationCenterScreen() {
     <AppHeader title="Notifications" eyebrow="YOUR SPORTSTAGE" back />
     <View style={styles.content}>
       {error ? <View accessibilityRole="alert" style={styles.error}><Text variant="caption" tone="danger">{error}</Text></View> : null}
-      {loading ? <View style={styles.center}><ActivityIndicator color={colors.accent} /></View> : null}
+      {loading ? <SportStageLoader variant="section" message="Checking your notifications" detail="Syncing invitations, schedules, and results" /> : null}
       {!loading && !items.length ? <View style={styles.empty}><MaterialCommunityIcons name="bell-sleep-outline" size={34} color={colors.textDim} /><Text variant="h3">All caught up</Text><Text variant="caption" tone="muted">Invitations, lineups, schedules, assignments, starts, and results will appear here.</Text></View> : null}
       {items.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => void open(item)} style={[styles.item, !item.readAt && styles.unread]}>
         <View style={[styles.icon, !item.readAt && styles.iconUnread]}><MaterialCommunityIcons name={notificationIcon(item.kind)} size={21} color={!item.readAt ? colors.accent : colors.textMuted} /></View>

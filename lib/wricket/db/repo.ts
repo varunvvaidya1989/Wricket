@@ -210,6 +210,15 @@ export async function getTournament(id: string): Promise<Tournament | null> {
   return row ? rowToTournament(row) : null;
 }
 
+export async function getTournamentByCloudId(cloudId: string): Promise<Tournament | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<any>(
+    'SELECT * FROM tournaments WHERE cloud_id = ?',
+    cloudId,
+  );
+  return row ? rowToTournament(row) : null;
+}
+
 export async function updateTournamentMediaLocally(
   tournamentId: string,
   kind: 'logo' | 'banner',
@@ -434,6 +443,25 @@ export async function listTeamPlayers(teamId: string): Promise<User[]> {
     teamId,
   );
   return rows.map(rowToUser);
+}
+
+export async function listTeamCaptains(teamIds: string[]): Promise<Map<string, string>> {
+  if (teamIds.length === 0) return new Map();
+  const db = await getDb();
+  const placeholders = teamIds.map(() => '?').join(', ');
+  const rows = await db.getAllAsync<{ team_id: string; name: string }>(
+    `SELECT tp.team_id, u.name
+     FROM team_players tp
+     JOIN users u ON u.id = tp.user_id
+     WHERE tp.is_captain = 1 AND tp.team_id IN (${placeholders})
+     ORDER BY u.name`,
+    ...teamIds,
+  );
+  const captains = new Map<string, string>();
+  for (const row of rows) {
+    if (!captains.has(row.team_id)) captains.set(row.team_id, row.name);
+  }
+  return captains;
 }
 
 // ---------- Matches ----------

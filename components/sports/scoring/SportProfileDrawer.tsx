@@ -47,7 +47,13 @@ export function SportProfileDrawerProvider({
   );
 }
 
-export function SportAvatarButton({ compact = false }: { compact?: boolean }) {
+export function SportAvatarButton({
+  compact = false,
+  initialsOnly = false,
+}: {
+  compact?: boolean;
+  initialsOnly?: boolean;
+}) {
   const context = useContext(SportProfileDrawerContext);
   const auth = useAuth();
   if (!context) throw new Error('SportAvatarButton must be used within SportProfileDrawerProvider.');
@@ -66,7 +72,7 @@ export function SportAvatarButton({ compact = false }: { compact?: boolean }) {
         pressed && styles.pressed,
       ]}
     >
-      {auth.profile?.avatarUrl
+      {auth.profile?.avatarUrl && !initialsOnly
         ? <Image source={{ uri: auth.profile.avatarUrl }} style={styles.avatarImage} />
         : <Text variant="bodyStrong" style={{ color: accent }}>{initials(name)}</Text>}
     </Pressable>
@@ -132,6 +138,7 @@ function SportProfileDrawer({
 
               {config && presentation ? <DrawerRow icon="account-outline" label={`My ${config.name}`} onPress={() => navigate(`/${presentation.routeSegment}/my-sport` as Href, true)} /> : null}
               <DrawerRow icon="account-edit-outline" label="Edit profile & account" onPress={() => navigate('/account')} />
+              <DrawerRow icon="book-open-page-variant-outline" label="How to use SportStage" accent={accent} onPress={() => navigate('/manual')} />
               <DrawerRow icon="trophy-outline" label="Explore sports" accent={accent} onPress={() => navigate('/apps', true)} />
               <AdPrivacyOptions />
               <DrawerRow

@@ -33,6 +33,12 @@ export interface ScoreboardView {
   readonly winnerName?: string;
 }
 
+/** Compact score used by live-match cards outside the full score screen. */
+export function formatLiveHeadline(config: SportConfig, state: MatchState): string {
+  const view = buildScoreboardView(config, state, ['Side A', 'Side B']);
+  return `${view.sides[0].unitsWon}-${view.sides[1].unitsWon} · ${view.sides[0].currentScore}-${view.sides[1].currentScore}`;
+}
+
 export function buildScoreboardView(
   config: SportConfig,
   state: MatchState,

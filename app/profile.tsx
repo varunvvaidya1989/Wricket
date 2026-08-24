@@ -1,13 +1,14 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { Href, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { SportIcon } from '@/components/sports/SportIcon';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { useGlobalProfile } from '@/hooks/useGlobalProfile';
 import { SportSummary } from '@/lib/supabase/globalProfileApi';
@@ -28,7 +29,7 @@ export default function GlobalProfileScreen() {
 
   return <Screen padded={false}>
     <AppHeader title="Global Profile" eyebrow="SPORTSTAGE" back right={<Pressable accessibilityRole="button" accessibilityLabel="Account settings" onPress={() => router.push('/account')} style={styles.headerAction}><MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} /></Pressable>} />
-    {loading && !data ? <View style={styles.center}><ActivityIndicator color={colors.accent} /><Text variant="caption" tone="muted">Loading your sports...</Text></View> : !auth.session ? <View style={styles.center}><MaterialCommunityIcons name="account-lock-outline" size={34} color={colors.textDim} /><Text variant="h3">Sign in to view your profile</Text></View> : error && !data ? <View style={styles.center}><MaterialCommunityIcons name="cloud-alert-outline" size={34} color={colors.textDim} /><Text variant="h3">Profile unavailable</Text><Text tone="muted" style={styles.centerText}>{error}</Text><Pressable onPress={() => void reload()} style={styles.retry}><Text variant="caption" style={{ color: colors.accentInk }}>TRY AGAIN</Text></Pressable></View> : data ? <ScrollView refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} />} contentContainerStyle={styles.content}>
+    {loading && !data ? <SportStageLoader variant="section" message="Building your sports profile" detail="Combining matches, teams, and career stats" /> : !auth.session ? <View style={styles.center}><MaterialCommunityIcons name="account-lock-outline" size={34} color={colors.textDim} /><Text variant="h3">Sign in to view your profile</Text></View> : error && !data ? <View style={styles.center}><MaterialCommunityIcons name="cloud-alert-outline" size={34} color={colors.textDim} /><Text variant="h3">Profile unavailable</Text><Text tone="muted" style={styles.centerText}>{error}</Text><Pressable onPress={() => void reload()} style={styles.retry}><Text variant="caption" style={{ color: colors.accentInk }}>TRY AGAIN</Text></Pressable></View> : data ? <ScrollView refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} />} contentContainerStyle={styles.content}>
       <View style={styles.identity}>
         {data.profile.avatarUrl ? <Image source={{ uri: data.profile.avatarUrl }} style={styles.avatarImage} /> : <View style={styles.avatar}><Text variant="h1" tone="accent">{initials(data.profile.displayName)}</Text></View>}
         <View style={styles.identityCopy}><Text variant="h2" numberOfLines={1}>{data.profile.displayName}</Text><Text variant="caption" tone="muted">SportStage member</Text></View>
@@ -43,7 +44,7 @@ export default function GlobalProfileScreen() {
       {data.partial ? <View style={styles.partial}><MaterialCommunityIcons name="sync-alert" size={17} color={colors.textMuted} /><Text variant="caption" tone="muted" style={styles.flex}>Some activity is still syncing. Your sport access is unaffected.</Text></View> : null}
 
       <View style={styles.sectionHeader}><Text variant="overline" tone="muted">CONNECTED SPORTS</Text><Pressable onPress={() => router.push('/account')}><Text variant="caption" tone="accent">MANAGE</Text></Pressable></View>
-      {data.sports.length ? data.sports.map(summary => <SportSummaryCard key={summary.sport.id} summary={summary} onOpen={route => router.push(route)} />) : <View style={styles.empty}><MaterialCommunityIcons name="trophy-outline" size={26} color={colors.textDim} /><Text variant="h3">No sports connected</Text><Text tone="muted" style={styles.centerText}>Choose the sports you follow or play to build your SportStage profile.</Text><Pressable onPress={() => router.push('/account')} style={styles.retry}><Text variant="caption" style={{ color: colors.accentInk }}>CHOOSE SPORTS</Text></Pressable></View>}
+      {data.sports.length ? data.sports.map(summary => <SportSummaryCard key={summary.sport.id} summary={summary} onOpen={route => router.push(route as never)} />) : <View style={styles.empty}><MaterialCommunityIcons name="trophy-outline" size={26} color={colors.textDim} /><Text variant="h3">No sports connected</Text><Text tone="muted" style={styles.centerText}>Choose the sports you follow or play to build your SportStage profile.</Text><Pressable onPress={() => router.push('/account')} style={styles.retry}><Text variant="caption" style={{ color: colors.accentInk }}>CHOOSE SPORTS</Text></Pressable></View>}
 
       <View style={styles.sectionHeader}><Text variant="overline" tone="muted">CROSS-SPORT MATCH RECORD</Text><Text variant="caption" tone="dim">CLOUD RESULTS</Text></View>
       {cloudStats.length ? <View style={styles.cloudStats}>{cloudStats.map((stat) => <View key={stat.sportCode} style={styles.cloudStatRow}><SportIcon code={stat.sportCode} size={20} color={colors.accent} /><Text variant="bodyStrong" style={styles.flex}>{stat.sportCode.replaceAll('_', ' ')}</Text><CloudValue value={stat.matchesPlayed} label="PLAYED" /><CloudValue value={stat.wins} label="WON" /><CloudValue value={stat.losses} label="LOST" /></View>)}</View> : <View style={styles.emptyRecord}><Text variant="caption" tone="dim">Completed cloud matches across your connected sports will build this record.</Text></View>}
@@ -53,8 +54,8 @@ export default function GlobalProfileScreen() {
   </Screen>;
 }
 
-function SportSummaryCard({ summary, onOpen }: { summary: SportSummary; onOpen: (route: Href) => void }) {
-  const route = summary.sport.code === 'CRICKET' ? '/wricket/my-wricket' as Href : summary.sport.appRoute as Href | undefined;
+function SportSummaryCard({ summary, onOpen }: { summary: SportSummary; onOpen: (route: string) => void }) {
+  const route = summary.sport.code === 'CRICKET' ? '/wricket/my-wricket' : summary.sport.appRoute;
   const canOpen = summary.available && Boolean(route);
   return <Card onPress={canOpen ? () => onOpen(route!) : undefined} style={!summary.available ? styles.unavailableCard : undefined}>
     <View style={styles.sportHeader}><View style={styles.sportIcon}><SportIcon code={summary.sport.code} size={24} color={summary.available ? colors.accent : colors.textDim} /></View><View style={styles.flex}><View style={styles.sportTitle}><Text variant="h3">{summary.sport.name}</Text>{summary.sport.isPrimary ? <Text variant="overline" tone="accent">PRIMARY</Text> : null}</View><Text variant="caption" tone="muted">{summary.sport.accessStatus === 'COMING_SOON' ? 'Profile reserved · activates at launch' : summary.available ? 'Sport profile active' : 'Profile unavailable'}</Text></View>{canOpen ? <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} /> : null}</View>

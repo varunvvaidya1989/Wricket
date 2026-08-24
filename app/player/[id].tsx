@@ -2,11 +2,12 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, Share, StyleSheet, View } from 'react-native';
+import { Image, Pressable, Share, StyleSheet, View } from 'react-native';
 
 import { SportIcon } from '@/components/sports/SportIcon';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { sportDiscoveryApi, type SportPublicPlayerCard } from '@/lib/supabase/sportDiscoveryApi';
 import { colors } from '@/lib/theme/colors';
@@ -32,7 +33,7 @@ export default function PublicPlayerCard() {
 
   return <Screen padded={false}>
     <AppHeader title="Player" eyebrow="PUBLIC SPORTSTAGE CARD" back right={card ? <Pressable accessibilityRole="button" accessibilityLabel="Share player card" onPress={share} style={styles.headerAction}><MaterialCommunityIcons name="share-variant-outline" size={20} color={colors.text} /></Pressable> : undefined} />
-    {loading ? <View style={styles.center}><ActivityIndicator color={colors.accent} /></View> : !card ? <View style={styles.center}><MaterialCommunityIcons name="account-lock-outline" size={36} color={colors.textDim} /><Text variant="h3">Player card unavailable</Text><Text variant="caption" tone="muted" style={styles.centerCopy}>This player has not made a public card available.</Text></View> : <View style={styles.content}>
+    {loading ? <SportStageLoader variant="section" message="Opening player card" detail="Loading sports, form, and public highlights" /> : !card ? <View style={styles.center}><MaterialCommunityIcons name="account-lock-outline" size={36} color={colors.textDim} /><Text variant="h3">Player card unavailable</Text><Text variant="caption" tone="muted" style={styles.centerCopy}>This player has not made a public card available.</Text></View> : <View style={styles.content}>
       <View style={styles.card}>
         <View style={styles.glow} />
         {card.avatarUrl ? <Image source={{ uri: card.avatarUrl }} style={styles.avatar} /> : <View style={styles.avatarFallback}><Text variant="h1" tone="accent">{initials(card.displayName)}</Text></View>}

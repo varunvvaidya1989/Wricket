@@ -14,7 +14,7 @@ interface AuthContextValue {
   authLinkError: { code: string; message: string } | null;
   clearAuthLinkError(): void;
   signIn(email: string, password: string): Promise<void>;
-  signUp(email: string, password: string, draft?: { displayName: string; sportCodes: string[]; primarySportCode: string; phoneE164: string }): Promise<boolean>;
+  signUp(email: string, password: string, draft?: { displayName: string; sportCodes: string[]; primarySportCode: string; phoneE164: string }, returnTo?: string): Promise<boolean>;
   signOutCurrentDevice(): Promise<void>;
   saveProfile(displayName: string): Promise<void>;
   refreshProfile(): Promise<void>;
@@ -23,7 +23,7 @@ interface AuthContextValue {
   updateEmail(email: string): Promise<void>;
   updateMobile(phone: string | null): Promise<void>;
   resendSignupConfirmation(email: string): Promise<void>;
-  sendMagicLink(email: string): Promise<void>;
+  sendMagicLink(email: string, returnTo?: string): Promise<void>;
   clearDeviceData(): Promise<void>;
   deleteAccount(confirmation: string): Promise<void>;
 }
@@ -119,12 +119,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { error } = await getSupabaseClient().auth.signInWithPassword({ email: email.trim(), password });
       if (error) throw error;
     },
-    async signUp(email, password, draft) {
+    async signUp(email, password, draft, returnTo) {
       const { data, error } = await getSupabaseClient().auth.signUp({
         email: email.trim(),
         password,
         options: {
-          emailRedirectTo: Linking.createURL('onboarding'),
+          emailRedirectTo: Linking.createURL('onboarding', {
+            queryParams: returnTo ? { returnTo } : undefined,
+          }),
           ...(draft ? { data: {
             display_name: draft.displayName.trim(),
             primary_sport_code: draft.primarySportCode,
@@ -182,11 +184,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) throw error;
     },
-    async sendMagicLink(email) {
+    async sendMagicLink(email, returnTo) {
       const { error } = await getSupabaseClient().auth.signInWithOtp({
         email: email.trim(),
         options: {
-          emailRedirectTo: Linking.createURL(''),
+          emailRedirectTo: Linking.createURL('', {
+            queryParams: returnTo ? { returnTo } : undefined,
+          }),
           shouldCreateUser: false,
         },
       });

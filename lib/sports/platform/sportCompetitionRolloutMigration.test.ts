@@ -21,7 +21,7 @@ describe('cloud competition rollout correction', () => {
     'SportCompetitionsScreen.tsx',
     'SportCloudCompetitionDetailScreen.tsx',
     'SportSearchScreen.tsx',
-    'SportMySportScreen.tsx',
+    'SportShell.tsx',
   ])('gates cloud API entry path %s', fileName => {
     const source = readFileSync(resolve(componentRoot, fileName), 'utf8');
     expect(source).toContain("useSportFeatureFlag(");

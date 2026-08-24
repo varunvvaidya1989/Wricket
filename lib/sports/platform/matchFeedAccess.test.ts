@@ -17,10 +17,11 @@ describe('match feed access', () => {
     expect(resolveMatchFeedAccess({ authenticated: true, connectedSports: [], sportCode: 'SQUASH', scoringMatchId: 'match-1' }).kind).toBe('UNSUPPORTED');
   });
 
-  it('keeps resident non-cricket feeds closed until the release flag is enabled', () => {
+  it('keeps resident non-cricket feeds closed when the emergency release switch is disabled', () => {
     const decision = resolveMatchFeedAccess({
       authenticated: true,
       connectedSports: [activeTennis],
+      nonCricketEnabled: false,
       sportCode: 'TENNIS',
       scoringMatchId: 'match-1',
     });

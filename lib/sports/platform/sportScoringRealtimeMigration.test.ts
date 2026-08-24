@@ -20,10 +20,12 @@ describe('sport scoring realtime delivery', () => {
   });
 
   it('reloads the authoritative feed after each scoped database change', () => {
-    expect(scoringApi).toContain('subscribe(scoringMatchId: string');
+    expect(scoringApi).toContain('subscribe(\n    scoringMatchId: string');
     expect(scoringApi).toContain("table: 'sport_scoring_events'");
     expect(scoringApi).toContain("table: 'sport_scoring_matches'");
-    expect(feedScreen).toContain('sportScoringApi.subscribe(id, () => void load(true)');
+    expect(feedScreen).toContain('return sportScoringApi.subscribe(');
+    expect(feedScreen).toContain('() => void load(true)');
+    expect(feedScreen).toContain('setRealtimeConnected');
     expect(feedScreen).not.toContain('setInterval');
   });
 });

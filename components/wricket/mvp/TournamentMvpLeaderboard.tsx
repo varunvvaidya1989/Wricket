@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { Text } from '@/components/ui/Text';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { getTournamentMvp } from '@/lib/wricket/app/mvp';
 import { listTeams, listUsers } from '@/lib/wricket/db/repo';
 import type { TournamentMvpRow } from '@/lib/wricket/domain/mvp';
@@ -59,7 +60,7 @@ export function TournamentMvpLeaderboard({
       });
     return () => { cancelled = true; };
   }, [cloudTournamentId, completedMatches, tournamentId]);
-  if (loading) return <Card><Text tone="muted">Loading Tournament MVP…</Text></Card>;
+  if (loading) return <Card><SportStageLoader variant="compact" message="Calculating tournament MVP" detail="" /></Card>;
   if (error) return <Card><Text variant="h3">Tournament MVP</Text><Text tone="muted">{error}</Text></Card>;
   if (!rows.length) return (
     <Card>

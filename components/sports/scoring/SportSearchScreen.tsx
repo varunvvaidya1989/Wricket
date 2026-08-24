@@ -12,12 +12,10 @@ import { useSportFeatureFlag } from '@/hooks/useSportFeatureFlag';
 import {
   SPORT_CONFIGS,
   SPORT_PRESENTATION,
-  listScoringSessions,
-  replay,
-  type ScoringSessionRecord,
   type ScoringSportId,
 } from '@/lib/sports/scoring';
 import { sportCompetitionApi, type CloudCompetition } from '@/lib/supabase/sportCompetitionApi';
+import { sportScoringApi, type SportCloudMatchFeed } from '@/lib/supabase/sportScoringApi';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { SportAvatarButton } from './SportProfileDrawer';
@@ -34,27 +32,30 @@ export function SportSearchScreen({ sportId }: { sportId: ScoringSportId }) {
   );
   const [query, setQuery] = useState('');
   const [competitions, setCompetitions] = useState<readonly CloudCompetition[]>([]);
-  const [sessions, setSessions] = useState<readonly ScoringSessionRecord[]>([]);
+  const [matches, setMatches] = useState<readonly SportCloudMatchFeed[]>([]);
 
   const reload = useCallback(() => {
+    const connectedSport = auth.profile?.connectedSports.find((sport) => sport.code === presentation.catalogCode);
+    const accountId = auth.session?.user.id;
     void Promise.all([
       cloudCompetitions.enabled ? sportCompetitionApi.list(presentation.catalogCode) : [],
-      listScoringSessions(),
+      connectedSport && accountId ? sportScoringApi.listMine({ sportId: connectedSport.id, accountId }) : [],
     ])
-      .then(([storedCompetitions, storedSessions]) => {
+      .then(([storedCompetitions, storedMatches]) => {
         setCompetitions(storedCompetitions);
-        setSessions(storedSessions.filter((session) => session.sportId === sportId));
+        setMatches(storedMatches);
       })
-      .catch(() => { setCompetitions([]); setSessions([]); });
-  }, [cloudCompetitions.enabled, presentation.catalogCode, sportId]);
+      .catch(() => { setCompetitions([]); setMatches([]); });
+  }, [auth.profile?.connectedSports, auth.session?.user.id, cloudCompetitions.enabled, presentation.catalogCode]);
   useFocusEffect(reload);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleCompetitions = useMemo(() => competitions.filter((competition) => !normalizedQuery
     || competition.name.toLowerCase().includes(normalizedQuery)
     || competition.lifecycle.toLowerCase().includes(normalizedQuery)), [competitions, normalizedQuery]);
-  const visibleSessions = useMemo(() => sessions.filter((session) => !normalizedQuery
-    || session.sideNames.some((name) => name.toLowerCase().includes(normalizedQuery))), [normalizedQuery, sessions]);
+  const visibleMatches = useMemo(() => matches.filter((match) => !normalizedQuery
+    || match.sideAPlayers.some((name) => name.toLowerCase().includes(normalizedQuery))
+    || match.sideBPlayers.some((name) => name.toLowerCase().includes(normalizedQuery))), [matches, normalizedQuery]);
 
   return (
     <Screen scroll padded={false}>
@@ -74,21 +75,18 @@ export function SportSearchScreen({ sportId }: { sportId: ScoringSportId }) {
             <View style={styles.flex}><Text variant="bodyStrong" numberOfLines={1}>{competition.name}</Text><Text variant="caption" tone="muted">{competition.kind} · {competition.lifecycle.replaceAll('_', ' ')}</Text></View>
             <Text variant="overline" style={{ color: presentation.accent }}>VIEW</Text>
           </Pressable>
-        )) : <Empty copy={cloudCompetitions.loading ? 'Checking competition availability…' : 'Cloud competitions are not available yet.'} />}
-        {cloudCompetitions.enabled && !visibleCompetitions.length ? <Empty copy="No matching cloud competitions." /> : null}
+        )) : <Empty copy={cloudCompetitions.loading ? 'Checking competition availability…' : 'Competitions are not available yet.'} />}
+        {cloudCompetitions.enabled && !visibleCompetitions.length ? <Empty copy="No matching competitions." /> : null}
 
-        <View style={styles.sectionHeading}><Text variant="overline" tone="dim">MATCHES</Text><Text variant="caption" tone="muted">{visibleSessions.length}</Text></View>
-        {visibleSessions.map((session) => {
-          const state = replay(config, session.events, { initialServer: session.initialServer, options: session.options });
-          return (
-            <Pressable key={session.id} onPress={() => router.push(`/${presentation.routeSegment}/match/${session.id}/score?mode=view` as Href)} style={({ pressed }) => [styles.resultCard, pressed && styles.pressed]}>
-              <View style={[styles.resultIcon, { backgroundColor: `${presentation.accent}16` }]}><MaterialCommunityIcons name={state.isComplete ? 'check' : 'access-point'} size={22} color={presentation.accent} /></View>
-              <View style={styles.flex}><Text variant="bodyStrong" numberOfLines={1}>{session.sideNames[0]} vs {session.sideNames[1]}</Text><Text variant="caption" tone="muted">{session.matchFormat} · {state.isComplete ? 'FINAL' : session.events.length ? 'LIVE' : 'NOT STARTED'}</Text></View>
+        <View style={styles.sectionHeading}><Text variant="overline" tone="dim">MATCHES</Text><Text variant="caption" tone="muted">{visibleMatches.length}</Text></View>
+        {visibleMatches.map((match) => (
+            <Pressable key={match.id} onPress={() => router.push(`/${presentation.routeSegment}/match/${match.id}/feed` as Href)} style={({ pressed }) => [styles.resultCard, pressed && styles.pressed]}>
+              <View style={[styles.resultIcon, { backgroundColor: `${presentation.accent}16` }]}><MaterialCommunityIcons name={match.status === 'COMPLETED' ? 'check' : 'access-point'} size={22} color={presentation.accent} /></View>
+              <View style={styles.flex}><Text variant="bodyStrong" numberOfLines={1}>{match.participantA} vs {match.participantB}</Text><Text variant="caption" tone="muted">{match.matchFormat} · {match.status} · {match.currentSequence} EVENTS</Text></View>
               <Text variant="overline" style={{ color: presentation.accent }}>VIEW</Text>
             </Pressable>
-          );
-        })}
-        {!visibleSessions.length ? <Empty copy="No matching matches on this device." /> : null}
+        ))}
+        {!visibleMatches.length ? <Empty copy="No matching matches." /> : null}
       </View>
     </Screen>
   );

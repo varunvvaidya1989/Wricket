@@ -88,11 +88,13 @@ export default function RootLayout() {
                 <Stack.Screen name="reset-password" options={{ headerShown: false }} />
                 <Stack.Screen name="onboarding" options={{ headerShown: false }} />
                 <Stack.Screen name="account" options={{ headerShown: false }} />
+                <Stack.Screen name="manual" options={{ headerShown: false }} />
                 <Stack.Screen name="profile" options={{ headerShown: false }} />
                 <Stack.Screen name="live" options={{ headerShown: false }} />
                 <Stack.Screen name="feed" options={{ headerShown: false }} />
                 <Stack.Screen name="notifications" options={{ headerShown: false }} />
                 <Stack.Screen name="player" options={{ headerShown: false }} />
+                <Stack.Screen name="tournament" options={{ headerShown: false }} />
                 <Stack.Screen name="tennis" options={{ headerShown: false }} />
                 <Stack.Screen name="badminton" options={{ headerShown: false }} />
                 <Stack.Screen name="padel" options={{ headerShown: false }} />

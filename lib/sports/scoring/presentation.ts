@@ -1,4 +1,5 @@
 import { SPORT_CONFIGS } from './configs';
+import { colors } from '../../theme/colors';
 
 export type ScoringSportId = keyof typeof SPORT_CONFIGS;
 
@@ -33,7 +34,7 @@ export const SPORT_PRESENTATION: Readonly<Record<ScoringSportId, SportPresentati
     routeSegment: 'tennis',
     tagline: 'Classic sets, deuce and advantage.',
     rulesSummary: 'Best of 3 sets · first to 6 games · tie-break at 6–6',
-    accent: '#5FE38A',
+    accent: colors.accent,
     option: Object.freeze({
       key: 'noAd',
       label: 'No-ad scoring',
@@ -46,7 +47,7 @@ export const SPORT_PRESENTATION: Readonly<Record<ScoringSportId, SportPresentati
     routeSegment: 'badminton',
     tagline: 'Rally scoring with service-court guidance.',
     rulesSummary: 'Best of 3 games · first to 21 · win by 2 · cap at 30',
-    accent: '#E8C468',
+    accent: colors.accent,
   }),
   padel: Object.freeze({
     id: 'padel',
@@ -54,7 +55,7 @@ export const SPORT_PRESENTATION: Readonly<Record<ScoringSportId, SportPresentati
     routeSegment: 'padel',
     tagline: 'Team scoring with familiar tennis notation.',
     rulesSummary: 'Best of 3 sets · first to 6 games · tie-break at 6–6',
-    accent: '#3DD9D6',
+    accent: colors.accent,
     option: Object.freeze({
       key: 'goldenPoint',
       label: 'Golden point',
@@ -67,7 +68,7 @@ export const SPORT_PRESENTATION: Readonly<Record<ScoringSportId, SportPresentati
     routeSegment: 'table-tennis',
     tagline: 'Fast games with automatic serve rotation.',
     rulesSummary: 'Best of 3 games · first to 11 · win by 2',
-    accent: '#B785FF',
+    accent: colors.accent,
   }),
   pickleball: Object.freeze({
     id: 'pickleball',
@@ -75,7 +76,7 @@ export const SPORT_PRESENTATION: Readonly<Record<ScoringSportId, SportPresentati
     routeSegment: 'pickleball',
     tagline: 'Side-outs, server numbers and rally scoring.',
     rulesSummary: 'Best of 3 games · first to 11 · win by 2',
-    accent: '#FF6A3D',
+    accent: colors.accent,
     option: Object.freeze({
       key: 'rallyScoring',
       label: 'Rally scoring',

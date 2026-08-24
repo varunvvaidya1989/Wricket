@@ -18,45 +18,51 @@ const tennisGame = unit('tennis-game', 'game', 4, 2, { child: tennisPoint });
 const tennisTieBreak = unit('tennis-tie-break', 'game', 7, 2, {
   child: tennisPoint,
   variant: 'tie_break',
+  targetOption: 'tieBreakPoints',
 });
 const tennisSet = unit('tennis-set', 'set', 6, 2, {
   cap: 7,
+  capOption: 'setCap',
   child: tennisGame,
-  selectChild: ({ parent }) => parent.score[0] === 6 && parent.score[1] === 6
+  selectChild: ({ parent, options }) => parent.score[0] === 6 && parent.score[1] === 6
+    && options.setTiebreak !== false
     ? tennisTieBreak
     : tennisGame,
 });
-const tennisMatch = unit('tennis-match', 'match', 2, 1, { child: tennisSet });
+const tennisMatch = unit('tennis-match', 'match', 2, 1, { child: tennisSet, targetOption: 'matchUnitsToWin' });
 
 const padelPoint = unit('padel-point', 'point', 1, 1);
 const padelGame = unit('padel-game', 'game', 4, 2, { child: padelPoint });
 const padelTieBreak = unit('padel-tie-break', 'game', 7, 2, {
   child: padelPoint,
   variant: 'tie_break',
+  targetOption: 'tieBreakPoints',
 });
 const padelSet = unit('padel-set', 'set', 6, 2, {
   cap: 7,
+  capOption: 'setCap',
   child: padelGame,
-  selectChild: ({ parent }) => parent.score[0] === 6 && parent.score[1] === 6
+  selectChild: ({ parent, options }) => parent.score[0] === 6 && parent.score[1] === 6
+    && options.setTiebreak !== false
     ? padelTieBreak
     : padelGame,
 });
-const padelMatch = unit('padel-match', 'match', 2, 1, { child: padelSet });
+const padelMatch = unit('padel-match', 'match', 2, 1, { child: padelSet, targetOption: 'matchUnitsToWin' });
 
 const badmintonPoint = unit('badminton-point', 'point', 1, 1);
 const badmintonGame = unit('badminton-game', 'game', 21, 2, {
   cap: 30,
   child: badmintonPoint,
 });
-const badmintonMatch = unit('badminton-match', 'match', 2, 1, { child: badmintonGame });
+const badmintonMatch = unit('badminton-match', 'match', 2, 1, { child: badmintonGame, targetOption: 'matchUnitsToWin' });
 
 const tableTennisPoint = unit('table-tennis-point', 'point', 1, 1);
 const tableTennisGame = unit('table-tennis-game', 'game', 11, 2, { child: tableTennisPoint });
-const tableTennisMatch = unit('table-tennis-match', 'match', 2, 1, { child: tableTennisGame });
+const tableTennisMatch = unit('table-tennis-match', 'match', 2, 1, { child: tableTennisGame, targetOption: 'matchUnitsToWin' });
 
 const pickleballPoint = unit('pickleball-point', 'point', 1, 1);
-const pickleballGame = unit('pickleball-game', 'game', 11, 2, { child: pickleballPoint });
-const pickleballMatch = unit('pickleball-match', 'match', 2, 1, { child: pickleballGame });
+const pickleballGame = unit('pickleball-game', 'game', 11, 2, { child: pickleballPoint, targetOption: 'gamePointTarget' });
+const pickleballMatch = unit('pickleball-match', 'match', 2, 1, { child: pickleballGame, targetOption: 'matchUnitsToWin' });
 
 const tennisNoAd = suddenDeathAfterTieRule({
   id: 'tennis_no_ad',
@@ -152,6 +158,9 @@ interface UnitOptions {
   readonly child?: UnitConfig;
   readonly variant?: string;
   readonly selectChild?: UnitConfig['selectChild'];
+  readonly targetOption?: string;
+  readonly winByOption?: string;
+  readonly capOption?: string;
 }
 
 function unit(

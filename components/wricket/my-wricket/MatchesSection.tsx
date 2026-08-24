@@ -1,9 +1,10 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import {
   PlayerMatchFilter,
@@ -75,7 +76,7 @@ export function MatchesSection() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
       >
-        {loading && matches.length === 0 ? <ActivityIndicator color={colors.accent} style={styles.loader} /> : null}
+        {loading && matches.length === 0 ? <SportStageLoader variant="compact" message="Loading your matches" detail="" /> : null}
         {error ? <Pressable onPress={() => void load()} style={styles.error}><Text variant="caption" tone="danger">{error} · Tap to retry</Text></Pressable> : null}
         {!loading && !error && visibleMatches.length === 0 ? <View style={styles.empty}>
           <MaterialCommunityIcons name="calendar-blank-outline" size={30} color={colors.textDim} />

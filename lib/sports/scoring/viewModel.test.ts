@@ -9,6 +9,7 @@ import {
   buildScoreboardView,
   createScoringSession,
   createSportCompetition,
+  formatLiveHeadline,
   replay,
   type PointEvent,
   type Side,
@@ -23,6 +24,15 @@ describe('shared scoring UI view model', () => {
     expect(tennis.unitsLabel).toBe('SETS');
     expect(badminton.sides.map((side) => side.currentScore)).toEqual(['0', '0']);
     expect(badminton.unitsLabel).toBe('GAMES');
+  });
+
+  it('formats a compact live headline using sport-specific notation', () => {
+    expect(formatLiveHeadline(TENNIS_CONFIG, replay(TENNIS_CONFIG, events([0])))).toBe(
+      '0-0 · 15-Love',
+    );
+    expect(formatLiveHeadline(BADMINTON_CONFIG, replay(BADMINTON_CONFIG, events([0])))).toBe(
+      '0-0 · 1-0',
+    );
   });
 
   it('shows a fresh game after the previous game completes', () => {

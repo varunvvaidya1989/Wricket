@@ -2,11 +2,12 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { SPORT_CONFIGS, SPORT_PRESENTATION, listSportCompetitions, type ScoringSportId } from '@/lib/sports/scoring';
 import { colors } from '@/lib/theme/colors';
@@ -29,10 +30,10 @@ export function SportCloudCompetitionUnavailable({
     <Screen padded={false}>
       <AppHeader title="Competitions" eyebrow={config.name.toUpperCase()} right={<SportAvatarButton />} />
       <View style={styles.center}>
-        {loading ? <ActivityIndicator color={presentation.accent} /> : (
+        {loading ? <SportStageLoader variant="section" message={`Checking ${config.name} competitions`} detail="Preparing your tournament and league workspace" accent={presentation.accent} /> : (
           <View style={[styles.card, { borderColor: presentation.accent }]}>
             <MaterialCommunityIcons name="cloud-lock-outline" size={34} color={presentation.accent} />
-            <Text variant="h2">Cloud competitions are not available yet</Text>
+            <Text variant="h2">Competitions are not available yet</Text>
             <Text variant="caption" tone="muted" style={styles.copy}>
               Tournament and league rollout for {config.name} is still being validated.
             </Text>

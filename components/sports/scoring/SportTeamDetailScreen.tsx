@@ -1,12 +1,13 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { SPORT_CONFIGS, SPORT_PRESENTATION, type ScoringSportId } from '@/lib/sports/scoring';
 import {
@@ -128,7 +129,7 @@ export function SportTeamDetailScreen({ sportId }: { sportId: ScoringSportId }) 
     ]);
   };
 
-  if (loading) return <Screen><View style={styles.center}><ActivityIndicator color={presentation.accent} /><Text variant="caption" tone="muted">Loading team…</Text></View></Screen>;
+  if (loading) return <Screen padded={false}><SportStageLoader message={`Opening ${config.name} team`} detail="Loading roster, roles, and eligibility" accent={presentation.accent} /></Screen>;
   if (!team) return <Screen padded={false}><AppHeader title="Team" back /><View style={styles.center}><Text variant="h3">Team unavailable</Text></View></Screen>;
 
   const eligibleClubMembers = clubMembers.filter((clubMember) => !members.some((member) => (

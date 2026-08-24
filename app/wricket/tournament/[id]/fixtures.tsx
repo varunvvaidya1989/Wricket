@@ -6,6 +6,7 @@ import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from 'react-n
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { ManualScheduleBuilder } from '@/components/wricket/fixtures/ManualScheduleBuilder';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -278,7 +279,7 @@ export default function TournamentFixturesSetupScreen() {
     );
   };
 
-  if (!tournament || !selected) return <Screen><Text tone="muted">Loading…</Text></Screen>;
+  if (!tournament || !selected) return <Screen padded={false}><SportStageLoader message="Building fixture control" detail="Loading stages, teams, and schedule rules" /></Screen>;
 
   const openFixtureMatch = (match: GeneratedFixtureSetup['matches'][number], edit: boolean) => {
     const teamA = teams.find(team => team.cloudId === match.teamA);

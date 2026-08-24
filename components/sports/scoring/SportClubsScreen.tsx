@@ -2,12 +2,13 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import {
   sportRosterApi,
@@ -135,7 +136,7 @@ export function SportClubsScreen({ sportId }: { sportId: ScoringSportId }) {
         ) : null}
 
         <View style={styles.headingRow}><Text variant="overline" tone="dim">MY CLUBS</Text><Pressable onPress={() => setCreateOpen(true)} style={[styles.smallAction, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="plus" size={17} color={presentation.accent} /><Text variant="caption" style={{ color: presentation.accent }}>CREATE</Text></Pressable></View>
-        {loading ? <ActivityIndicator color={presentation.accent} /> : clubs.length ? clubs.map((club) => (
+        {loading ? <SportStageLoader variant="compact" message={`Loading ${config.name} clubs`} detail="" accent={presentation.accent} /> : clubs.length ? clubs.map((club) => (
           <Pressable key={club.id} onPress={() => router.push(`/${presentation.routeSegment}/club/${club.id}` as Href)} style={({ pressed }) => [styles.clubCard, pressed && styles.pressed]}>
             <View style={[styles.clubIcon, { backgroundColor: `${presentation.accent}16` }]}><Text variant="h3" style={{ color: presentation.accent }}>{initials(club.shortName || club.name)}</Text></View>
             <View style={styles.flex}><Text variant="bodyStrong">{club.name}</Text><Text variant="caption" tone="muted">{club.visibility} · {club.ownerAccountId === auth.session?.user.id ? 'OWNER' : club.myMembershipStatus}</Text></View>

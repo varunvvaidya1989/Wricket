@@ -61,15 +61,29 @@ export function evaluateUnit(
   const leadingSide = score[0] === score[1] ? undefined : score[0] > score[1] ? 0 : 1;
   if (leadingSide === undefined) return INCOMPLETE_EVALUATION;
 
+  const target = positiveIntegerOption(options, unit.targetOption) ?? unit.target;
+  const winBy = positiveIntegerOption(options, unit.winByOption) ?? unit.winBy;
+  const configuredCap = nonNegativeIntegerOption(options, unit.capOption);
+  const cap = configuredCap === 0 ? undefined : configuredCap ?? unit.cap;
   const highScore = score[leadingSide];
   const lowScore = score[opposite(leadingSide)];
-  if (unit.cap !== undefined && highScore >= unit.cap) {
+  if (cap !== undefined && highScore >= cap) {
     return Object.freeze({ isComplete: true, winner: leadingSide, resolvedBy: 'cap' });
   }
-  if (highScore >= unit.target && highScore - lowScore >= unit.winBy) {
+  if (highScore >= target && highScore - lowScore >= winBy) {
     return Object.freeze({ isComplete: true, winner: leadingSide, resolvedBy: 'target_margin' });
   }
   return INCOMPLETE_EVALUATION;
+}
+
+function positiveIntegerOption(options: MatchOptions, key: string | undefined): number | undefined {
+  const value = key ? options[key] : undefined;
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function nonNegativeIntegerOption(options: MatchOptions, key: string | undefined): number | undefined {
+  const value = key ? options[key] : undefined;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 export function createPointEvent(event: PointEvent): PointEvent {

@@ -1,12 +1,13 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { LegacyPlayerCandidate, legacyPlayerLinkApi } from '@/lib/supabase/legacyPlayerLinkApi';
 import { colors } from '@/lib/theme/colors';
@@ -60,7 +61,7 @@ export default function AuctionYodhaProfileLinkScreen() {
   };
 
   return <Screen scroll>
-    {loading ? <View style={styles.loading}><ActivityIndicator color={colors.accent} /><Text tone="muted">Checking your verified account details…</Text></View> : candidates.length ? <>
+    {loading ? <SportStageLoader variant="section" message="Checking verified account" detail="Looking for your previous cricket history" /> : candidates.length ? <>
       <View style={styles.hero}>
         <View style={styles.icon}><MaterialCommunityIcons name="account-convert-outline" size={34} color={colors.accentInk} /></View>
         <Text variant="h1">Your cricket history is ready</Text>

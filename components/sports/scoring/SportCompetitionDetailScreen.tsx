@@ -17,6 +17,7 @@ import { AppHeader } from '@/components/ui/AppHeader';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Button } from '@/components/ui/Button';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import {
   SPORT_CONFIGS,
@@ -386,7 +387,7 @@ export function SportCompetitionDetailScreen({ sportId }: { sportId: ScoringSpor
   };
 
   if (loading) {
-    return <Screen><View style={styles.center}><ActivityIndicator color={presentation.accent} /><Text variant="caption" tone="muted">Loading competition…</Text></View></Screen>;
+    return <Screen padded={false}><SportStageLoader message={`Opening ${config.name} competition`} detail="Loading entrants, fixtures, and standings" accent={presentation.accent} /></Screen>;
   }
   if (!competition) {
     return <Screen padded={false}><AppHeader title="Competition" back /><View style={styles.center}><MaterialCommunityIcons name="trophy-broken" size={38} color={colors.textDim} /><Text variant="h3">Competition unavailable</Text><Text tone="muted" style={styles.centerText}>{error}</Text></View></Screen>;

@@ -1,4 +1,5 @@
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/ui/Text';
 import { colors } from '@/lib/theme/colors';
@@ -14,6 +15,22 @@ export function SportLiveActivityBadge({
 }: SportLiveActivityBadgeProps) {
   const liveCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
   const hasLive = liveCount > 0;
+  const pulse = useRef(new Animated.Value(0.45)).current;
+
+  useEffect(() => {
+    if (!hasLive) {
+      pulse.setValue(0.45);
+      return undefined;
+    }
+    const animation = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0.45, duration: 650, useNativeDriver: true }),
+    ]));
+    animation.start();
+    return () => animation.stop();
+  }, [hasLive, pulse]);
+
+  const scale = pulse.interpolate({ inputRange: [0.45, 1], outputRange: [0.8, 1.25] });
 
   return (
     <View
@@ -24,12 +41,13 @@ export function SportLiveActivityBadge({
         appearance === 'card' && (hasLive ? styles.cardLive : styles.cardNone),
       ]}
     >
+      {hasLive ? <Animated.View style={[styles.dot, { opacity: pulse, transform: [{ scale }] }]} /> : null}
       <Text style={[
         styles.text,
         appearance === 'card' && styles.cardText,
         !hasLive && styles.noneText,
       ]}>
-        {hasLive ? `\u25CF ${liveCount} live` : '\u2014 none'}
+        {hasLive ? `${liveCount} live` : '\u2014 none'}
       </Text>
     </View>
   );
@@ -38,6 +56,9 @@ export function SportLiveActivityBadge({
 const styles = StyleSheet.create({
   base: {
     alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   card: {
     paddingVertical: 4,
@@ -60,5 +81,11 @@ const styles = StyleSheet.create({
   },
   noneText: {
     color: colors.textDim,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.live,
   },
 });

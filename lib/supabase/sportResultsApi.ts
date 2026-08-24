@@ -11,6 +11,10 @@ export interface MySportStatistic {
   sportCode: string; matchesPlayed: number; wins: number; losses: number;
 }
 
+export interface CompetitionPlayerStatistic {
+  sportProfileId: string; displayName: string; matchesPlayed: number; wins: number; losses: number;
+}
+
 export const sportResultsApi = {
   async listStandings(competitionId: string): Promise<SportStanding[]> {
     const { data, error } = await getSupabaseClient().from('sport_competition_standings')
@@ -21,6 +25,24 @@ export const sportResultsApi = {
       played: Number(row.played), won: Number(row.won), drawn: Number(row.drawn),
       lost: Number(row.lost), points: Number(row.points), rubbersWon: Number(row.rubbers_won),
       rubbersLost: Number(row.rubbers_lost) }));
+  },
+  async listCompetitionPlayerStatistics(competitionId: string): Promise<CompetitionPlayerStatistic[]> {
+    const { data, error } = await getSupabaseClient().from('sport_player_statistics')
+      .select('sport_profile_id, display_name_snapshot, matches_played, wins, losses')
+      .eq('competition_id', competitionId);
+    if (error) throw error;
+    const aggregated = new Map<string, CompetitionPlayerStatistic>();
+    for (const row of data ?? []) {
+      const id = String(row.sport_profile_id);
+      const current = aggregated.get(id) ?? {
+        sportProfileId: id, displayName: String(row.display_name_snapshot), matchesPlayed: 0, wins: 0, losses: 0,
+      };
+      current.matchesPlayed += Number(row.matches_played);
+      current.wins += Number(row.wins);
+      current.losses += Number(row.losses);
+      aggregated.set(id, current);
+    }
+    return [...aggregated.values()].sort((a, b) => b.wins - a.wins || b.matchesPlayed - a.matchesPlayed || a.displayName.localeCompare(b.displayName));
   },
   async rebuild(competitionId: string): Promise<void> {
     const client = getSupabaseClient();

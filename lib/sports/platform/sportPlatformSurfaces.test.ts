@@ -39,11 +39,16 @@ describe('complete sport platform surfaces', () => {
 
   it('renders one authentication-aware discovery skeleton', () => {
     expect(liveScreen).toContain('sportDiscoveryApi.discover');
-    expect(discoveryApi).toContain("client.rpc('discover_cricket_live'");
+    expect(discoveryApi).toContain(".rpc('discover_sportstage_live'");
+    expect(liveScreen).toContain('sportDiscoveryApi.discoverPage(undefined, LIVE_PAGE_SIZE)');
+    expect(liveScreen).toContain('LOAD MORE LIVE MATCHES');
     expect(liveScreen).toContain('Every sport, One Stage');
     expect(liveScreen).not.toMatch(/Guest-safe|active public|public match/);
     expect(liveScreen).toContain('sportDiscoveryApi.feed');
     expect(liveScreen).toContain('sportDiscoveryApi.upcoming');
+    expect(discoveryApi).toContain("client.rpc('list_relevant_tournament_ids')");
+    expect(liveScreen).toContain('sportDiscoveryApi.cricketTournamentInsights()');
+    expect(liveScreen).toContain('YOUR CRICKET TOURNAMENTS');
     expect(liveScreen).toContain("router.push('/auth')");
     expect(liveScreen).toContain('Sign in to follow every match.');
     expect(liveScreen).toContain('Good ${timeOfDay()}, ${firstName}');
@@ -57,7 +62,9 @@ describe('complete sport platform surfaces', () => {
     }
     expect(liveScreen).toContain('RELEASED_SPORTSTAGE_SPORTS.map');
     expect(liveScreen).toContain('<SportLiveActivityBadge count={count} />');
-    expect(liveActivityBadge).toContain("`\\u25CF ${liveCount} live`");
+    expect(liveActivityBadge).toContain('Animated.loop');
+    expect(liveActivityBadge).toContain('styles.dot');
+    expect(liveActivityBadge).toContain('`${liveCount} live`');
     expect(liveScreen).toContain('<Text style={styles.teamName}>{snapshot.participantA}</Text>');
     expect(liveScreen).toContain('<Text style={styles.teamName}>{snapshot.participantB}</Text>');
     expect(liveScreen).not.toMatch(/participant[AB].*numberOfLines/);
@@ -66,7 +73,8 @@ describe('complete sport platform surfaces', () => {
   it('uses one live label and sport-specific access descriptions', () => {
     expect(liveScreen).toContain('<Text style={styles.liveStatusText}>LIVE</Text>');
     expect(liveScreen).toContain('content.guestDetailLabel');
-    expect(liveScreen).toContain('Open live scorecard');
+    expect(liveScreen).toContain("'LIVE FEED \\u2192'");
+    expect(liveScreen).toContain('TOURNAMENT</Text>');
     expect(sportContent).toContain('Ball-by-ball commentary');
     expect(sportContent).toContain('Point-by-point match feed');
     expect(sportContent).toContain('Rally-by-rally match feed');

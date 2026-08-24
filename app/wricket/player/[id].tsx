@@ -5,6 +5,7 @@ import { Image, StyleSheet, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { colors } from '@/lib/theme/colors';
@@ -74,7 +75,7 @@ export default function PlayerScreen() {
     return () => { active = false; };
   }, [id]));
 
-  if (loading) return <Screen><Text tone="muted">Loading…</Text></Screen>;
+  if (loading) return <Screen padded={false}><SportStageLoader message="Loading player profile" detail="Gathering teams, form, and performance" /></Screen>;
   if (!user && !cloudPlayer) return <Screen><Text tone="muted">Player not found.</Text></Screen>;
 
   const name = cloudPlayer?.display_name ?? user!.name;
