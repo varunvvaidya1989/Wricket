@@ -16,7 +16,7 @@ const tabs: {
 }[] = [
   { label: 'Home', route: '/wricket/live', icon: 'home-variant-outline', isActive: path => path === '/wricket/live' },
   {
-    label: 'My Wricket',
+    label: 'My game',
     route: '/wricket/my-wricket',
     icon: 'account-outline',
     isActive: path => path === '/wricket/my-wricket'
@@ -28,6 +28,7 @@ const tabs: {
       || path.startsWith('/wricket/match'),
   },
   { label: 'Search', route: '/wricket/search', icon: 'magnify', isActive: path => path === '/wricket/search' || path.startsWith('/wricket/user') },
+  { label: 'Sports', route: '/apps', icon: 'view-grid-outline', isActive: () => false },
 ];
 
 export function WricketTabBar() {
@@ -46,7 +47,7 @@ export function WricketTabBar() {
             accessibilityState={{ selected: active }}
             accessibilityLabel={tab.label}
             onPress={() => router.replace(tab.route)}
-            style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.tab, active && styles.activeTab, pressed && styles.pressed]}
           >
             <MaterialCommunityIcons name={tab.icon} size={23} color={active ? colors.accent : colors.textDim} />
             <Text variant="caption" style={[styles.label, { color: active ? colors.accent : colors.textDim }]}>{tab.label}</Text>
@@ -68,8 +69,9 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     boxShadow: '0px -2px 8px rgba(0, 0, 0, 0.16)',
   },
-  tab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 2, position: 'relative' },
-  label: { fontSize: 10 },
+  tab: { flex: 1, minHeight: 56, marginHorizontal: 6, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 5, position: 'relative' },
+  activeTab: { backgroundColor: colors.accentMuted },
+  label: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   indicator: { position: 'absolute', top: -spacing.sm, width: 28, height: 2, backgroundColor: colors.accent, borderRadius: 1 },
   pressed: { opacity: 0.72 },
 });

@@ -1,4 +1,5 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { TournamentSponsors } from '@/components/sponsors/TournamentSponsors';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -101,6 +102,7 @@ export function SportCloudMatchFeedScreen({ sportId }: { sportId: ScoringSportId
         <View style={styles.meta}><Text variant="overline" tone="dim">{feed.matchFormat.replaceAll('_', ' ')}</Text><Text variant="overline" tone="dim">{sportId === 'pickleball' ? 'RALLY' : 'POINT'} {matchView.pointCount}</Text></View>
       </View>
 
+      {feed.competitionId ? <TournamentSponsors key={feed.competitionId} parent={{ kind: 'sport', id: feed.competitionId }} placement="match" /> : null}
       <View style={styles.sectionTitle}><Text variant="overline" tone="muted">{liveContent.timelineLabel.toUpperCase()}</Text><View style={styles.connection}><View style={[styles.connectionDot, { backgroundColor: realtimeConnected ? colors.live : colors.gold }]} /><Text variant="caption" tone="dim">{realtimeConnected ? 'Updating live' : 'Reconnecting'}</Text></View></View>
       {matchView.timeline.length ? <View style={styles.timeline}>{matchView.timeline.map((item) => <FeedEvent key={item.event.sequence} item={item} accent={presentation.accent} />)}</View> : <View style={styles.empty}><MaterialCommunityIcons name="timeline-clock-outline" size={30} color={colors.textDim} /><Text variant="bodyStrong">Waiting for the first point</Text><Text variant="caption" tone="muted">This timeline will update automatically when scoring starts.</Text></View>}
     </View>

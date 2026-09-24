@@ -366,7 +366,8 @@ export default function NewMatchScreen() {
   };
 
   return (
-    <Screen scroll>
+    <Screen edges={['top', 'bottom', 'left', 'right']}>
+      <ScrollView key={step} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: spacing.xl }}>
       <View style={{ paddingTop: spacing.md, gap: spacing.lg }}>
         <StepBadge step={step} />
 
@@ -458,10 +459,13 @@ export default function NewMatchScreen() {
           />
         )}
 
-        <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg }}>
+      </View>
+      </ScrollView>
+        <View style={{ flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
           {step !== 'teams' && (
             <Button
               title="Back"
+              disabled={saving}
               variant="secondary"
               onPress={() => setStep(prevStep(step))}
               style={{ flex: 1 }}
@@ -471,7 +475,7 @@ export default function NewMatchScreen() {
             <Button title="Save fixture" onPress={onSaveFixture} loading={saving} style={{ flex: 1 }} />
           ) : step !== 'review' ? (
             <Button
-              title="Next"
+              title={step === 'teams' ? 'Choose players' : step === 'players' ? 'Continue to toss' : 'Review match'}
               onPress={() => {
                 if (step === 'teams' && !canProceedTeams) {
                   Alert.alert('Pick both teams', 'Choose two different teams.');
@@ -496,10 +500,9 @@ export default function NewMatchScreen() {
               style={{ flex: 1 }}
             />
           ) : (
-            <Button title="Start match" onPress={onStart} loading={saving} style={{ flex: 1 }} />
+            <Button title="Start scoring" onPress={onStart} loading={saving} style={{ flex: 1 }} />
           )}
         </View>
-      </View>
     </Screen>
   );
 }
@@ -515,7 +518,8 @@ function StepBadge({ step }: { step: Step }) {
   const stepNum = { teams: 1, players: 2, toss: 3, review: 4 }[step];
   const title = { teams: 'Teams & format', players: 'Match rules & Playing XI', toss: 'Toss', review: 'Review' }[step];
   return (
-    <View>
+    <View style={{ gap: spacing.sm }}>
+      <View style={{ flexDirection: 'row', gap: 6 }}>{[1, 2, 3, 4].map(index => <View key={index} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: index <= stepNum ? colors.accent : colors.border }} />)}</View>
       <Text variant="overline" tone="muted">Step {stepNum} of 4</Text>
       <Text variant="h1">{title}</Text>
     </View>

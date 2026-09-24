@@ -32,7 +32,7 @@ export default function WricketLayout() {
         <Stack.Screen name="user/[id]" options={{ title: '' }} />
         <Stack.Screen name="ay-profile-link" options={{ title: 'Connect player profile' }} />
       </Stack>
-        {!isScoring ? <WricketTabBar /> : null}
+        {!isScoring && !pathname.endsWith('/match/new') ? <WricketTabBar /> : null}
       </View>
     </WricketProfileDrawerProvider>
   );

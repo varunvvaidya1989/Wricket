@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "check:env": "node scripts/check-env.js",
     "check:architecture": "node scripts/check-architecture.js",
+    "launch:check": "node scripts/check-launch-readiness.mjs",
     "migrate:auction-yodha-players": "node scripts/migrate-auction-yodha-players.mjs",
     "recalculate-mvp": "node scripts/recalculate-mvp.mjs",
     "demo:non-cricket:seed": "node scripts/manage-non-cricket-demo.mjs seed --production",
@@ -65,6 +66,7 @@
     "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",

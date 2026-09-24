@@ -73,7 +73,7 @@ describe('SportStage sport launcher', () => {
     expect(dashboard).toContain("SportLiveActivityBadge count={liveCount} appearance=\"card\"");
     expect(liveScreen).toContain('<SportLiveActivityBadge count={count} />');
     expect(dashboard).toContain('activity.unreadCount > 0 ?');
-    expect(dashboard).toContain("const columnCount = width < 350 ? 1 : 2");
+    expect(dashboard).toContain("const columnCount = width < 380 ? 1 : width >= 800 ? 3 : 2");
     expect(dashboard).toContain('paddingHorizontal: 16');
     expect(dashboard).toContain('<Text style={styles.sportDescription}>{description}</Text>');
     expect(dashboard).not.toMatch(/sportDescription[^\n]*numberOfLines/);

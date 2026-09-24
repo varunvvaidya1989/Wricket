@@ -74,10 +74,10 @@ const styles = StyleSheet.create({
   text: {
     color: colors.live,
     fontFamily: 'IBMPlexMono_500Medium',
-    fontSize: 8,
+    fontSize: 12,
   },
   cardText: {
-    fontSize: 9,
+    fontSize: 12,
   },
   noneText: {
     color: colors.textDim,

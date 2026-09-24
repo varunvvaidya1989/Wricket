@@ -27,7 +27,7 @@ export function TwoZonePointPad({
     <View style={styles.root}>
       <View style={styles.instruction}>
         <MaterialCommunityIcons name="gesture-tap" size={16} color={colors.textDim} />
-        <Text variant="caption" tone="dim">TAP THE RALLY WINNER</Text>
+        <Text variant="bodyStrong" tone="muted">Who won the rally?</Text>
       </View>
       <View style={styles.zones}>
         {sideOrder.map((side) => (
@@ -36,9 +36,10 @@ export function TwoZonePointPad({
             accessibilityRole="button"
             accessibilityLabel={`Point to ${sideNames[side]}`}
             accessibilityHint="Records one rally in the match event log"
+            accessibilityState={{ disabled: Boolean(disabled) }}
             disabled={disabled}
             onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
               onPoint(side);
             }}
             style={({ pressed }) => [
@@ -55,12 +56,12 @@ export function TwoZonePointPad({
               </Text>
               <MaterialCommunityIcons
                 name="plus-circle-outline"
-                size={24}
+                size={32}
                 color={side === servingSide ? accent : colors.textMuted}
               />
             </View>
             <View style={styles.zoneCopy}>
-              <Text variant="overline" tone="dim">POINT TO</Text>
+              <Text variant="caption" tone="muted">Rally won by</Text>
               <Text variant="h2" numberOfLines={2} style={styles.name}>{sideNames[side]}</Text>
             </View>
           </Pressable>
@@ -73,11 +74,11 @@ export function TwoZonePointPad({
 const styles = StyleSheet.create({
   root: { gap: spacing.sm },
   instruction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
-  zones: { minHeight: 154, flexDirection: 'row', gap: spacing.sm },
+  zones: { minHeight: 180, flexDirection: 'row', gap: spacing.md },
   zone: {
     flex: 1,
     minWidth: 0,
-    padding: spacing.md,
+    padding: spacing.lg,
     borderRadius: radius.lg,
     borderWidth: 1,
     backgroundColor: colors.surface,

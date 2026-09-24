@@ -1,7 +1,6 @@
 import { type Href, useGlobalSearchParams, useRouter, useSegments } from 'expo-router';
 import React, { useEffect } from 'react';
 
-import { AnimatedSportStageSplash } from '@/components/branding/AnimatedSportStageSplash';
 import { safeAuthReturnTo } from '@/lib/auth/returnTo';
 import { isSportReleased } from '@/lib/sports/platform/sportRelease';
 import { useAuth } from './AuthProvider';
@@ -56,6 +55,7 @@ export function RootAccessGate({ children }: { children: React.ReactNode }) {
     if (!hasSportAccess) router.replace('/apps');
   }, [auth.authLinkError, auth.loading, auth.profile, auth.session, authReturnTo, root, router]);
 
-  if (auth.loading) return <AnimatedSportStageSplash />;
+  // The root launch boundary owns the splash while the session is restored.
+  if (auth.loading) return null;
   return <>{children}</>;
 }

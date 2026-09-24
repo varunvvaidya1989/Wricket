@@ -1,0 +1,41 @@
+{
+  "checkedAt": "2026-09-24T07:02:03.184Z",
+  "pngCount": 45,
+  "imageDimensions": "PASS",
+  "galleryWidths": [
+    320,
+    390,
+    1440
+  ],
+  "galleryOverflow": "NONE",
+  "browserErrors": [],
+  "relativeLinks": "PASS",
+  "videos": [
+    {
+      "file": "videos/01-meet-sportstage.mp4",
+      "duration": 15,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "videos/02-cricket-matchday.mp4",
+      "duration": 15,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "videos/03-badminton-matchday.mp4",
+      "duration": 15,
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "file": "videos/04-tournament-partners.mp4",
+      "duration": 15,
+      "width": 1080,
+      "height": 1920
+    }
+  ],
+  "brochure": "Exported A4 PDF; visual review required",
+  "publishing": "Not published; current CTA follows launch updates"
+}

@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/Text';
-import { SPORT_CONFIGS, SPORT_PRESENTATION, type ScoringSportId } from '@/lib/sports/scoring';
+import { SPORT_PRESENTATION, type ScoringSportId } from '@/lib/sports/scoring';
 import { colors } from '@/lib/theme/colors';
 
 export function SportAppTabBar({ sportId }: { sportId: ScoringSportId }) {
@@ -24,7 +24,7 @@ export function SportAppTabBar({ sportId }: { sportId: ScoringSportId }) {
     },
     {
       key: 'my-sport',
-      label: `My ${SPORT_CONFIGS[sportId].name}`,
+      label: 'My game',
       route: `${base}/my-sport`,
       icon: 'account-outline' as const,
       active: pathname === `${base}/my-sport`
@@ -41,6 +41,7 @@ export function SportAppTabBar({ sportId }: { sportId: ScoringSportId }) {
       icon: 'magnify' as const,
       active: pathname === `${base}/search`,
     },
+    { key: 'sports', label: 'Sports', route: '/apps', icon: 'view-grid-outline' as const, active: false },
   ];
 
   return (
@@ -54,14 +55,14 @@ export function SportAppTabBar({ sportId }: { sportId: ScoringSportId }) {
               accessibilityState={{ selected: tab.active }}
               accessibilityLabel={tab.label}
               onPress={() => router.replace(tab.route as Href)}
-              style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.tab, tab.active && styles.activeTab, pressed && styles.pressed]}
             >
               <MaterialCommunityIcons
                 name={tab.icon}
                 size={21}
                 color={tab.active ? presentation.accent : colors.textDim}
               />
-              <Text variant="overline" style={[styles.label, { color: tab.active ? presentation.accent : colors.textDim }]}>{tab.label}</Text>
+              <Text style={[styles.label, { color: tab.active ? presentation.accent : colors.textDim }]}>{tab.label}</Text>
             </Pressable>
           );
         })}
@@ -72,8 +73,9 @@ export function SportAppTabBar({ sportId }: { sportId: ScoringSportId }) {
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.surface },
-  bar: { minHeight: 58, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row' },
-  tab: { flex: 1, minWidth: 0, paddingTop: 8, alignItems: 'center', justifyContent: 'center', gap: 3 },
-  label: { fontSize: 9.5, letterSpacing: 0.2 },
+  bar: { minHeight: 72, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', maxWidth: 1120, width: '100%', alignSelf: 'center' },
+  tab: { flex: 1, minWidth: 0, margin: 6, borderRadius: 14, paddingVertical: 8, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  activeTab: { backgroundColor: colors.accentMuted },
+  label: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   pressed: { opacity: 0.65 },
 });

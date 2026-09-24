@@ -29,14 +29,18 @@ export function SportShellHome({ sportId }: { sportId: ScoringSportId }) {
   const shell = SPORT_SHELL_CONFIGS[sportId];
   const presentation = SPORT_PRESENTATION[sportId];
   const [matches, setMatches] = useState<readonly SportCloudMatchFeed[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string>();
   const baseRoute = `/${presentation.routeSegment}`;
 
   const reload = useCallback(() => {
     const connectedSport = auth.profile?.connectedSports.find((sport) => sport.code === presentation.catalogCode);
     const accountId = auth.session?.user.id;
-    if (!connectedSport || !accountId) { setMatches([]); return; }
+    if (!connectedSport || !accountId) { setMatches([]); setLoading(false); return; }
+    setLoadError(undefined);
+    setLoading(true);
     void sportScoringApi.listMine({ sportId: connectedSport.id, accountId, limit: 20 })
-      .then(setMatches).catch(() => setMatches([]));
+      .then(setMatches).catch(() => setLoadError('Your matches couldn’t be loaded. Please try again.')).finally(() => setLoading(false));
   }, [auth.profile?.connectedSports, auth.session?.user.id, presentation.catalogCode]);
   useFocusEffect(useCallback(() => {
     reload();
@@ -53,6 +57,16 @@ export function SportShellHome({ sportId }: { sportId: ScoringSportId }) {
     <Screen scroll padded={false}>
       <ShellHeader title={shell.displayName} eyebrow="SPORTSTAGE" />
       <View style={styles.homeContent}>
+        <View style={styles.welcome}><Text variant="h1">Let’s play {shell.displayName.toLowerCase()}.</Text><Text tone="muted">Your next match, your team, your progress.</Text></View>
+        <Button title="Start a match" size="lg" fullWidth onPress={() => router.push(`${baseRoute}/match/new` as Href)} style={styles.cta} />
+        <View style={styles.quickGrid}>
+          {[
+            { title: 'Matches', icon: 'scoreboard-outline' as const, route: 'matches' },
+            { title: 'Competitions', icon: 'trophy-outline' as const, route: 'competitions' },
+            { title: 'Clubs & teams', icon: 'account-group-outline' as const, route: 'clubs' },
+            { title: 'Performance', icon: 'chart-line' as const, route: 'stats' },
+          ].map(item => <Pressable key={item.route} accessibilityRole="button" onPress={() => router.push(`${baseRoute}/${item.route}` as Href)} style={({ pressed }) => [styles.quickTile, pressed && styles.pressed]}><MaterialCommunityIcons name={item.icon} size={24} color={presentation.accent} /><Text variant="bodyStrong">{item.title}</Text></Pressable>)}
+        </View>
         <View style={styles.introCard}>
           <View style={styles.introIcon}><Text style={styles.emoji}>{shell.icon}</Text></View>
           <View style={styles.flex}>
@@ -84,27 +98,26 @@ export function SportShellHome({ sportId }: { sportId: ScoringSportId }) {
               <Text style={styles.snapshotName} numberOfLines={1}>{name}</Text>
               <View style={styles.activeTag}><Text style={styles.activeTagText}>● ACTIVE</Text></View>
             </View>
-            <Text style={styles.snapshotSub}>{formatCount(matches.length, 'match')} played · view profile</Text>
+            <Text style={styles.snapshotSub}>{formatCount(matches.length, 'recent match')} · view profile</Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textDim} />
         </Pressable>
 
-        <Button title="New match" size="lg" fullWidth onPress={() => router.push(`${baseRoute}/match/new` as Href)} style={styles.cta} />
-
         <View style={styles.sectionHeading}>
-          <Text variant="overline" tone="dim">RECENT MATCHES</Text>
-          <Text variant="caption" tone="muted">{matches.length}</Text>
+          <Text variant="h2">Recent matches</Text>
+          <Pressable accessibilityRole="button" onPress={() => router.push(`${baseRoute}/matches` as Href)} style={styles.viewAll}><Text variant="caption" tone="accent">View all →</Text></Pressable>
         </View>
 
-        {matches.length > 0 ? matches.map((match) => (
-          <CloudMatch key={match.id} match={match} onOpen={() => router.push(`${baseRoute}/match/${match.id}/feed` as Href)} />
-        )) : (
+        {loadError ? <View style={styles.empty}><Text tone="muted">{loadError}</Text><Button title="Try again" variant="secondary" onPress={reload} /></View> : null}
+        {loading && !matches.length ? <View style={styles.empty}><Text tone="muted">Loading your matches…</Text></View> : matches.length > 0 ? matches.slice(0, 5).map((match) => (
+          <CloudMatch key={match.id} match={match} onOpen={() => router.push(`${baseRoute}/match/${match.id}/${match.status === 'LIVE' && match.createdBy === auth.session?.user.id ? 'score' : 'feed'}` as Href)} />
+        )) : !loadError ? (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="scoreboard-outline" size={28} color={colors.textDim} />
             <Text variant="bodyStrong">No matches yet</Text>
             <Text variant="caption" tone="muted" style={styles.emptyCopy}>Start a match and its live event feed will appear here on every device.</Text>
           </View>
-        )}
+        ) : null}
       </View>
     </Screen>
   );
@@ -246,29 +259,33 @@ function initials(name: string): string {
 }
 
 const styles = StyleSheet.create({
+  welcome: { paddingHorizontal: spacing.lg, paddingTop: 24, gap: 6 },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: spacing.lg, gap: 10, marginTop: 20 },
+  quickTile: { flexBasis: '46%', flexGrow: 1, minHeight: 100, padding: 16, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'flex-start', justifyContent: 'center', gap: 10 },
+  viewAll: { minHeight: 44, justifyContent: 'center' },
   homeContent: { paddingBottom: spacing.xxxl, gap: 0 },
   hubContent: { paddingBottom: spacing.xxxl, gap: 0 },
   headerRow: { minHeight: 58, paddingHorizontal: spacing.lg, paddingTop: 10, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
-  headerEyebrow: { color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 9, letterSpacing: 0.9 },
+  headerEyebrow: { color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 12, letterSpacing: 0.9 },
   headerTitle: { marginTop: 3, color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 20 },
   introCard: { marginHorizontal: spacing.lg, marginTop: 14, padding: spacing.lg, borderWidth: 1, borderColor: colors.accent, borderRadius: radius.lg, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   introIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   emoji: { fontSize: 19 },
   tagline: { color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18 },
   formatRow: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  formatCopy: { flex: 1, color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 9.5, lineHeight: 14 },
-  editCopy: { color: colors.accent, fontFamily: 'IBMPlexMono_500Medium', fontSize: 9.5 },
+  formatCopy: { flex: 1, color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 12, lineHeight: 14 },
+  editCopy: { color: colors.accent, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12 },
   snapshotCard: { minHeight: 68, marginHorizontal: spacing.lg, marginTop: spacing.md, padding: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 11 },
   snapshotNameRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   snapshotName: { flexShrink: 1, color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 12.5 },
   activeTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.accentMuted },
-  activeTagText: { color: colors.accent, fontFamily: 'IBMPlexMono_500Medium', fontSize: 7.5 },
-  snapshotSub: { marginTop: 3, color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 9 },
+  activeTagText: { color: colors.accent, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12 },
+  snapshotSub: { marginTop: 3, color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 12 },
   initialsAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
   initialsAvatarLarge: { width: 48, height: 48, borderRadius: 24 },
   initialsText: { color: colors.accent, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 12 },
   initialsTextLarge: { fontSize: 15 },
-  cta: { marginHorizontal: spacing.lg, marginTop: spacing.lg, minHeight: 48, paddingVertical: 14, borderRadius: radius.pill, backgroundColor: colors.accent },
+  cta: { marginHorizontal: spacing.lg, marginTop: spacing.lg, minHeight: 56, paddingVertical: 14, borderRadius: radius.lg, backgroundColor: colors.accent },
   sectionHeading: { marginHorizontal: spacing.lg, marginTop: spacing.lg, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   recentCard: { minHeight: 72, marginHorizontal: spacing.lg, marginBottom: 10, paddingRight: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md, overflow: 'hidden' },
   recentScore: { alignItems: 'flex-end', gap: 4 },
@@ -283,8 +300,8 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: 'row', gap: spacing.sm },
   statTile: { flex: 1, minWidth: 0, minHeight: 66, paddingHorizontal: 6, paddingVertical: 10, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   statValue: { color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 16 },
-  statLabel: { marginTop: 2, color: colors.textDim, fontFamily: 'IBMPlexMono_500Medium', fontSize: 7.5, textAlign: 'center' },
-  statSubLabel: { color: colors.textDim, opacity: 0.7, fontFamily: 'IBMPlexMono_400Regular', fontSize: 7, textAlign: 'center' },
+  statLabel: { marginTop: 2, color: colors.textDim, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12, textAlign: 'center' },
+  statSubLabel: { color: colors.textDim, opacity: 0.7, fontFamily: 'IBMPlexMono_400Regular', fontSize: 12, textAlign: 'center' },
   hubCard: { minHeight: 64, marginHorizontal: spacing.lg, marginTop: 10, paddingHorizontal: spacing.lg, paddingVertical: 13, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   hubIcon: { width: 36, height: 36, borderRadius: radius.md, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
   hubLabel: { color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 14 },

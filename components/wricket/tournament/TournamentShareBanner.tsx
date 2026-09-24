@@ -5,6 +5,9 @@ import { Alert, Image, Modal, Platform, Pressable, ScrollView, Share, StyleSheet
 import { captureRef } from 'react-native-view-shot';
 
 import { SportStageLogo } from '@/components/branding/SportStageLogo';
+import { SponsorList } from '@/components/sponsors/SponsorList';
+import { useTournamentSponsors } from '@/hooks/useTournamentSponsors';
+import { sponsorsForPlacement } from '@/lib/sponsors/types';
 import { Button } from '@/components/ui/Button';
 import { Text } from '@/components/ui/Text';
 import { colors, palette } from '@/lib/theme/colors';
@@ -30,11 +33,14 @@ export function TournamentShareBanner({ tournament, teams, captainByTeamId, fixt
   const posterRef = useRef<View>(null);
   const [sharing, setSharing] = useState(false);
   const [posterSize, setPosterSize] = useState({ width: 0, height: 0 });
+  const { sponsors, loading: sponsorsLoading, error: sponsorsError, refresh: refreshSponsors } = useTournamentSponsors({ kind: 'cricket', id: tournament.cloudId ?? '' }, visible && Boolean(tournament.cloudId));
+  const [loadedLogos, setLoadedLogos] = useState<ReadonlySet<string>>(new Set());
+  const logosReady = sponsorsForPlacement(sponsors, 'share').every(sponsor => !sponsor.logoUrl || loadedLogos.has(sponsor.logoUrl));
   const shareUrl = tournament.cloudId ? `${SPORTSTAGE_URL}/tournament?id=${encodeURIComponent(tournament.cloudId)}` : undefined;
   const fixtures = useMemo(() => buildShareFixtures(fixtureSetup, teams), [fixtureSetup, teams]);
 
   const share = async () => {
-    if (!posterRef.current) return;
+    if (!posterRef.current || sponsorsLoading || sponsorsError || !logosReady) return;
     if (!shareUrl) {
       Alert.alert('Tournament is still syncing', 'Wait for the tournament to finish syncing before sharing its link.');
       return;
@@ -103,6 +109,7 @@ export function TournamentShareBanner({ tournament, teams, captainByTeamId, fixt
                 {tournament.organizerPhone ? <InfoStrip icon="phone-outline" text={`Organiser: ${tournament.organizerPhone}`} /> : null}
               </PosterSection>
 
+              <SponsorList sponsors={sponsors} placement="share" interactive={false} onLogoSettled={uri => setLoadedLogos(previous => previous.has(uri) ? previous : new Set([...previous, uri]))} />
               <PosterSection eyebrow={`${teams.length} REGISTERED`} title="Teams and captains">
                 <View style={styles.cardGrid}>{teams.map(team => <ShareTeamCard key={team.id} team={team} captainName={captainByTeamId.get(team.id)} />)}</View>
               </PosterSection>
@@ -122,7 +129,8 @@ export function TournamentShareBanner({ tournament, teams, captainByTeamId, fixt
 
         <Text variant="caption" tone="muted" style={styles.note}>The exported image includes every team, captain, and fixture plus a link that opens this tournament after SportStage sign-in.</Text>
         <View style={styles.shareActions}>
-          <Button title={Platform.OS === 'web' ? 'Share or download image' : 'Share complete image'} onPress={() => void share()} loading={sharing} disabled={!shareUrl} fullWidth />
+          {sponsorsError ? <View><Text variant="caption" tone="danger">Load sponsors before exporting this card.</Text><Button title="Retry sponsors" variant="ghost" onPress={() => void refreshSponsors()} /></View> : null}
+          <Button title={sponsorsLoading || !logosReady ? 'Preparing sponsors…' : Platform.OS === 'web' ? 'Share or download image' : 'Share complete image'} onPress={() => void share()} loading={sharing} disabled={!shareUrl || sponsorsLoading || Boolean(sponsorsError) || !logosReady} fullWidth />
           <Button title="Share tournament link" variant="secondary" onPress={() => void shareLink()} disabled={!shareUrl || sharing} fullWidth />
         </View>
       </View>

@@ -8,6 +8,7 @@ import { SportStageLogo } from '@/components/branding/SportStageLogo';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { SportIcon } from '@/components/sports/SportIcon';
 import { SportLiveActivityBadge } from '@/components/sports/platform/SportLiveActivityBadge';
+import { MatchLauncher } from '@/components/sports/platform/MatchLauncher';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { useGlobalProfile } from '@/hooks/useGlobalProfile';
@@ -31,7 +32,7 @@ export default function SportStageDashboard() {
     (summary) => sportLaunchDescription(summary.sport.code) && sportRoute(summary),
   );
   const orderedSports = orderSportSummaries(launchableSports, activity.profileMatchCounts);
-  const columnCount = width < 350 ? 1 : 2;
+  const columnCount = width < 380 ? 1 : width >= 800 ? 3 : 2;
   const sportRows = chunk(orderedSports.sports, columnCount);
   const displayName = data?.profile.displayName ?? auth.profile?.displayName ?? 'SportStage member';
 
@@ -40,10 +41,12 @@ export default function SportStageDashboard() {
   return (
     <Screen scroll padded={false}>
       <View style={styles.hero}>
-        <View pointerEvents="none" style={styles.heroGlowOuter} />
-        <View pointerEvents="none" style={styles.heroGlowInner} />
-        <View style={styles.heroMark}><SportStageLogo size={54} /></View>
-        <Text style={styles.heroTitle}>Your sports stage</Text>
+        <View style={styles.heroHeading}>
+          <View style={styles.heroMark}><SportStageLogo size={42} /></View>
+          <View style={styles.sportMain}><Text variant="overline" tone="accent">SPORTSTAGE</Text><Text style={styles.heroTitle}>Your game starts here.</Text></View>
+        </View>
+        <Text tone="muted">One place for your matches, teams, and personal bests.</Text>
+        <MatchLauncher />
       </View>
 
       <View style={styles.divider} />
@@ -101,7 +104,11 @@ export default function SportStageDashboard() {
         </Pressable>
       ) : null}
 
-      <Text style={styles.sectionLabel}>YOUR SPORTS</Text>
+      <View style={styles.sectionHeading}>
+        <Text variant="h2">Your sports</Text>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/account')} style={styles.manageButton}><MaterialCommunityIcons name="plus" size={18} color={colors.accent} /><Text variant="bodyStrong" tone="accent">Manage</Text></Pressable>
+      </View>
+      {!orderedSports.sports.length ? <View style={styles.emptyCard}><SportIcon code="CRICKET" size={32} color={colors.accent} /><Text variant="h3">Make room for your next game</Text><Text tone="muted">Add a sport to find your matches, teams, and competitions.</Text><Pressable accessibilityRole="button" onPress={() => router.push('/account')} style={styles.manageButton}><Text tone="accent">Choose your sports →</Text></Pressable></View> : null}
       <View style={styles.sportGrid}>
         {sportRows.map((row, rowIndex) => (
           <View key={row.map((summary) => summary.sport.id).join(':')} style={styles.sportRow}>
@@ -114,9 +121,7 @@ export default function SportStageDashboard() {
                 onOpen={(route) => router.push(route)}
               />
             ))}
-            {columnCount === 2 && row.length === 1 ? (
-              <View key={`spacer-${rowIndex}`} style={styles.sportCardSpacer} />
-            ) : null}
+            {Array.from({ length: columnCount - row.length }, (_, index) => <View key={`spacer-${rowIndex}-${index}`} style={styles.sportCardSpacer} />)}
           </View>
         ))}
       </View>
@@ -160,7 +165,7 @@ function SportCard({ summary, liveCount, primary, onOpen }: {
       <Text style={styles.sportName}>{summary.sport.name}</Text>
       <Text style={styles.sportDescription}>{description}</Text>
       <View style={styles.sportCardFill} />
-      <Text style={styles.sportOpen}>{`Open \u2192`}</Text>
+      <Text style={styles.sportOpen}>{`Matches & competitions \u2192`}</Text>
     </Pressable>
   );
 }
@@ -183,43 +188,47 @@ function initials(name: string) {
 }
 
 const styles = StyleSheet.create({
-  hero: { position: 'relative', paddingTop: 30, paddingHorizontal: 18, paddingBottom: 30, overflow: 'hidden', alignItems: 'center' },
+  hero: { padding: 24, gap: 20 },
+  heroHeading: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  sectionHeading: { paddingHorizontal: 18, paddingTop: 24, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  manageButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  emptyCard: { margin: 18, padding: 24, borderRadius: 18, borderWidth: 1, borderColor: colors.border, gap: 12 },
   heroGlowOuter: { position: 'absolute', top: -54, width: 360, height: 280, borderRadius: 180, backgroundColor: 'rgba(95, 227, 138, 0.045)' },
   heroGlowInner: { position: 'absolute', top: -18, width: 220, height: 190, borderRadius: 110, backgroundColor: 'rgba(95, 227, 138, 0.075)' },
   heroMark: { width: 56, height: 56, borderRadius: 15, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: '#0C1210', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  heroTitle: { marginTop: 14, color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 27, lineHeight: 30, letterSpacing: -0.5, zIndex: 2 },
+  heroTitle: { marginTop: 6, color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 28, lineHeight: 34, letterSpacing: -0.5 },
   divider: { height: 1, marginHorizontal: 18, backgroundColor: colors.border },
   networkActions: { paddingHorizontal: 18, paddingTop: 18, gap: 8 },
   networkAction: { minHeight: 58, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 12 },
   networkTitle: { color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 13.5 },
-  networkCopy: { marginTop: 2, color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 10.5 },
+  networkCopy: { marginTop: 2, color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12 },
   actionTail: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   notificationBadge: { minWidth: 18, height: 18, borderRadius: 999, paddingHorizontal: 5, backgroundColor: colors.live, alignItems: 'center', justifyContent: 'center' },
-  notificationBadgeText: { color: colors.text, fontFamily: 'IBMPlexMono_500Medium', fontSize: 9, fontVariant: ['tabular-nums'] },
+  notificationBadgeText: { color: colors.text, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12, fontVariant: ['tabular-nums'] },
   profileCard: { marginTop: 20, marginHorizontal: 18, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   profileTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   profileAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#274531', alignItems: 'center', justifyContent: 'center' },
   profileInitials: { color: colors.accent, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 15 },
   profileIdentity: { flex: 1, minWidth: 0 },
   profileName: { color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 15 },
-  profileSub: { marginTop: 2, color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 9.5 },
+  profileSub: { marginTop: 2, color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 12 },
   profileStats: { flexDirection: 'row', gap: 8 },
   profileStat: { flex: 1, paddingVertical: 10, paddingHorizontal: 6, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg, alignItems: 'center' },
   profileStatValue: { color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 17, fontVariant: ['tabular-nums'] },
-  profileStatLabel: { marginTop: 2, color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 8 },
-  sectionLabel: { paddingTop: 20, paddingHorizontal: 18, paddingBottom: 10, color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 9.5, letterSpacing: 0.8 },
+  profileStatLabel: { marginTop: 2, color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 12 },
+  sectionLabel: { paddingTop: 20, paddingHorizontal: 18, paddingBottom: 10, color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 12, letterSpacing: 0.8 },
   sportGrid: { paddingHorizontal: 16, paddingBottom: 48, gap: 10 },
   sportRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
-  sportCard: { position: 'relative', flex: 1, minWidth: 0, minHeight: 166, overflow: 'hidden', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceElevated },
+  sportCard: { position: 'relative', flex: 1, minWidth: 0, minHeight: 194, overflow: 'hidden', padding: 18, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceElevated },
   sportCardPrimary: { borderColor: colors.accent, backgroundColor: colors.accentMuted },
   sportCardSpacer: { flex: 1 },
   primaryGlow: { position: 'absolute', top: -38, right: -34, width: 118, height: 118, borderRadius: 59, backgroundColor: 'rgba(95, 227, 138, 0.10)' },
   sportCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   sportIcon: { width: 36, height: 36, borderRadius: 10, flexShrink: 0, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
-  sportName: { marginTop: 12, color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 14.5, lineHeight: 18 },
-  sportDescription: { marginTop: 4, color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 10.5, lineHeight: 14 },
+  sportName: { marginTop: 12, color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 20, lineHeight: 26 },
+  sportDescription: { marginTop: 4, color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 14 },
   sportCardFill: { flex: 1, minHeight: 8 },
-  sportOpen: { marginTop: 8, color: colors.accent, fontFamily: 'IBMPlexMono_500Medium', fontSize: 10 },
+  sportOpen: { marginTop: 8, color: colors.accent, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12 },
   sportMain: { flex: 1, minWidth: 0 },
   pressed: { opacity: 0.78 },
 });

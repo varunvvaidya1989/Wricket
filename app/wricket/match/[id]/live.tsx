@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, AppState, Easing, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
+import { TournamentSponsors } from '@/components/sponsors/TournamentSponsors';
 import { Screen } from '@/components/ui/Screen';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
 import { Text } from '@/components/ui/Text';
@@ -192,6 +193,7 @@ export default function CloudLiveMatchScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
         contentContainerStyle={styles.feedContent}
       >
+        {match.tournamentId ? <TournamentSponsors key={match.tournamentId} parent={{ kind: 'cricket', id: match.tournamentId }} placement="match" /> : null}
         {tab === 'summary' && <Summary match={match} insights={insights} />}
         {tab === 'squads' && <SquadsAndH2H match={match} context={context} failed={contextError} onMeetingPress={matchId => router.push({ pathname: '/wricket/match/[id]/live', params: { id: matchId } })} />}
         {tab === 'commentary' && <Commentary match={match} />}

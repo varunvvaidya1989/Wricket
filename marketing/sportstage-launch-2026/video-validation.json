@@ -1,0 +1,50 @@
+[
+  {
+    "id": "01-meet-sportstage",
+    "file": "videos/01-meet-sportstage.mp4",
+    "width": 1080,
+    "height": 1920,
+    "seconds": 15,
+    "fps": 30,
+    "video": "H.264",
+    "audio": "AAC stereo",
+    "bytes": 2829017,
+    "decode": "PASS"
+  },
+  {
+    "id": "02-cricket-matchday",
+    "file": "videos/02-cricket-matchday.mp4",
+    "width": 1080,
+    "height": 1920,
+    "seconds": 15,
+    "fps": 30,
+    "video": "H.264",
+    "audio": "AAC stereo",
+    "bytes": 3282390,
+    "decode": "PASS"
+  },
+  {
+    "id": "03-badminton-matchday",
+    "file": "videos/03-badminton-matchday.mp4",
+    "width": 1080,
+    "height": 1920,
+    "seconds": 15,
+    "fps": 30,
+    "video": "H.264",
+    "audio": "AAC stereo",
+    "bytes": 2852375,
+    "decode": "PASS"
+  },
+  {
+    "id": "04-tournament-partners",
+    "file": "videos/04-tournament-partners.mp4",
+    "width": 1080,
+    "height": 1920,
+    "seconds": 15,
+    "fps": 30,
+    "video": "H.264",
+    "audio": "AAC stereo",
+    "bytes": 2045785,
+    "decode": "PASS"
+  }
+]

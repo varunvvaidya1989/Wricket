@@ -37,7 +37,7 @@ export function Button({
 }: ButtonProps) {
   const handlePress = (e: GestureResponderEvent) => {
     if (disabled || loading) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
     onPress?.(e);
   };
 
@@ -46,6 +46,9 @@ export function Button({
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
       onPress={handlePress}
       disabled={disabled || loading}
       style={({ pressed }) => [
@@ -101,7 +104,7 @@ const variantStyles = {
 
 const sizeStyles = {
   sm: {
-    container: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, minHeight: 36 },
+    container: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, minHeight: 44 },
     text: { fontSize: 14 },
   },
   md: {

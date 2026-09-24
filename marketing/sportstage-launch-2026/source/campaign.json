@@ -1,0 +1,35 @@
+{
+  "brand": "SportStage",
+  "campaign": "Every sport. One stage.",
+  "language": "English",
+  "cta": "Follow for launch updates",
+  "destination": null,
+  "posts": [
+    {"id":"01-brand","category":"MEET SPORTSTAGE","headline":"Every sport.<br><em>One stage.</em>","body":"Your match deserves more than a message in the group.","image":"multisport-editorial.png","type":"photo","alt":"SportStage: Every sport. One stage. Cricket and racquet-sport equipment on a dark green court."},
+    {"id":"02-cricket","category":"FOR THE LOVE OF CRICKET","headline":"Every ball.<br><em>A new story.</em>","body":"Keep score. Follow the match. Make it SportStage.","image":"cricket-editorial.png","type":"photo","alt":"A cricket bat and red ball on an evening pitch. Every ball. A new story. Cricket scoring with SportStage."},
+    {"id":"03-badminton","category":"BADMINTON, ON SPORTSTAGE","headline":"Own the rally.<br><em>Keep the score.</em>","body":"From the first serve to match point.","image":"badminton-editorial.png","type":"photo","alt":"A badminton shuttlecock and racket on a green court. Own the rally. Keep the score."},
+    {"id":"04-setup","category":"MEET YOUR MATCHDAY COMPANION","headline":"Ready.<br>Set.<br><em>Match.</em>","body":"Choose players. Review your rules. Start scoring.","type":"phone","alt":"SportStage badminton match setup screen with fictional players. Choose players, review rules, then start scoring."},
+    {"id":"05-organizers","category":"FOR TOURNAMENT ORGANIZERS","headline":"Big matchday.<br><em>Clear overview.</em>","body":"Bring fixtures, results and tournament sponsors together.","type":"workflow","alt":"Tournament organization with SportStage: fixtures, results and sponsors in one tournament workflow."},
+    {"id":"06-sponsors","category":"PUT YOUR PARTNERS IN THE PICTURE","headline":"Their support.<br><em>Your stage.</em>","body":"Add one sponsor or many to your tournament.","type":"sponsors","alt":"SportStage tournament sponsors: add names, logos and partner labels. An illustrative title-sponsor card appears below."},
+    {"id":"07-live","category":"FOR EVERYONE FOLLOWING ALONG","headline":"Keep your crew<br><em>in the game.</em>","body":"Follow live scores on SportStage.","type":"score","alt":"Illustrative badminton live-score graphic showing Side A at 18 and Side B at 17. Keep your crew in the game."},
+    {"id":"08-sports","category":"FIND YOUR GAME","headline":"Different games.<br><em>Same stage.</em>","body":"A multisport scoring app for the way you play.","type":"sports","alt":"SportStage supports cricket, badminton, tennis, padel, table tennis and pickleball."},
+    {"id":"09-community","category":"YOUR NEXT MATCH STARTS WITH YOUR PEOPLE","headline":"Same crew.<br><em>New matchday.</em>","body":"Tag the teammate who always keeps score.","image":"multisport-editorial.png","type":"photo","alt":"Sports equipment on a court. Same crew. New matchday. Tag the teammate who always keeps score."},
+    {"id":"10-clubs","category":"CLUBS · ACADEMIES · COMMUNITY SPORT","headline":"Your club.<br><em>Your stage.</em>","body":"Bring SportStage to your next club match.","image":"badminton-editorial.png","type":"photo","alt":"Badminton equipment on a green court. Your club. Your stage. SportStage for your next club match."},
+    {"id":"11-scorers","category":"A LITTLE LOVE FOR THE SCOREKEEPERS","headline":"They play.<br><em>You keep count.</em>","body":"For the people behind every score.","image":"cricket-editorial.png","type":"photo","alt":"A cricket bat and ball on a pitch. They play. You keep count. A SportStage appreciation post for scorekeepers."},
+    {"id":"12-intro","category":"THE GAME STARTS HERE","headline":"Make your next<br><em>match count.</em>","body":"Meet SportStage. Every sport. One stage.","type":"brand","alt":"SportStage green S logo with the headline Make your next match count. Follow for launch updates."}
+  ],
+  "carousel": [
+    {"id":"carousel-01","category":"THE MATCHDAY PLAYBOOK / 01","headline":"Less matchday<br><em>guesswork.</em>","body":"A simple guide to your first badminton match on SportStage.","type":"brand","cta":"Swipe for the playbook →"},
+    {"id":"carousel-02","category":"THE MATCHDAY PLAYBOOK / 02","headline":"First, choose<br><em>your players.</em>","body":"Pick the players for each side before you start.","type":"steps","step":"01","detail":"PLAYERS","cta":"Next: check the rules →"},
+    {"id":"carousel-03","category":"THE MATCHDAY PLAYBOOK / 03","headline":"Make it<br><em>your match.</em>","body":"Review the format and scoring rules before the first serve.","type":"steps","step":"02","detail":"RULES","cta":"Next: review and start →"},
+    {"id":"carousel-04","category":"THE MATCHDAY PLAYBOOK / 04","headline":"Ready to play?<br><em>Start scoring.</em>","body":"Review the match, then tap the rally winner to score.","type":"steps","step":"03","detail":"SCORE","cta":"Next: a useful matchday tip →"},
+    {"id":"carousel-05","category":"THE MATCHDAY PLAYBOOK / 05","headline":"Wrong tap?<br><em>Undo the rally.</em>","body":"Use “Undo last rally” to correct the latest scoring entry.","type":"steps","step":"↶","detail":"CORRECT","cta":"Save this for matchday →"},
+    {"id":"carousel-06","category":"THE MATCHDAY PLAYBOOK / 06","headline":"Your next match.<br><em>Your stage.</em>","body":"Save the playbook. Share it with your scorekeeper.","type":"brand","cta":"Follow SportStage for more"}
+  ],
+  "videos": [
+    {"id":"01-meet-sportstage","title":"Every sport. One stage. Meet SportStage.","scenes":["01-brand","08-sports","12-intro"],"subtitles":["Every sport. One stage.","Cricket, badminton, tennis, padel, table tennis and pickleball.","Meet SportStage. Follow for launch updates."]},
+    {"id":"02-cricket-matchday","title":"Every ball. A new story. Cricket on SportStage.","scenes":["02-cricket","11-scorers","12-intro"],"subtitles":["Every ball. A new story.","For the people behind every score.","Make your next match count. Follow SportStage."]},
+    {"id":"03-badminton-matchday","title":"Own the rally. Keep the score. Badminton on SportStage.","scenes":["03-badminton","04-setup","12-intro"],"subtitles":["Own the rally. Keep the score.","Choose players. Review your rules. Start scoring.","Meet SportStage. Follow for launch updates."]},
+    {"id":"04-tournament-partners","title":"Your tournament. Your partners. Your stage.","scenes":["05-organizers","06-sponsors","12-intro"],"subtitles":["Fixtures, results and tournament sponsors.","Add one sponsor or many to your tournament.","Make your next match count. Follow SportStage."]}
+  ]
+}

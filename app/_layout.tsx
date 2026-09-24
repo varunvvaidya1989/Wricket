@@ -1,8 +1,7 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
 import { useFonts } from 'expo-font';
 import { SpaceGrotesk_400Regular, SpaceGrotesk_600SemiBold, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
@@ -14,13 +13,12 @@ import 'react-native-reanimated';
 import { colors } from '@/lib/theme/colors';
 import { AuthProvider } from '@/components/providers/AuthProvider';
 import { RootAccessGate } from '@/components/providers/RootAccessGate';
-import { AnimatedSportStageSplash } from '@/components/branding/AnimatedSportStageSplash';
+import { SportStageLaunchBoundary } from '@/components/branding/SportStageLaunchBoundary';
 import { SportProfileDrawerProvider } from '@/components/sports/scoring/SportProfileDrawer';
+import { SportStageNavigation } from '@/components/sports/platform/SportStageNavigation';
 
-const ANIMATED_SPLASH_DURATION_MS = 1500;
-
-void SplashScreen.preventAutoHideAsync();
-SplashScreen.setOptions({ duration: 500, fade: true });
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+SplashScreen.setOptions({ duration: 220, fade: true });
 
 export const unstable_settings = {
   anchor: 'index',
@@ -39,7 +37,7 @@ const sportStageTheme = {
 };
 
 export default function RootLayout() {
-  const [launchComplete, setLaunchComplete] = useState(false);
+  const pathname = usePathname();
   const [fontsLoaded, fontError] = useFonts({
     SpaceGrotesk_400Regular,
     SpaceGrotesk_600SemiBold,
@@ -54,21 +52,13 @@ export default function RootLayout() {
     IBMPlexMono_700Bold,
   });
 
-  useEffect(() => {
-    if (!fontsLoaded && !fontError) return;
-    void SplashScreen.hideAsync();
-    const timer = setTimeout(() => setLaunchComplete(true), ANIMATED_SPLASH_DURATION_MS);
-
-    return () => clearTimeout(timer);
-  }, [fontError, fontsLoaded]);
-
   if (!fontsLoaded && !fontError) return null;
-  if (!launchComplete) return <AnimatedSportStageSplash />;
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider>
         <AuthProvider>
+          <SportStageLaunchBoundary>
           <RootAccessGate>
             <SportProfileDrawerProvider>
               <ThemeProvider value={sportStageTheme}>
@@ -103,10 +93,12 @@ export default function RootLayout() {
                 <Stack.Screen name="change-password" options={{ headerShown: false }} />
                 <Stack.Screen name="wricket" options={{ headerShown: false }} />
               </Stack>
+              {['/live', '/apps', '/feed', '/profile', '/notifications'].includes(pathname) ? <SportStageNavigation /> : null}
               <StatusBar style="light" />
               </ThemeProvider>
             </SportProfileDrawerProvider>
           </RootAccessGate>
+          </SportStageLaunchBoundary>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

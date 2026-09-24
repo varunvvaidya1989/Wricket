@@ -16,16 +16,24 @@ export function Screen({ children, scroll, padded = true, edges = ['top', 'left'
   const innerStyle: ViewStyle = {
     flex: 1,
     paddingHorizontal: padded ? spacing.lg : 0,
+    width: '100%',
+    maxWidth: 1120,
+    alignSelf: 'center',
   };
 
   const content = scroll ? (
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={{
+        width: '100%',
+        maxWidth: 1120,
+        alignSelf: 'center',
+        flexGrow: 1,
         paddingHorizontal: padded ? spacing.lg : 0,
         paddingBottom: spacing.xxxl,
       }}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
       {children}
     </ScrollView>

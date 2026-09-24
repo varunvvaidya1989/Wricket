@@ -33,7 +33,7 @@ export function RacquetScorePanel({
         <View>
           <Text variant="overline" tone="dim">{view.currentUnitLabel}</Text>
           <Text variant="caption" tone="muted">
-            {state.isComplete ? 'MATCH COMPLETE' : `${state.eventCount} RALLIES PLAYED`}
+            {state.isComplete ? 'MATCH COMPLETE' : `${state.eventCount} ${state.eventCount === 1 ? 'RALLY' : 'RALLIES'} PLAYED`}
           </Text>
         </View>
         <View style={[styles.livePill, { borderColor: state.isComplete ? colors.gold : accent }]}>
@@ -55,9 +55,9 @@ export function RacquetScorePanel({
               ) : null}
             </View>
             <View style={styles.sideCopy}>
-              <Text variant="h3" numberOfLines={1}>{side.name}</Text>
+              <Text variant="h3">{side.name}</Text>
               <Text variant="overline" style={{ color: side.isServing ? accent : colors.textDim }}>
-                {side.isServing ? side.serviceDetail ?? 'SERVING' : 'RECEIVING'}
+                {state.isComplete ? (state.winner === side.side ? 'WINNER' : 'FINAL') : side.isServing ? side.serviceDetail ?? 'SERVING' : 'RECEIVING'}
               </Text>
             </View>
             <Text style={styles.pointScore}>{side.currentScore}</Text>
@@ -76,9 +76,7 @@ export function RacquetScorePanel({
             {view.rounds.map((round, index) => (
               <View key={round.key} style={[styles.round, !round.isComplete && { borderColor: accent }]}>
                 <Text variant="overline" tone="dim">{index + 1}</Text>
-                <Text variant="mono">{round.score[0]}</Text>
-                <View style={styles.roundDivider} />
-                <Text variant="mono">{round.score[1]}</Text>
+                <Text variant="mono">{round.score[0]}–{round.score[1]}</Text>
               </View>
             ))}
           </ScrollView>
@@ -118,7 +116,7 @@ const styles = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 3 },
   scoreRows: { paddingHorizontal: spacing.sm },
   scoreRow: {
-    minHeight: 84,
+    minHeight: 104,
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
@@ -133,9 +131,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sideCopy: { flex: 1, minWidth: 90, gap: 4 },
+  sideCopy: { flex: 1, minWidth: 0, gap: 4 },
   pointScore: {
-    minWidth: 76,
+    minWidth: 62,
     paddingHorizontal: spacing.sm,
     color: colors.text,
     fontFamily: 'SpaceGrotesk_700Bold',
@@ -146,13 +144,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   unitScore: {
-    width: 58,
+    width: 52,
     alignItems: 'center',
     justifyContent: 'center',
     borderLeftWidth: 1,
     borderLeftColor: colors.border,
   },
-  roundHistory: { padding: spacing.md, gap: spacing.sm },
+  roundHistory: { padding: spacing.md, gap: spacing.sm, flexDirection: 'row', alignItems: 'center' },
   rounds: { gap: spacing.sm },
   round: {
     minWidth: 54,

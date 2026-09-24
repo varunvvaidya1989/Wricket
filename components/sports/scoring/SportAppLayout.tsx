@@ -9,7 +9,7 @@ import { SportProfileDrawerProvider } from './SportProfileDrawer';
 
 export function SportAppLayout({ sportId }: { sportId: ScoringSportId }) {
   const pathname = usePathname();
-  const hideTabs = /\/match\/[^/]+\/score$/.test(pathname);
+  const hideTabs = /\/match\/[^/]+\/score$/.test(pathname) || pathname.endsWith('/match/new');
   return (
     <SportProfileDrawerProvider sportId={sportId}>
       <View style={{ flex: 1, backgroundColor: colors.bg }}>

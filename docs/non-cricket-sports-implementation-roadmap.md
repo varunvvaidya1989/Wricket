@@ -431,6 +431,21 @@ Acceptance criteria:
   account; creators and participating player accounts retain detailed access,
   while guest discovery continues to use the safe public snapshot surface.
 
+### 2026-09-22 — Shared tournament sponsorship extension
+
+- Added the shared sponsor editor and displays to badminton, tennis, padel,
+  pickleball and table-tennis cloud competitions and match feeds, alongside cricket.
+- Commit: uncommitted workspace changes; existing phase statuses are unchanged.
+- Migration: `20260922142523_add_tournament_sponsors.sql` (prepared, not deployed).
+- Validation: 37 new domain/API/PostgreSQL policy tests; complete suite 522 tests.
+  Mobile/desktop browser checks cover CRUD, logo upload, failed-save recovery,
+  hidden sponsors, spectator permissions and placement filtering.
+- Review correction: qualified the Storage object name in logo-reference policies;
+  executable SQL tests verify readable logos and protection of referenced objects.
+- Release work: apply migration in the intended environment, run Supabase advisors,
+  verify native image picking/sharing. Racquet image exports and sponsor billing
+  are outside this extension. See `TOURNAMENT_SPONSORS.md` for operations details.
+
 ## Phase completion update template
 
 Copy this section into the implementation log when a phase is completed:

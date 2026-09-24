@@ -19,10 +19,10 @@ export const typography = {
   h1: { fontFamily: font.displayBold, fontSize: 26, letterSpacing: -0.5 } satisfies TextStyle,
   h2: { fontFamily: font.displayBold, fontSize: 20 } satisfies TextStyle,
   h3: { fontFamily: font.displaySemiBold, fontSize: 17 } satisfies TextStyle,
-  body: { fontFamily: font.bodyRegular, fontSize: 15 } satisfies TextStyle,
-  bodyStrong: { fontFamily: font.bodySemiBold, fontSize: 15 } satisfies TextStyle,
-  caption: { fontFamily: font.monoMedium, fontSize: 12, letterSpacing: 0.25 } satisfies TextStyle,
-  overline: { fontFamily: font.monoBold, fontSize: 10, letterSpacing: 1.1, textTransform: 'uppercase' as const } satisfies TextStyle,
+  body: { fontFamily: font.bodyRegular, fontSize: 15, lineHeight: 23 } satisfies TextStyle,
+  bodyStrong: { fontFamily: font.bodySemiBold, fontSize: 15, lineHeight: 22 } satisfies TextStyle,
+  caption: { fontFamily: font.bodyRegular, fontSize: 13, lineHeight: 19 } satisfies TextStyle,
+  overline: { fontFamily: font.bodySemiBold, fontSize: 11, letterSpacing: 0.9, textTransform: 'uppercase' as const } satisfies TextStyle,
   mono: { fontFamily: font.monoRegular, fontSize: 14, fontVariant: ['tabular-nums'] } satisfies TextStyle,
 } as const;
 

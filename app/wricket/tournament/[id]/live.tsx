@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
+import { TournamentSponsors } from '@/components/sponsors/TournamentSponsors';
 import { Screen } from '@/components/ui/Screen';
 import { Text } from '@/components/ui/Text';
 import { CloudLiveTournament, liveMatchApi } from '@/lib/supabase/liveMatchApi';
@@ -42,6 +43,7 @@ export default function TournamentLivePage() {
             Live scores, commentary, scorecards and match insights.
           </Text>
         </View>
+        {tournament ? <TournamentSponsors key={tournament.id} parent={{ kind: 'cricket', id: tournament.id }} /> : null}
         {!loading && !tournament && <Text tone="muted">This tournament is no longer live.</Text>}
         {tournament?.matches.map(match => (
           <Card key={match.id} onPress={() => router.push({

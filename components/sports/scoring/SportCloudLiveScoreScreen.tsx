@@ -2,7 +2,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { SportIcon } from '@/components/sports/SportIcon';
@@ -50,6 +50,8 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<ScoringEffect>();
   const [pendingWinner, setPendingWinner] = useState<Side>();
+  const [detailedScoring, setDetailedScoring] = useState(false);
+  const savingRef = useRef(false);
   const queue = useRef<Promise<void>>(Promise.resolve());
 
   const load = useCallback(async (silent = false) => {
@@ -107,7 +109,7 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
     initialServer: setup.initialServer,
     options: setup.options,
   }) : undefined, [config, setup]);
-  const canScore = Boolean(lease) && mode !== 'view' && !submitting;
+  const canScore = Boolean(lease) && mode !== 'view';
 
   const record = (operation: () => Promise<void>) => {
     queue.current = queue.current
@@ -116,19 +118,20 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
   };
 
   const choosePointWinner = (winner: Side) => {
-    if (!feed || !setup || !state || !lease || state.isComplete || submitting) return;
-    setPendingWinner(winner);
+    if (!feed || !setup || !state || !lease || state.isComplete || submitting || savingRef.current) return;
+    if (detailedScoring) setPendingWinner(winner);
+    else confirmPoint('RALLY_WINNER', winner);
   };
 
-  const confirmPoint = (selectedPointDetail: PointDetail) => {
-    const winner = pendingWinner;
+  const confirmPoint = (selectedPointDetail: PointDetail, winner: Side | undefined = pendingWinner) => {
     setPendingWinner(undefined);
-    if (!feed || !setup || !state || !lease || state.isComplete || submitting) return;
+    if (!feed || !setup || !state || !lease || state.isComplete || submitting || savingRef.current) return;
     if (winner === undefined) return;
     const nextEvents = appendPointEvent(setup.events, {
       type: 'POINT', sequence: feed.currentSequence + 1, winner, occurredAt: Date.now(),
     });
     const nextState = replay(config, nextEvents, { initialServer: setup.initialServer, options: setup.options });
+    savingRef.current = true;
     setSubmitting(true);
     record(async () => {
       try {
@@ -161,6 +164,7 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
         setNotice(nextState.effectsByEvent.at(-1)?.[0]);
         await load(true);
       } finally {
+        savingRef.current = false;
         setSubmitting(false);
       }
     });
@@ -168,7 +172,7 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
 
   const undo = () => {
     const target = feed ? lastActivePointEvent(feed.events) : undefined;
-    if (!feed || !setup || !lease || !target || submitting) return;
+    if (!feed || !setup || !lease || !target || submitting || savingRef.current) return;
     const remainingEvents = activePointEvents(
       feed.events.filter((event) => event.clientEventId !== target.clientEventId),
     );
@@ -176,6 +180,7 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
       initialServer: setup.initialServer,
       options: setup.options,
     });
+    savingRef.current = true;
     setSubmitting(true);
     record(async () => {
       try {
@@ -194,13 +199,14 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
         setNotice(undefined);
         await load(true);
       } finally {
+        savingRef.current = false;
         setSubmitting(false);
       }
     });
   };
 
   if (loading && !feed) {
-    return <Screen padded={false}><SportStageLoader message="Opening synchronized scorecard" detail="Connecting scorer lease and live event stream" accent={presentation.accent} /></Screen>;
+    return <Screen padded={false}><SportStageLoader message="Opening your match" detail="Getting the latest score" accent={presentation.accent} /></Screen>;
   }
   if (!feed || !setup || !state) {
     return <Screen padded={false}><AppHeader title={`${config.name} score`} back /><View style={styles.center}><MaterialCommunityIcons name="scoreboard-outline" size={38} color={colors.textDim} /><Text variant="h3">Match unavailable</Text><Text tone="muted" style={styles.centerText}>{error ?? 'This match could not be restored.'}</Text></View></Screen>;
@@ -232,10 +238,15 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
 
         <RacquetScorePanel config={config} state={state} sideNames={setup.sideNames} accent={presentation.accent} />
 
-        {state.isComplete ? <View style={[styles.completeCard, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="trophy-outline" size={34} color={presentation.accent} /><Text variant="overline" style={{ color: presentation.accent }}>MATCH WINNER</Text><Text variant="h1" style={styles.winner}>{setup.sideNames[state.winner!]}</Text><Text variant="caption" tone="muted">Final score {state.root.score[0]}-{state.root.score[1]}</Text><Button title="New match" onPress={() => router.replace(`/${presentation.routeSegment}/match/new` as Href)} style={{ backgroundColor: presentation.accent }} /></View> : canScore ? <TwoZonePointPad sideNames={setup.sideNames} sideOrder={padOrder} servingSide={state.serve.servingSide} accent={presentation.accent} onPoint={choosePointWinner} /> : null}
+        {state.isComplete ? <View style={[styles.completeCard, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="trophy-outline" size={34} color={presentation.accent} /><Text variant="overline" style={{ color: presentation.accent }}>MATCH WINNER</Text><Text variant="h1" style={styles.winner}>{setup.sideNames[state.winner!]}</Text><Text variant="caption" tone="muted">Final score {state.root.score[0]}-{state.root.score[1]}</Text><Button title="New match" onPress={() => router.replace(`/${presentation.routeSegment}/match/new` as Href)} style={{ backgroundColor: presentation.accent }} /></View> : canScore ? <TwoZonePointPad sideNames={setup.sideNames} sideOrder={padOrder} servingSide={state.serve.servingSide} accent={presentation.accent} disabled={submitting} onPoint={choosePointWinner} /> : null}
 
-        {!state.isComplete && canScore ? <View style={styles.controls}><Button title="Undo last rally" variant="secondary" disabled={!undoTarget} loading={submitting} onPress={undo} style={styles.flexButton} /></View> : null}
+        {!state.isComplete && canScore ? <View style={styles.scoringMode}>
+          <View style={styles.flex}><Text variant="bodyStrong">Add point details</Text><Text variant="caption" tone="muted">{detailedScoring ? 'Choose how each rally was won.' : 'Quick scoring: tap once to record a rally.'}</Text></View>
+          <Switch accessibilityLabel="Add details to each point" value={detailedScoring} onValueChange={setDetailedScoring} disabled={submitting} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.text} />
+        </View> : null}
+
       </ScrollView>
+        {!state.isComplete && canScore ? <View style={styles.controls}><Button title="Undo last rally" variant="secondary" disabled={!undoTarget} loading={submitting} onPress={undo} style={styles.flexButton} /></View> : null}
       <Modal visible={pendingWinner !== undefined} transparent animationType="fade" onRequestClose={() => setPendingWinner(undefined)}>
         <View style={styles.detailOverlay}>
           {pendingWinner !== undefined ? <View style={styles.detailDialog}>
@@ -249,12 +260,12 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
               </Pressable>
             </View>
             <Text variant="body" tone="muted">How was the point decided?</Text>
-            <View style={styles.detailOptions}>
+            <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={styles.detailOptions}>
               {pointDetailOptions(sportId).map((option) => <Pressable key={option.value} accessibilityRole="button" onPress={() => confirmPoint(option.value)} style={({ pressed }) => [styles.detailOption, pressed && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}14` }]}>
                 <Text variant="bodyStrong" style={styles.flex}>{pointDetailChoiceLabel(option.value, pendingWinner, setup.sideNames)}</Text>
                 <MaterialCommunityIcons name="chevron-right" size={20} color={presentation.accent} />
               </Pressable>)}
-            </View>
+            </ScrollView>
             <Button title="Cancel" variant="secondary" onPress={() => setPendingWinner(undefined)} fullWidth />
           </View> : null}
         </View>
@@ -264,6 +275,7 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
 }
 
 const styles = StyleSheet.create({
+  scoringMode: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: radius.lg, backgroundColor: colors.surface },
   scroll: { flex: 1 },
   content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.md },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
@@ -275,7 +287,7 @@ const styles = StyleSheet.create({
   lineupCard: { padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', gap: spacing.sm },
   lineupSide: { flex: 1, minWidth: 0, gap: 3 },
   detailOverlay: { flex: 1, padding: spacing.md, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center' },
-  detailDialog: { maxHeight: '90%', padding: spacing.lg, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.lg, backgroundColor: colors.surface, gap: spacing.md },
+  detailDialog: { width: '100%', maxWidth: 560, alignSelf: 'center', maxHeight: '90%', padding: spacing.lg, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.lg, backgroundColor: colors.surface, gap: spacing.md },
   detailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   detailClose: { width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated },
   detailOptions: { gap: spacing.sm },
@@ -284,7 +296,7 @@ const styles = StyleSheet.create({
   viewerBanner: { padding: spacing.md, borderWidth: 1, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   completeCard: { padding: spacing.xl, borderWidth: 1, borderRadius: radius.lg, backgroundColor: colors.surface, alignItems: 'center', gap: spacing.sm },
   winner: { textAlign: 'center' },
-  controls: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  controls: { padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   flexButton: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
 });

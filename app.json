@@ -3,7 +3,7 @@
     "name": "SportStage",
     "slug": "sportstage",
     "version": "2.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/sportstage/logo/sportstage-icon-1024.png",
     "scheme": "sportstage",
     "userInterfaceStyle": "dark",
@@ -53,11 +53,11 @@
         "expo-splash-screen",
         {
           "image": "./assets/sportstage/logo/sportstage-mark-rounded-512.png",
-          "imageWidth": 180,
+          "imageWidth": 144,
           "resizeMode": "contain",
-          "backgroundColor": "#0E1014",
+          "backgroundColor": "#0B100E",
           "dark": {
-            "backgroundColor": "#0E1014"
+            "backgroundColor": "#0B100E"
           }
         }
       ],

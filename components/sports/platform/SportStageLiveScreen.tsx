@@ -6,6 +6,7 @@ import { Alert, Animated, Pressable, ScrollView, StyleSheet, useWindowDimensions
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { SportIcon } from '@/components/sports/SportIcon';
+import { MatchLauncher } from './MatchLauncher';
 import { SportLiveActivityBadge } from '@/components/sports/platform/SportLiveActivityBadge';
 import { SportAvatarButton } from '@/components/sports/scoring/SportProfileDrawer';
 import { TournamentLogo } from '@/components/wricket/tournament/TournamentLogo';
@@ -155,23 +156,6 @@ export function SportStageLiveScreen({ following = false }: { following?: boolea
     router.push(route as Href);
   };
 
-  const openSportApp = (sportCode: string) => {
-    const route = sportHomeRoute(sportCode);
-    if (!route) return;
-    if (!isAuthenticated) {
-      router.push({ pathname: '/auth', params: { returnTo: route } });
-      return;
-    }
-    if (!hasSportAccess(auth.profile?.connectedSports ?? [], sportCode)) {
-      Alert.alert(`${sportStageContent(sportCode).name} app unavailable`, `Add ${sportStageContent(sportCode).name} to your SportStage account first.`, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Choose sports', onPress: () => router.push('/apps') },
-      ]);
-      return;
-    }
-    router.push(route as Href);
-  };
-
   const selectSport = (code: string) => setSelectedSport((current) => current === code ? undefined : code);
   const noLiveAnywhere = liveItems.length === 0;
   const noFilteredLive = filteredGeneral.length === 0 && (!isAuthenticated || filteredFollowed.length === 0);
@@ -186,7 +170,7 @@ export function SportStageLiveScreen({ following = false }: { following?: boolea
         onSignIn={() => router.push('/auth')}
       />
 
-      {!isAuthenticated ? <GuestHero onSignIn={() => router.push('/auth')} /> : null}
+      {!following ? <GuestHero authenticated={isAuthenticated} onSignIn={() => router.push('/auth')} /> : null}
 
       {error ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Retry live scores" onPress={() => void load()} style={styles.error}>
@@ -195,6 +179,11 @@ export function SportStageLiveScreen({ following = false }: { following?: boolea
           <Text variant="overline" tone="accent">RETRY</Text>
         </Pressable>
       ) : null}
+
+      <View style={styles.stripBlock}>
+        <SectionHeading label="EXPLORE LIVE SCORES" />
+        <SportStrip counts={liveCounts} selected={selectedSport} onSelect={selectSport} />
+      </View>
 
       {isAuthenticated ? (
         <View style={styles.sectionBlock}>
@@ -212,10 +201,7 @@ export function SportStageLiveScreen({ following = false }: { following?: boolea
         </View>
       ) : null}
 
-      <View style={styles.stripBlock}>
-        {isAuthenticated ? <SectionHeading label="ELSEWHERE ON SPORTSTAGE" /> : null}
-        <SportStrip counts={liveCounts} selected={selectedSport} onSelect={selectSport} onOpenSport={openSportApp} />
-      </View>
+
 
       {filteredGeneral.length || liveHasMore ? (
         <View style={styles.sectionBlock}>
@@ -254,6 +240,7 @@ export function SportStageLiveScreen({ following = false }: { following?: boolea
 function LandingHeader({ authenticated, title, back, onBack, onSignIn }: {
   authenticated: boolean; title: string; back: boolean; onBack: () => void; onSignIn: () => void;
 }) {
+  const router = useRouter();
   return (
     <View style={styles.header}>
       {back ? (
@@ -265,7 +252,7 @@ function LandingHeader({ authenticated, title, back, onBack, onSignIn }: {
         <Text style={styles.headerEyebrow}>SPORTSTAGE NOW</Text>
         <Text style={styles.headerTitle}>{title}</Text>
       </View>
-      {authenticated ? <SportAvatarButton compact /> : (
+      {authenticated ? <><Pressable accessibilityRole="button" accessibilityLabel="Notifications" onPress={() => router.push('/notifications')} style={styles.backButton}><MaterialCommunityIcons name="bell-outline" size={21} color={colors.textMuted} /></Pressable><SportAvatarButton compact /></> : (
         <Pressable accessibilityRole="button" accessibilityLabel="Sign in to SportStage" onPress={onSignIn} style={styles.signInButton}>
           <MaterialCommunityIcons name="login" size={15} color={colors.text} />
           <Text style={styles.signInText}>SIGN IN</Text>
@@ -275,42 +262,40 @@ function LandingHeader({ authenticated, title, back, onBack, onSignIn }: {
   );
 }
 
-function GuestHero({ onSignIn }: { onSignIn: () => void }) {
+function GuestHero({ authenticated, onSignIn }: { authenticated: boolean; onSignIn: () => void }) {
   return (
     <View style={styles.hero}>
       <View pointerEvents="none" style={styles.heroGlow} />
-      <View style={styles.liveNetwork}><View style={styles.liveDotSmall} /><Text style={styles.liveNetworkText}>LIVE NETWORK</Text></View>
-      <Text style={styles.heroTitle}>Every sport, One Stage</Text>
-      <Text style={styles.heroCopy}>Scores, stories, and the next match worth watching, all in one place.</Text>
-      <Pressable accessibilityRole="button" onPress={onSignIn} style={({ pressed }) => [styles.heroCta, pressed && styles.pressed]}>
-        <Text style={styles.heroCtaText}>Sign in to follow every match.</Text>
-      </Pressable>
+      <Text variant="overline" tone="accent">PLAY. SCORE. FOLLOW.</Text>
+      <Text style={styles.heroTitle}>{authenticated ? 'Ready for your next match?' : 'Every sport, One Stage'}</Text>
+      <Text style={styles.heroCopy}>From the first serve to the final run. Score your game and follow the action, all in one place.</Text>
+      <View style={styles.heroActions}><MatchLauncher />{!authenticated ? <Pressable accessibilityRole="button" onPress={onSignIn} style={styles.followLink}><Text tone="muted">Sign in to follow every match.</Text><MaterialCommunityIcons name="arrow-top-right" size={18} color={colors.textMuted} /></Pressable> : null}</View>
     </View>
   );
 }
 
-function SportStrip({ counts, selected, onSelect, onOpenSport }: {
-  counts: ReadonlyMap<string, number>; selected?: string; onSelect: (code: string) => void; onOpenSport: (code: string) => void;
+function SportStrip({ counts, selected, onSelect }: {
+  counts: ReadonlyMap<string, number>; selected?: string; onSelect: (code: string) => void;
 }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sportStrip}>
+      <Pressable accessibilityRole="button" accessibilityState={{ selected: !selected }} onPress={() => selected && onSelect(selected)} style={[styles.sportChip, !selected && styles.sportChipSelected]}><MaterialCommunityIcons name="view-grid-outline" size={22} color={!selected ? colors.accent : colors.textMuted} /><Text style={styles.sportChipName}>All sports</Text></Pressable>
       {RELEASED_SPORTSTAGE_SPORTS.map((sport) => {
         const count = counts.get(sport.code) ?? 0;
         const active = selected === sport.code;
         return (
-          <View
+          <Pressable
             key={sport.code}
-            style={[styles.sportChip, count > 0 && styles.sportChipLive, active && styles.sportChipSelected]}
+            accessibilityRole="button"
+            accessibilityLabel={`Filter by ${sport.name}, ${count ? `${count} live` : 'none live'}`}
+            accessibilityState={{ selected: active }}
+            onPress={() => onSelect(sport.code)}
+            style={({ pressed }) => [styles.sportChip, active && styles.sportChipSelected, pressed && styles.pressed]}
           >
-            <Pressable accessibilityRole="button" accessibilityLabel={`Open ${sport.name} app`} onPress={() => onOpenSport(sport.code)} hitSlop={5} style={({ pressed }) => [styles.sportIconRoute, pressed && styles.pressed]}>
-              <SportIcon code={sport.code} size={21} color={count > 0 ? colors.text : colors.textDim} />
-              <MaterialCommunityIcons name="arrow-top-right" size={10} color={colors.textDim} style={styles.sportRouteArrow} />
-            </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Filter by ${sport.name}, ${count ? `${count} live` : 'none live'}`} accessibilityState={{ selected: active }} onPress={() => onSelect(sport.code)} style={({ pressed }) => [styles.sportFilter, pressed && styles.pressed]}>
-              <Text style={[styles.sportChipName, !count && styles.sportChipMuted]}>{sport.name}</Text>
-              <SportLiveActivityBadge count={count} />
-            </Pressable>
-          </View>
+            <SportIcon code={sport.code} size={24} color={active ? colors.accent : colors.textMuted} />
+            <Text style={styles.sportChipName}>{sport.name}</Text>
+            <SportLiveActivityBadge count={count} />
+          </Pressable>
         );
       })}
     </ScrollView>
@@ -554,35 +539,37 @@ function timeOfDay(): 'morning' | 'afternoon' | 'evening' {
 const styles = StyleSheet.create({
   header: { minHeight: 66, paddingHorizontal: spacing.lg, paddingTop: spacing.md, flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   headerCopy: { flex: 1, minWidth: 0 },
-  headerEyebrow: { color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 9, letterSpacing: 1 },
+  headerEyebrow: { color: colors.textDim, fontFamily: 'IBMPlexMono_400Regular', fontSize: 12, letterSpacing: 1 },
   headerTitle: { marginTop: 3, color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 19, lineHeight: 24 },
-  backButton: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  signInButton: { minHeight: 34, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  signInText: { color: colors.text, fontFamily: 'IBMPlexMono_500Medium', fontSize: 9.5, letterSpacing: 0.4 },
-  hero: { marginHorizontal: spacing.lg, marginTop: 2, padding: 18, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: '#101712', overflow: 'hidden' },
+  backButton: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  signInButton: { minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  signInText: { color: colors.text, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12, letterSpacing: 0.4 },
+  hero: { marginHorizontal: spacing.lg, marginTop: 12, padding: 24, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: '#101712', overflow: 'hidden' },
+  heroActions: { marginTop: 22, width: '100%', maxWidth: 380, alignItems: 'stretch', gap: 10 },
+  followLink: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   heroGlow: { position: 'absolute', width: 220, height: 220, borderRadius: 110, right: -90, top: -110, backgroundColor: 'rgba(95,227,138,0.10)' },
   liveNetwork: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   liveDotSmall: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.live },
-  liveNetworkText: { color: colors.live, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 9, letterSpacing: 0.8 },
-  heroTitle: { marginTop: spacing.md, color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 25, lineHeight: 30, letterSpacing: -0.5 },
+  liveNetworkText: { color: colors.live, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 12, letterSpacing: 0.8 },
+  heroTitle: { marginTop: spacing.md, color: colors.text, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 34, lineHeight: 40, letterSpacing: -0.5 },
   heroCopy: { marginTop: 5, maxWidth: 480, color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18 },
   heroCta: { minHeight: 42, marginTop: 14, borderRadius: radius.pill, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
   heroCtaText: { color: '#0A1A0F', fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 12.5 },
   error: { marginHorizontal: spacing.lg, marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   stripBlock: { paddingTop: 14 },
   sportStrip: { paddingHorizontal: spacing.lg, gap: spacing.sm },
-  sportChip: { minWidth: 70, minHeight: 82, paddingHorizontal: spacing.sm, paddingVertical: 8, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', gap: 3 },
+  sportChip: { minWidth: 100, minHeight: 94, paddingHorizontal: spacing.sm, paddingVertical: 8, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', gap: 8 },
   sportChipLive: { borderColor: colors.live },
-  sportChipSelected: { backgroundColor: colors.accentMuted },
-  sportIconRoute: { width: 34, height: 30, alignItems: 'center', justifyContent: 'center' },
+  sportChipSelected: { backgroundColor: colors.accentMuted, borderColor: colors.accent },
+  sportIconRoute: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   sportRouteArrow: { position: 'absolute', top: 0, right: 1 },
-  sportFilter: { alignItems: 'center', gap: 4, paddingHorizontal: 2 },
-  sportChipName: { color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 10.5 },
+  sportFilter: { minHeight: 44, justifyContent: 'center', alignItems: 'center', gap: 4, paddingHorizontal: 2 },
+  sportChipName: { color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 12 },
   sportChipMuted: { color: colors.textDim },
   sectionBlock: { paddingTop: spacing.xl },
   promotedUpcoming: { paddingTop: spacing.lg },
   sectionHeading: { paddingHorizontal: spacing.lg, paddingBottom: 10, gap: 4 },
-  sectionLabel: { color: colors.textDim, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 9.5, letterSpacing: 0.9 },
+  sectionLabel: { color: colors.textDim, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 12, letterSpacing: 0.9 },
   sectionExplanation: { color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 17 },
   cardList: { paddingHorizontal: spacing.lg, gap: spacing.md },
   liveRail: { paddingHorizontal: spacing.lg, paddingRight: spacing.xxl, gap: spacing.md },
@@ -590,58 +577,58 @@ const styles = StyleSheet.create({
   matchTop: { minHeight: 56, paddingHorizontal: 13, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 9 },
   matchSportIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
   matchCompetition: { flex: 1, minWidth: 0 },
-  matchSport: { color: colors.textDim, fontFamily: 'IBMPlexMono_500Medium', fontSize: 8, letterSpacing: 0.6 },
-  matchCompetitionName: { marginTop: 2, color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 11.5, lineHeight: 16 },
+  matchSport: { color: colors.textDim, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12, letterSpacing: 0.6 },
+  matchCompetitionName: { marginTop: 2, color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 12, lineHeight: 16 },
   liveStatus: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  liveStatusText: { color: colors.live, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 8, letterSpacing: 0.7 },
+  liveStatusText: { color: colors.live, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 12, letterSpacing: 0.7 },
   matchScore: { paddingHorizontal: 13, paddingVertical: spacing.md },
   teamLine: { minHeight: 28, justifyContent: 'center' },
-  teamName: { color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 13.5, lineHeight: 19, flexShrink: 1 },
+  teamName: { color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 17, lineHeight: 24, flexShrink: 1 },
   versusLine: { height: 16, justifyContent: 'center' },
-  versusText: { color: colors.textDim, fontFamily: 'IBMPlexMono_500Medium', fontSize: 8 },
+  versusText: { color: colors.textDim, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12 },
   scoreLine: { marginTop: spacing.sm, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.md },
-  scoreLabel: { color: colors.textDim, fontFamily: 'IBMPlexMono_500Medium', fontSize: 8.5, letterSpacing: 0.5 },
-  scoreValue: { flexShrink: 1, color: colors.gold, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 18, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  scoreLabel: { color: colors.textDim, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12, letterSpacing: 0.5 },
+  scoreValue: { flexShrink: 1, color: colors.gold, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 28, textAlign: 'right', fontVariant: ['tabular-nums'] },
   matchActions: { minHeight: 44, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row' },
   matchAction: { flex: 1, minHeight: 44, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   feedAction: { borderLeftWidth: 1, borderLeftColor: colors.border },
-  competitionAction: { color: colors.gold, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 8.5 },
-  openScorecard: { color: colors.accent, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 8.5 },
+  competitionAction: { color: colors.gold, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 12 },
+  openScorecard: { color: colors.accent, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 12 },
   upcomingList: { marginHorizontal: spacing.lg, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, overflow: 'hidden' },
   upcomingCard: { minHeight: 74, paddingHorizontal: spacing.md, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   upcomingIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: colors.goldMuted, alignItems: 'center', justifyContent: 'center' },
   upcomingMain: { flex: 1, minWidth: 0 },
-  upcomingMeta: { color: colors.textDim, fontFamily: 'IBMPlexMono_500Medium', fontSize: 7.5, lineHeight: 11 },
+  upcomingMeta: { color: colors.textDim, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12, lineHeight: 18 },
   upcomingTeams: { marginTop: 3, color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 12.5, lineHeight: 17 },
   venueLine: { marginTop: 3, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  upcomingVenue: { flex: 1, color: colors.textDim, fontFamily: 'Inter_400Regular', fontSize: 9.5 },
+  upcomingVenue: { flex: 1, color: colors.textDim, fontFamily: 'Inter_400Regular', fontSize: 12 },
   upcomingTime: { alignItems: 'flex-end', gap: 2 },
-  upcomingDay: { color: colors.gold, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 9 },
-  upcomingClock: { color: colors.textMuted, fontFamily: 'IBMPlexMono_400Regular', fontSize: 9 },
+  upcomingDay: { color: colors.gold, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 12 },
+  upcomingClock: { color: colors.textMuted, fontFamily: 'IBMPlexMono_400Regular', fontSize: 12 },
   followedUpcoming: { marginTop: spacing.lg, gap: spacing.sm },
-  insightLabel: { paddingHorizontal: spacing.lg, color: colors.gold, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 9, letterSpacing: 0.8 },
+  insightLabel: { paddingHorizontal: spacing.lg, color: colors.gold, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 12, letterSpacing: 0.8 },
   tournamentInsights: { marginTop: spacing.lg, gap: spacing.sm },
   tournamentInsightRail: { paddingHorizontal: spacing.lg, paddingRight: spacing.xxl, gap: spacing.sm },
   tournamentInsightCard: { width: 250, minHeight: 86, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   tournamentInsightName: { color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 12.5, lineHeight: 16 },
-  tournamentRelationship: { marginTop: 3, color: colors.accent, fontFamily: 'IBMPlexMono_500Medium', fontSize: 8.5 },
-  tournamentInsightMeta: { marginTop: 4, color: colors.textDim, fontFamily: 'Inter_400Regular', fontSize: 9.5 },
+  tournamentRelationship: { marginTop: 3, color: colors.accent, fontFamily: 'IBMPlexMono_500Medium', fontSize: 12 },
+  tournamentInsightMeta: { marginTop: 4, color: colors.textDim, fontFamily: 'Inter_400Regular', fontSize: 12 },
   followPrompt: { marginHorizontal: spacing.lg, padding: spacing.md, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  promptIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
+  promptIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
   promptTitle: { color: colors.text, fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 12.5 },
-  promptCopy: { marginTop: 2, color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 10.5, lineHeight: 15 },
-  promptAction: { color: colors.accent, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 9 },
+  promptCopy: { marginTop: 2, color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 15 },
+  promptAction: { color: colors.accent, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 12 },
   upcomingEmpty: { marginHorizontal: spacing.lg, minHeight: 82, padding: spacing.md, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   loadingLine: { marginHorizontal: spacing.lg, minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   loadingNetwork: { minHeight: 110, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  loadingText: { color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 11 },
-  paginationHint: { marginHorizontal: spacing.lg, color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
+  loadingText: { color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12 },
+  paginationHint: { marginHorizontal: spacing.lg, color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 16 },
   loadMoreLive: { minHeight: 46, marginHorizontal: spacing.lg, marginTop: spacing.md, borderWidth: 1, borderColor: colors.accent, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   loadMoreDisabled: { opacity: 0.65 },
-  loadMoreText: { color: colors.accent, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 9.5, letterSpacing: 0.6 },
+  loadMoreText: { color: colors.accent, fontFamily: 'IBMPlexMono_600SemiBold', fontSize: 12, letterSpacing: 0.6 },
   loadingPageLabel: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   paginationPulse: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: colors.live },
-  loadMoreError: { marginHorizontal: spacing.lg, marginTop: spacing.sm, color: colors.danger, fontFamily: 'Inter_400Regular', fontSize: 10.5, textAlign: 'center' },
+  loadMoreError: { marginHorizontal: spacing.lg, marginTop: spacing.sm, color: colors.danger, fontFamily: 'Inter_400Regular', fontSize: 12, textAlign: 'center' },
   flex: { flex: 1, minWidth: 0 },
   pressed: { opacity: 0.74 },
 });

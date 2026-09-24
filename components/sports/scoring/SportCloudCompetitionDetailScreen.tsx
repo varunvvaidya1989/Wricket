@@ -1,4 +1,5 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { TournamentSponsors } from '@/components/sponsors/TournamentSponsors';
 import * as ImagePicker from 'expo-image-picker';
 import type { Href } from 'expo-router';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -553,6 +554,7 @@ export function SportCloudCompetitionDetailScreen({ sportId }: { sportId: Scorin
     <AppHeader title={competition.name} eyebrow={`${config.name.toUpperCase()} · ${competition.lifecycle.replaceAll('_', ' ')}`} back />
     <View style={styles.content}>
       <View style={[styles.hero, { borderColor: presentation.accent }]}><MaterialCommunityIcons name={competition.kind === 'TOURNAMENT' ? 'trophy-outline' : 'table-large'} size={30} color={presentation.accent} /><View style={styles.flex}><Text variant="h1">{competition.name}</Text><Text variant="caption" tone="muted">{competition.kind} · {competition.visibility}</Text></View></View>
+      <TournamentSponsors key={competition.id} parent={{ kind: 'sport', id: competition.id }} canManage={detail.canManage} />
       <View style={styles.tabs}>{(['overview', 'entrants', 'schedule', 'standings', 'points', 'officials', 'manage'] as const).map((value) => <Pressable key={value} onPress={() => setTab(value)} style={[styles.tab, tab === value && { borderColor: presentation.accent }]}><Text variant="overline" style={tab === value ? { color: presentation.accent } : undefined}>{value}</Text></Pressable>)}</View>
 
       {tab === 'overview' ? <>

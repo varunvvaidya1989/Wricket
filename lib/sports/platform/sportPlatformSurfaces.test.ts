@@ -81,7 +81,7 @@ describe('complete sport platform surfaces', () => {
   });
 
   it('implements personalized ordering and every requested empty state', () => {
-    expect(liveScreen.indexOf('YOUR SPORTS \\u00B7 LIVE NOW')).toBeLessThan(liveScreen.indexOf('ELSEWHERE ON SPORTSTAGE'));
+    expect(liveScreen.indexOf('EXPLORE LIVE SCORES')).toBeLessThan(liveScreen.indexOf('label="YOUR SPORTS"'));
     expect(liveScreen).toContain('Make this stage yours');
     expect(liveScreen).toContain("Nothing live right now - here's what's next.");
     expect(liveScreen).toContain('No start times announced');

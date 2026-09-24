@@ -54,6 +54,7 @@ import {
   TournamentScorer,
 } from '@/lib/supabase/scorerManagementApi';
 import { TournamentShareBanner } from '@/components/wricket/tournament/TournamentShareBanner';
+import { TournamentSponsors } from '@/components/sponsors/TournamentSponsors';
 import { tournamentManagementApi } from '@/lib/supabase/tournamentManagementApi';
 import { teamManagementApi } from '@/lib/supabase/teamManagementApi';
 import { WricketAvatarButton } from '@/components/wricket/navigation/WricketProfileDrawer';
@@ -311,6 +312,7 @@ export default function TournamentDetailScreen() {
             </View>
           </View>
         )}
+        {tournament.cloudId ? <View style={{ marginTop: spacing.md }}><TournamentSponsors key={tournament.cloudId} parent={{ kind: 'cricket', id: tournament.cloudId }} canManage={tournament.organizerProfileId === auth.session?.user.id} /></View> : tournament.organizerProfileId === auth.session?.user.id ? <Text variant="caption" tone="muted">Sponsor management will be available when this tournament finishes syncing.</Text> : null}
         {tournament.description && (
           <Text variant="body" tone="muted" style={{ marginTop: spacing.md }}>
             {tournament.description}
