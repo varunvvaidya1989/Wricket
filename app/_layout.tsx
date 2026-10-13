@@ -1,5 +1,6 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, usePathname } from 'expo-router';
+import Head from 'expo-router/head';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
@@ -8,6 +9,8 @@ import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } f
 import { IBMPlexMono_400Regular, IBMPlexMono_500Medium, IBMPlexMono_600SemiBold, IBMPlexMono_700Bold } from '@expo-google-fonts/ibm-plex-mono';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import React, { useEffect, useState } from 'react';
+import { Platform, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { colors } from '@/lib/theme/colors';
@@ -38,6 +41,10 @@ const sportStageTheme = {
 
 export default function RootLayout() {
   const pathname = usePathname();
+  // Exported HTML and the first web render must agree while browser fonts load.
+  // Routes mount after hydration; the existing launch boundary restores auth.
+  const [webMounted, setWebMounted] = useState(Platform.OS !== 'web');
+  useEffect(() => { setWebMounted(true); }, []);
   const [fontsLoaded, fontError] = useFonts({
     SpaceGrotesk_400Regular,
     SpaceGrotesk_600SemiBold,
@@ -52,7 +59,7 @@ export default function RootLayout() {
     IBMPlexMono_700Bold,
   });
 
-  if (!fontsLoaded && !fontError) return null;
+  if (!webMounted || (!fontsLoaded && !fontError)) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -62,6 +69,9 @@ export default function RootLayout() {
           <RootAccessGate>
             <SportProfileDrawerProvider>
               <ThemeProvider value={sportStageTheme}>
+              <Head><title>SportStage</title></Head>
+              {['/live', '/apps', '/explore'].includes(pathname) ? <SportStageNavigation /> : null}
+              <View role={Platform.OS === 'web' ? 'main' : undefined} style={{ flex: 1 }}>
               <Stack
                 screenOptions={{
                   contentStyle: { backgroundColor: colors.bg },
@@ -72,6 +82,9 @@ export default function RootLayout() {
               >
                 <Stack.Screen name="index" options={{ headerShown: false }} />
                 <Stack.Screen name="apps" options={{ headerShown: false }} />
+                <Stack.Screen name="explore" options={{ headerShown: false }} />
+                <Stack.Screen name="switch-sport" options={{ headerShown: false }} />
+                <Stack.Screen name="start-match" options={{ headerShown: false }} />
                 <Stack.Screen name="auth" options={{ headerShown: false }} />
                 <Stack.Screen name="auth-link-error" options={{ headerShown: false }} />
                 <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
@@ -83,7 +96,7 @@ export default function RootLayout() {
                 <Stack.Screen name="live" options={{ headerShown: false }} />
                 <Stack.Screen name="feed" options={{ headerShown: false }} />
                 <Stack.Screen name="notifications" options={{ headerShown: false }} />
-                <Stack.Screen name="player" options={{ headerShown: false }} />
+                <Stack.Screen name="player/[id]" options={{ headerShown: false }} />
                 <Stack.Screen name="tournament" options={{ headerShown: false }} />
                 <Stack.Screen name="tennis" options={{ headerShown: false }} />
                 <Stack.Screen name="badminton" options={{ headerShown: false }} />
@@ -93,7 +106,7 @@ export default function RootLayout() {
                 <Stack.Screen name="change-password" options={{ headerShown: false }} />
                 <Stack.Screen name="wricket" options={{ headerShown: false }} />
               </Stack>
-              {['/live', '/apps', '/feed', '/profile', '/notifications'].includes(pathname) ? <SportStageNavigation /> : null}
+              </View>
               <StatusBar style="light" />
               </ThemeProvider>
             </SportProfileDrawerProvider>

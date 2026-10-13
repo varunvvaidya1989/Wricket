@@ -1,4 +1,5 @@
 import { getDb } from './client';
+import type { ScoringDatabase } from './scoringTransaction';
 
 export interface PendingScoringEvent {
   clientEventId: string;
@@ -19,8 +20,9 @@ export interface PendingScoringEvent {
 
 export async function enqueueScoringEvent(
   event: Omit<PendingScoringEvent, 'attempts'>,
+  connection?: ScoringDatabase,
 ): Promise<void> {
-  const db = await getDb();
+  const db = connection ?? await getDb();
   await db.runAsync(
     `INSERT OR IGNORE INTO scoring_event_outbox (
        client_event_id, match_id, innings_id, kind, payload_json, attempts, created_at

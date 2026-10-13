@@ -2,12 +2,12 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
-import { Text } from '@/components/ui/Text';
+import { Card } from '@/components/wricket/ui/Card';
+import { Text } from '@/components/wricket/ui/Text';
 import { getMatchMvp, recalculateMatchMvp } from '@/lib/wricket/app/mvp';
 import { getMatchXI, getTeam } from '@/lib/wricket/db/repo';
 import { getMatchMvpAwards, type MatchMvpResult } from '@/lib/wricket/domain/mvp';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 
 export function MatchMvpSection({

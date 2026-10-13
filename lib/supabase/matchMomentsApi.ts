@@ -64,6 +64,9 @@ export const matchMomentsApi = {
     if (error) throw error;
     if (!moments.length) return [];
 
+    const { data: authors, error: authorError } = await client.rpc('list_visible_moment_author_names', { p_tournament_id: tournamentId });
+    if (authorError) throw authorError;
+    const authorNames = new Map<string, string>((authors ?? []).map((author: { profile_id: string; display_name: string }) => [author.profile_id, author.display_name]));
     const momentIds = moments.map(moment => moment.id);
     const matchIds = [...new Set(moments.flatMap(moment => moment.match_id ? [moment.match_id] : []))];
     const [{ data: reactions, error: reactionError }, { data: comments, error: commentError }, matchResult] =
@@ -96,7 +99,7 @@ export const matchMomentsApi = {
       current.push({
         id: comment.id,
         authorId: comment.author_id,
-        authorName: relationOne(comment.author)?.display_name ?? 'Wricket user',
+        authorName: authorNames.get(comment.author_id) ?? relationOne(comment.author)?.display_name ?? 'Wricket user',
         body: comment.body,
         createdAt: comment.created_at,
       });
@@ -136,7 +139,7 @@ export const matchMomentsApi = {
         matchId: moment.match_id ?? undefined,
         matchLabel: moment.match_id ? matchLabels.get(moment.match_id) : undefined,
         authorId: moment.author_id,
-        authorName: relationOne(moment.author)?.display_name ?? 'Wricket user',
+        authorName: authorNames.get(moment.author_id) ?? relationOne(moment.author)?.display_name ?? 'Wricket user',
         caption: moment.caption,
         imageUrl,
         createdAt: moment.created_at,

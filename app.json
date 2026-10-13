@@ -28,6 +28,11 @@
               "scheme": "https",
               "host": "sportstageapp.com",
               "pathPrefix": "/tournament"
+            },
+            {
+              "scheme": "https",
+              "host": "sportstageapp.com",
+              "pathPrefix": "/match"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
@@ -44,11 +49,19 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "output": "static",
+      "output": "server",
       "favicon": "./assets/sportstage/logo/sportstage-icon-32.png"
     },
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "headers": {
+            "Cross-Origin-Embedder-Policy": "credentialless",
+            "Cross-Origin-Opener-Policy": "same-origin"
+          }
+        }
+      ],
       [
         "expo-splash-screen",
         {

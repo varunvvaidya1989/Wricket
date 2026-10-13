@@ -19,7 +19,7 @@ describe('SportStage task manual and fixture hierarchy', () => {
       'Results, standings, and statistics',
       'Fix common problems safely',
     ]) expect(manual).toContain(heading);
-    expect(manual).toContain('Search the manual');
+    expect(manual).toContain('Search help');
     expect(drawer).toContain('How to use SportStage');
   });
 

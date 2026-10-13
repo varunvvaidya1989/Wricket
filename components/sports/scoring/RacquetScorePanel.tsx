@@ -1,166 +1,30 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { Text } from '@/components/ui/Text';
-import {
-  buildScoreboardView,
-  type MatchState,
-  type SportConfig,
-} from '@/lib/sports/scoring';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
+import { StageText, stageColors as colors } from '@/components/sports/platform/StageUI';
+import { buildScoreboardView, type MatchState, type SportConfig } from '@/lib/sports/scoring';
 
-export function RacquetScorePanel({
-  config,
-  state,
-  sideNames,
-  accent,
-}: {
-  config: SportConfig;
-  state: MatchState;
-  sideNames: readonly [string, string];
-  accent: string;
-}) {
-  const view = useMemo(
-    () => buildScoreboardView(config, state, sideNames),
-    [config, sideNames, state],
-  );
-
-  return (
-    <View style={styles.panel}>
-      <View style={styles.heading}>
-        <View>
-          <Text variant="overline" tone="dim">{view.currentUnitLabel}</Text>
-          <Text variant="caption" tone="muted">
-            {state.isComplete ? 'MATCH COMPLETE' : `${state.eventCount} ${state.eventCount === 1 ? 'RALLY' : 'RALLIES'} PLAYED`}
-          </Text>
-        </View>
-        <View style={[styles.livePill, { borderColor: state.isComplete ? colors.gold : accent }]}>
-          <View style={[styles.liveDot, { backgroundColor: state.isComplete ? colors.gold : accent }]} />
-          <Text variant="overline" style={{ color: state.isComplete ? colors.gold : accent }}>
-            {state.isComplete ? 'FINAL' : 'LIVE'}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.scoreRows}>
-        {view.sides.map((side) => (
-          <View key={side.side} style={[styles.scoreRow, side.isServing && styles.servingRow]}>
-            <View style={styles.serverColumn}>
-              {side.isServing ? (
-                <View style={[styles.serverMark, { backgroundColor: accent }]}>
-                  <MaterialCommunityIcons name="circle-small" size={26} color={colors.accentInk} />
-                </View>
-              ) : null}
-            </View>
-            <View style={styles.sideCopy}>
-              <Text variant="h3">{side.name}</Text>
-              <Text variant="overline" style={{ color: side.isServing ? accent : colors.textDim }}>
-                {state.isComplete ? (state.winner === side.side ? 'WINNER' : 'FINAL') : side.isServing ? side.serviceDetail ?? 'SERVING' : 'RECEIVING'}
-              </Text>
-            </View>
-            <Text style={styles.pointScore}>{side.currentScore}</Text>
-            <View style={styles.unitScore}>
-              <Text variant="scoreMd">{side.unitsWon}</Text>
-              <Text variant="overline" tone="dim">{view.unitsLabel}</Text>
-            </View>
-          </View>
-        ))}
-      </View>
-
-      {view.rounds.length > 0 ? (
-        <View style={styles.roundHistory}>
-          <Text variant="overline" tone="dim">SCORE BY {view.unitsLabel.slice(0, -1)}</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rounds}>
-            {view.rounds.map((round, index) => (
-              <View key={round.key} style={[styles.round, !round.isComplete && { borderColor: accent }]}>
-                <Text variant="overline" tone="dim">{index + 1}</Text>
-                <Text variant="mono">{round.score[0]}–{round.score[1]}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-      ) : null}
-    </View>
-  );
+export function RacquetScorePanel({ config, state, sideNames, accent }: { config: SportConfig; state: MatchState; sideNames: readonly [string, string]; accent: string }) {
+  const view = useMemo(() => buildScoreboardView(config, state, sideNames), [config, sideNames, state]);
+  return <View style={styles.panel}>
+    <StageText variant="eyebrow" muted>{view.currentUnitLabel} · {state.isComplete ? 'MATCH COMPLETE' : `${state.eventCount} ${state.eventCount === 1 ? 'RALLY' : 'RALLIES'} PLAYED`}</StageText>
+    <View style={styles.sides}>{view.sides.map(side => <View key={side.side} style={[styles.side, side.isServing && !state.isComplete && styles.serving]}>
+      <StageText variant="rowTitle" style={styles.name}>{side.name}</StageText>
+      <StageText accessibilityLabel={`${side.name} score ${side.currentScore}`} style={styles.score}>{side.currentScore}</StageText>
+      <StageText variant="eyebrow" style={{ color: accent, textAlign: 'center', letterSpacing: 0 }}>{state.isComplete ? state.winner === side.side ? 'WINNER' : 'FINAL' : side.isServing ? `● SERVING${side.serviceDetail ? ` · ${side.serviceDetail}` : ''}` : 'RECEIVING'}</StageText>
+      <StageText variant="small" muted style={{ textAlign: 'center' }}>{side.unitsWon} {view.unitsLabel.toLowerCase()} won</StageText>
+    </View>)}</View>
+    {view.rounds.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rounds}>{view.rounds.map((round, index) => <View key={round.key} style={[styles.round, !round.isComplete && { borderColor: accent }]}><StageText variant="eyebrow" muted>{view.unitsLabel.replace(/S$/, '')} {index + 1}</StageText><StageText>{round.score[0]}–{round.score[1]}</StageText></View>)}</ScrollView> : null}
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  panel: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    overflow: 'hidden',
-  },
-  heading: {
-    minHeight: 58,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  livePill: {
-    minHeight: 28,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  liveDot: { width: 6, height: 6, borderRadius: 3 },
-  scoreRows: { paddingHorizontal: spacing.sm },
-  scoreRow: {
-    minHeight: 104,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  servingRow: { backgroundColor: 'rgba(255,255,255,0.018)' },
-  serverColumn: { width: 30, alignItems: 'center' },
-  serverMark: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sideCopy: { flex: 1, minWidth: 0, gap: 4 },
-  pointScore: {
-    minWidth: 62,
-    paddingHorizontal: spacing.sm,
-    color: colors.text,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 43,
-    lineHeight: 48,
-    letterSpacing: -1,
-    fontVariant: ['tabular-nums'],
-    textAlign: 'center',
-  },
-  unitScore: {
-    width: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderLeftWidth: 1,
-    borderLeftColor: colors.border,
-  },
-  roundHistory: { padding: spacing.md, gap: spacing.sm, flexDirection: 'row', alignItems: 'center' },
-  rounds: { gap: spacing.sm },
-  round: {
-    minWidth: 54,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    gap: 2,
-  },
-  roundDivider: { width: 22, height: 1, backgroundColor: colors.border },
+  panel: { gap: 16 },
+  sides: { flexDirection: 'row', gap: 10 },
+  side: { flex: 1, minWidth: 0, minHeight: 180, padding: 16, borderWidth: 1, borderColor: '#42563a', borderRadius: 16, backgroundColor: '#182319', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  serving: { backgroundColor: '#24361f', borderColor: '#6b8b53' },
+  name: { textAlign: 'center', fontSize: 12, lineHeight: 18 },
+  score: { fontFamily: 'SpaceGrotesk_600SemiBold', fontSize: 44, lineHeight: 52, letterSpacing: -1 },
+  rounds: { gap: 8 },
+  round: { minWidth: 80, padding: 10, gap: 6, alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface },
 });

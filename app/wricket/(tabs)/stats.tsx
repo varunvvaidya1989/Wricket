@@ -1,16 +1,20 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Card } from '@/components/ui/Card';
+import { Card } from '@/components/wricket/ui/Card';
+import { WricketHeader } from '@/components/wricket/ui/WricketHeader';
 import { Screen } from '@/components/ui/Screen';
-import { Text } from '@/components/ui/Text';
+import { Text } from '@/components/wricket/ui/Text';
 import { legacyPlayerLinkApi } from '@/lib/supabase/legacyPlayerLinkApi';
 import { PerformanceFormEntry, PersonalStats, personalStatsApi } from '@/lib/supabase/personalStatsApi';
 import { playerProfileApi } from '@/lib/supabase/playerProfileApi';
-import { colors } from '@/lib/theme/colors';
+import type { PerformancePeriod } from '@/lib/wricket/presentation/completedStatistics';
+import { Button } from '@/components/wricket/ui/Button';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { formBarPercent, formTrend, isPeakForm, formatRate } from '@/lib/wricket/performance';
 
@@ -22,35 +26,43 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
   const router = useRouter();
   const { playerId, playerName } = useLocalSearchParams<{ playerId?: string; playerName?: string }>();
   const [stats, setStats] = useState<PersonalStats>();
+  const loadRevision = useRef(0);
+  const [period, setPeriod] = useState<PerformancePeriod>('career');
   const [section, setSection] = useState<Section>('overview');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [linkNeeded, setLinkNeeded] = useState(false);
 
   const load = useCallback(async () => {
+    const revision = ++loadRevision.current;
     if (!auth.session) { setStats(undefined); return; }
-    setLoading(true);
+    setLoading(true); setError(undefined);
     try {
       if (playerId) {
         setLinkNeeded(false);
-        setStats(await personalStatsApi.getForPlayerIds([playerId]));
+        const next = await personalStatsApi.getForPlayerIds([playerId], period);
+        if (loadRevision.current !== revision) return;
+        setStats(next);
         setError(undefined);
         return;
       }
       const resolution = await legacyPlayerLinkApi.resolve(auth.profile?.displayName ?? 'Player');
+      if (loadRevision.current !== revision) return;
       if (resolution.status === 'CANDIDATES' || resolution.status === 'CONTACT_CONFLICT') {
         setLinkNeeded(true); setStats(undefined); return;
       }
       setLinkNeeded(false);
       if (resolution.status === 'NO_MATCH') await playerProfileApi.ensureMine(auth.session.user.id, auth.profile?.displayName ?? 'Player');
-      setStats(await personalStatsApi.get(auth.session.user.id));
+      const next = await personalStatsApi.get(auth.session.user.id, period);
+      if (loadRevision.current !== revision) return;
+      setStats(next);
       setError(undefined);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : `Could not load ${playerId ? 'player' : 'your'} performance`);
-    } finally { setLoading(false); }
-  }, [auth.profile?.displayName, auth.session, playerId]);
+      if (loadRevision.current === revision) setError(cause instanceof Error ? cause.message : `Could not load ${playerId ? 'player' : 'your'} performance`);
+    } finally { if (loadRevision.current === revision) setLoading(false); }
+  }, [auth.profile?.displayName, auth.session, playerId, period]);
 
-  useFocusEffect(useCallback(() => { void load(); return undefined; }, [load]));
+  useFocusEffect(useCallback(() => { void load(); return () => { loadRevision.current += 1; }; }, [load]));
 
   if (!auth.session) {
     return <SectionScreen embedded={embedded}>{!embedded ? <Header player={Boolean(playerId)} /> : null}<View style={styles.signedOut}>
@@ -72,15 +84,19 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
         <MaterialCommunityIcons name="check-decagram" size={22} color={colors.accent} />
       </Pressable>
 
+      <View style={styles.periods}>{(['career', 'year', 'previousYear'] as const).map(item => <Pressable key={item} accessibilityRole="tab" aria-selected={period === item} accessibilityState={{ selected: period === item }} accessibilityLabel={`Performance period ${item === 'career' ? 'All time' : item === 'year' ? 'This year' : 'Last year'}`} style={[styles.period, period === item && styles.periodSelected]} onPress={() => { if (period !== item) { setStats(undefined); setPeriod(item); } }}><Text variant="caption" tone={period === item ? 'accent' : 'muted'}>{item === 'career' ? 'All time' : item === 'year' ? 'This year' : 'Last year'}</Text></Pressable>)}</View>
+      <Text variant="overline" tone="muted">{period === 'career' ? 'CAREER' : period === 'year' ? new Date().getFullYear() : new Date().getFullYear() - 1} / ELIGIBLE COMPLETED MATCHES</Text>
+      {loading && !stats ? <SportStageLoader variant="compact" message="Loading performance" detail="" /> : null}
       {error && <Pressable onPress={() => void load()}><Card style={styles.errorCard}><Text variant="caption">{error} Tap to retry.</Text></Card></Pressable>}
       {linkNeeded && <Card style={styles.linkCard}><MaterialCommunityIcons name="account-search-outline" size={32} color={colors.accent} /><Text variant="h3">Connect your previous player record</Text><Text tone="muted" style={styles.centeredText}>Review the possible AuctionYodha profile before creating a new player.</Text><Pressable style={styles.primaryButton} onPress={() => router.push('/account')}><Text variant="bodyStrong" style={{ color: colors.accentInk }}>Review profiles</Text></Pressable></Card>}
 
-      {stats?.matches === 0 ? <PerformanceEmpty player={Boolean(playerId)} onExplore={() => router.navigate({ pathname: '/wricket/my-wricket', params: { section: 'tournaments' } })} /> : stats ? <>
+      {stats?.matches === 0 && period !== 'career' ? <Card><Text variant="h3">No completed matches in this period</Text><Text tone="muted">Choose another period to view your recorded performance.</Text><Button title="View all-time performance" variant="secondary" onPress={() => { setStats(undefined); setPeriod('career'); }} /></Card> : stats?.matches === 0 ? <PerformanceEmpty player={Boolean(playerId)} onExplore={() => router.navigate({ pathname: '/wricket/my-wricket', params: { section: 'tournaments' } })} /> : stats ? <>
         <View style={styles.careerStrip}><CareerValue label="MATCHES" value={stats.matches} /><CareerValue label="RUNS" value={stats.runs} /><CareerValue label="WICKETS" value={stats.wickets} /></View>
-        <View style={styles.tabs}>{(['overview', 'batting', 'bowling'] as const).map(item => <Pressable key={item} onPress={() => setSection(item)} style={[styles.tab, section === item && styles.tabActive]}><Text variant="caption" tone={section === item ? 'accent' : 'muted'} style={styles.tabLabel}>{item.toUpperCase()}</Text></Pressable>)}</View>
+        <View style={styles.tabs}>{(['overview', 'batting', 'bowling'] as const).map(item => <Pressable key={item} accessibilityRole="tab" aria-selected={section === item} accessibilityState={{ selected: section === item }} onPress={() => setSection(item)} style={[styles.tab, section === item && styles.tabActive]}><Text variant="caption" tone={section === item ? 'accent' : 'muted'} style={styles.tabLabel}>{item.toUpperCase()}</Text></Pressable>)}</View>
         {section === 'overview' && <Overview stats={stats} />}
         {section === 'batting' && <Batting stats={stats} />}
         {section === 'bowling' && <Bowling stats={stats} />}
+        <MatchHistory stats={stats} />
       </> : null}
     </ScrollView>
   </SectionScreen>;
@@ -91,13 +107,13 @@ function SectionScreen({ embedded, children }: { embedded: boolean; children: Re
 }
 
 function Header({ player = false }: { player?: boolean }) {
-  return <View style={styles.header}><Text variant="overline" tone="muted">PLAYER PROFILE</Text><Text variant="h1">{player ? 'Player Performance' : 'My Performance'}</Text></View>;
+  return <WricketHeader title={player ? 'Player performance' : 'Performance'} backTo="/wricket/my-wricket" />;
 }
 
 function Overview({ stats }: { stats: PersonalStats }) {
   return <View style={styles.sections}>
     <CurrentForm stats={stats} />
-    <Text variant="overline" tone="muted">CAREER AT A GLANCE</Text>
+    <Text variant="overline" tone="muted">PERFORMANCE AT A GLANCE</Text>
     <View style={styles.grid}>
       <Metric icon="cricket" label="Batting average" value={formatRate(stats.runs, stats.dismissals)} />
       <Metric icon="speedometer" label="Strike rate" value={formatRate(stats.runs, stats.ballsFaced, 100)} />
@@ -142,6 +158,16 @@ function Bowling({ stats }: { stats: PersonalStats }) {
   return <View style={styles.sections}><Card><Text variant="h3">Bowling</Text><StatLine label="Wickets" value={stats.wickets} /><StatLine label="Best in a match" value={`${stats.bestWickets} wickets`} /><StatLine label="Overs" value={formatOvers(stats.bowlingBalls)} /><StatLine label="Runs conceded" value={stats.runsConceded} /><StatLine label="Average" value={formatRate(stats.runsConceded, stats.wickets)} /><StatLine label="Economy" value={formatRate(stats.runsConceded, stats.bowlingBalls, 6)} /></Card></View>;
 }
 
+function MatchHistory({ stats }: { stats: PersonalStats }) {
+  const router = useRouter();
+  return <View style={styles.sections}><Text variant="overline" tone="muted">MATCH HISTORY</Text>
+    {stats.history.map(match => <Pressable key={match.matchId} accessibilityRole="button" accessibilityLabel={`View match against ${match.opponentName}`} style={styles.historyRow} onPress={() => router.push({ pathname: '/wricket/match/[id]/scorecard', params: { id: match.matchId } })}>
+      <View style={[styles.resultBadge, match.result === 'W' && { backgroundColor: colors.accentMuted }]}><Text variant="mono" tone={match.result === 'W' ? 'accent' : 'muted'}>{match.result}</Text></View>
+      <View style={{ flex: 1, minWidth: 0 }}><Text variant="bodyStrong">vs {match.opponentName}</Text><Text variant="caption" tone="muted">{match.tournamentName} / {new Date(match.date).toLocaleDateString()}</Text><Text variant="caption" tone="dim">{match.runs} runs ({match.balls}) / {match.wickets} wickets</Text></View><MaterialCommunityIcons name="chevron-right" color={colors.textMuted} size={20} />
+    </Pressable>)}
+  </View>;
+}
+
 function PerformanceEmpty({ onExplore, player }: { onExplore: () => void; player?: boolean }) {
   return <View style={styles.performanceEmpty}><MaterialCommunityIcons name="chart-line" size={24} color={colors.textMuted} /><Text variant="h3">{player ? 'No performance recorded yet' : 'Your performance starts here'}</Text><Text tone="muted" style={styles.emptyBody}>{player ? 'Form and milestones will appear after this player completes a match.' : 'Complete your first match and your form, milestones, and career record will appear automatically.'}</Text>{!player ? <Pressable onPress={onExplore} style={styles.emptyCta}><Text variant="caption" style={{ color: colors.accentInk }}>EXPLORE TOURNAMENTS</Text></Pressable> : null}</View>;
 }
@@ -154,6 +180,11 @@ function initials(name: string) { return name.split(/\s+/).slice(0, 2).map(part 
 
 const styles = StyleSheet.create({
   embeddedScreen: { flex: 1 },
+  periods: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  period: { minHeight: 44, flexGrow: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 22, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
+  periodSelected: { backgroundColor: colors.accentMuted, borderColor: colors.accent },
+  historyRow: { flexDirection: 'row', gap: 12, alignItems: 'center', minHeight: 72, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  resultBadge: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md },
   content: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxxl, gap: spacing.lg },
   profile: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
@@ -178,7 +209,7 @@ const styles = StyleSheet.create({
   formCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: 14 },
   formHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
   formToggle: { flexDirection: 'row', alignSelf: 'flex-start', gap: spacing.xs, marginBottom: spacing.md, padding: 3, borderRadius: radius.sm, backgroundColor: colors.surfaceElevated },
-  formToggleItem: { minWidth: 64, alignItems: 'center', paddingHorizontal: spacing.sm, paddingVertical: 5, borderRadius: 4 },
+  formToggleItem: { minWidth: 64, minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.sm, paddingVertical: 5, borderRadius: 4 },
   formToggleActive: { backgroundColor: colors.accentMuted },
   formChart: { height: 102, flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, paddingHorizontal: spacing.xs },
   formBarWrap: { width: 46, alignItems: 'center', gap: 4 },

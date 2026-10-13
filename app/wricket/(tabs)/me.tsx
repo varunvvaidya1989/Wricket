@@ -6,10 +6,11 @@ import { Alert, Linking, StyleSheet, View } from 'react-native';
 import { AdPrivacyOptions } from '../../../components/ads/AdPrivacyOptions';
 import { SportStageSignOutActions } from '@/components/auth/SportStageSignOutActions';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Card } from '@/components/ui/Card';
+import { Card } from '@/components/wricket/ui/Card';
+import { WricketHeader } from '@/components/wricket/ui/WricketHeader';
 import { Screen } from '@/components/ui/Screen';
-import { Text } from '@/components/ui/Text';
-import { colors } from '@/lib/theme/colors';
+import { Text } from '@/components/wricket/ui/Text';
+import { colors } from '@/lib/wricket/presentation/design';
 import { spacing } from '@/lib/theme/spacing';
 import { PlayerProfile, playerProfileApi } from '@/lib/supabase/playerProfileApi';
 import { LegacyLinkResolution, legacyPlayerLinkApi } from '@/lib/supabase/legacyPlayerLinkApi';
@@ -38,7 +39,7 @@ export default function MeScreen() {
   }, [auth.profile?.connectedSports, auth.session, name]));
 
   return <Screen scroll padded={false}>
-    <View style={styles.header}><Text variant="overline" tone="muted">CRICKET</Text><Text variant="h1">Cricket Profile</Text></View>
+    <WricketHeader title="Cricket profile" backTo="/wricket/my-wricket" />
     <View style={styles.content}>
       <Card onPress={() => player && router.push({ pathname: '/wricket/player/[id]', params: { id: player.id } })}>
         <View style={styles.row}>

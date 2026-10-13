@@ -1,14 +1,7 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
-
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Button } from '@/components/ui/Button';
-import { Screen } from '@/components/ui/Screen';
-import { Text } from '@/components/ui/Text';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
+import { StageButton, StageField, StageIntro, StageNotice, StagePage } from '@/components/sports/platform/StageUI';
 import { authErrorMessage } from '@/lib/supabase/authErrors';
 
 export default function ChangePasswordScreen() {
@@ -18,40 +11,19 @@ export default function ChangePasswordScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [saving, setSaving] = useState(false);
-
+  const [error, setError] = useState<string>();
+  const [saved, setSaved] = useState(false);
   const save = async () => {
-    if (!currentPassword) return Alert.alert('Current password required', 'Enter your current SportStage password.');
-    if (newPassword.length < 8) return Alert.alert('Password too short', 'Use at least eight characters.');
-    if (newPassword === currentPassword) return Alert.alert('Choose a different password', 'Your new password must be different from the current password.');
-    if (newPassword !== confirmation) return Alert.alert('Passwords do not match', 'Enter the same new password twice.');
-    setSaving(true);
-    try {
-      await auth.updatePassword(newPassword, currentPassword);
-      Alert.alert('Password changed', 'Your SportStage password has been updated.');
-      router.back();
-    } catch (cause) {
-      Alert.alert('Could not change password', authErrorMessage(cause, 'Could not change your password. Please try again.'));
-    } finally { setSaving(false); }
+    const message = !currentPassword ? 'Enter your current SportStage password.' : newPassword.length < 8 ? 'Use at least eight characters.' : newPassword === currentPassword ? 'Choose a different password.' : newPassword !== confirmation ? 'Enter the same new password twice.' : undefined;
+    if (message) { setError(message); return; }
+    setSaving(true); setError(undefined);
+    try { await auth.updatePassword(newPassword, currentPassword); setSaved(true); setCurrentPassword(''); setNewPassword(''); setConfirmation(''); }
+    catch (cause) { setError(authErrorMessage(cause, 'Could not change your password. Please try again.')); }
+    finally { setSaving(false); }
   };
-
-  return <Screen>
-    <View style={styles.headerRow}>
-      <Pressable onPress={() => router.back()} style={styles.back}><MaterialCommunityIcons name="arrow-left" size={23} color={colors.text} /></Pressable>
-      <View><Text variant="overline" tone="muted">ACCOUNT SECURITY</Text><Text variant="h2">Change password</Text></View>
-    </View>
-    <View style={styles.form}>
-      <Text variant="body" tone="muted">Confirm your current password, then choose a new password with at least eight characters.</Text>
-      <TextInput value={currentPassword} onChangeText={setCurrentPassword} placeholder="Current password" placeholderTextColor={colors.textDim} secureTextEntry autoCapitalize="none" style={styles.input} />
-      <TextInput value={newPassword} onChangeText={setNewPassword} placeholder="New password" placeholderTextColor={colors.textDim} secureTextEntry autoCapitalize="none" style={styles.input} />
-      <TextInput value={confirmation} onChangeText={setConfirmation} placeholder="Confirm new password" placeholderTextColor={colors.textDim} secureTextEntry autoCapitalize="none" style={styles.input} />
-      <Button title="Change password" onPress={() => void save()} loading={saving} fullWidth />
-    </View>
-  </Screen>;
+  return <StagePage focused title="Change password" footer={<StageButton primary title={saved ? 'Back to account' : 'Save password'} loading={saving} onPress={saved ? () => router.canGoBack() ? router.back() : router.replace('/account') : () => void save()} />}>
+    <StageIntro eyebrow="SECURE YOUR ACCOUNT" title={saved ? 'Password updated.' : 'Choose a new password.'} description={saved ? 'You can now sign in using your new password.' : 'Confirm your current password, then choose a new password with at least eight characters.'} />
+    {!saved ? <><StageField label="Current password" placeholder="Current password" value={currentPassword} onChangeText={setCurrentPassword} secureTextEntry autoCapitalize="none" autoComplete="current-password" /><StageField label="New password" placeholder="New password" value={newPassword} onChangeText={setNewPassword} secureTextEntry autoCapitalize="none" autoComplete="new-password" /><StageField label="Confirm new password" placeholder="Confirm new password" value={confirmation} onChangeText={setConfirmation} secureTextEntry autoCapitalize="none" autoComplete="new-password" /></> : null}
+    {error ? <StageNotice>{error}</StageNotice> : null}
+  </StagePage>;
 }
-
-const styles = StyleSheet.create({
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingTop: spacing.md, marginBottom: spacing.xl },
-  back: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  form: { gap: spacing.md },
-  input: { minHeight: 50, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: spacing.md, fontSize: 16 },
-});

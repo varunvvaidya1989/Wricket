@@ -31,7 +31,7 @@ describe('same-sport match opponent selection', () => {
     expect(setup).toContain('openPlayerPicker(slot)');
     expect(setup).toContain('<Modal visible={playerPickerOpen}');
     expect(setup).toContain('sportRosterApi.listMatchOpponents');
-    expect(setup).toContain('title="Start scoring"');
+    expect(setup).toContain('playersReady && serverConfirmed');
     expect(setup).not.toContain('Start cloud scoring');
     expect(setup).not.toContain("'Please try again.'");
   });

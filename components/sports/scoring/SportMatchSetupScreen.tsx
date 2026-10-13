@@ -1,15 +1,11 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { SportIcon } from '@/components/sports/SportIcon';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { Button } from '@/components/ui/Button';
-import { Screen } from '@/components/ui/Screen';
-import { Text } from '@/components/ui/Text';
+import { StageButton, StageField, StageIntro, StageList, StageNotice, StagePage, StageRow, StageText } from '@/components/sports/platform/StageUI';
 import {
   SPORT_CONFIGS,
   SPORT_PRESENTATION,
@@ -23,8 +19,7 @@ import {
 import { supabaseErrorMessage } from '@/lib/supabase/errorMessage';
 import { sportRosterApi, type SportPlayerSearchResult } from '@/lib/supabase/sportRosterApi';
 import { sportScoringApi } from '@/lib/supabase/sportScoringApi';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
+import { colors } from '@/lib/wricket/presentation/design';
 import { SportMatchRulesEditor } from './SportMatchRulesEditor';
 
 type PlayerSlot = SportPlayerSearchResult | undefined;
@@ -51,20 +46,27 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
   const [initialServer, setInitialServer] = useState<Side>(0);
   const [rules, setRules] = useState<MatchOptions>(() => defaultSportRules(sportId));
   const [saving, setSaving] = useState(false);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(-1);
+  const [serverConfirmed, setServerConfirmed] = useState(false);
+  const [venue, setVenue] = useState('');
+  const [saveError, setSaveError] = useState<string>();
+  const savingRef = useRef(false);
   const [editingRules, setEditingRules] = useState(false);
   const requiredSlots = matchFormat === 'SINGLES' ? [0, 2] : [0, 1, 2, 3];
   const creatorSelected = requiredSlots.some((slot) => (
     players[slot]?.accountId === auth.session?.user.id
   ));
   const allSlotsSelected = requiredSlots.every((slot) => players[slot]);
-  const canStart = allSlotsSelected && creatorSelected;
+  const playersReady = allSlotsSelected && creatorSelected;
+  const canStart = playersReady && serverConfirmed;
 
   useEffect(() => {
     const accountId = auth.session?.user.id;
     if (!accountId) return;
+    let active = true;
     void sportRosterApi.getMySportProfile(accountId, presentation.catalogCode)
       .then((profile) => {
+        if (!active) return;
         if (!profile) {
           setProfileError(`Add ${config.name} to your SportStage account before starting a match.`);
           return;
@@ -76,10 +78,11 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
           displayName: auth.profile?.displayName ?? auth.session?.user.email?.split('@')[0] ?? 'You',
         });
       })
-      .catch((cause) => setProfileError(supabaseErrorMessage(
+      .catch((cause) => { if (active) setProfileError(supabaseErrorMessage(
         cause,
         `Could not load your ${config.name} profile. Check your connection and try again.`,
-      )));
+      )); });
+    return () => { active = false; };
   }, [auth.profile?.displayName, auth.session?.user.email, auth.session?.user.id, config.name, presentation.catalogCode, profileRetry]);
 
   useEffect(() => {
@@ -120,6 +123,7 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
       next[activeSlot] = player;
       return next;
     });
+    setServerConfirmed(false);
     setQuery('');
     setResults([]);
     setPlayerPickerOpen(false);
@@ -127,6 +131,7 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
 
   const chooseFormat = (format: MatchFormat) => {
     setMatchFormat(format);
+    setServerConfirmed(false);
     if (format === 'SINGLES') {
       setPlayers((current) => [current[0], undefined, current[2], undefined]);
       setActiveSlot(0);
@@ -144,7 +149,9 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
     const accountId = auth.session?.user.id;
     if (!accountId) { Alert.alert('Sign in required', 'Sign in to create a match.'); return; }
     if (!creatorSelected) { Alert.alert('Select yourself', 'Choose yourself in one of the player slots.'); return; }
-    if (!canStart || saving) return;
+    if (!canStart || savingRef.current) return;
+    savingRef.current = true;
+    setSaveError(undefined);
     setSaving(true);
     try {
       const scoringMatchId = await sportScoringApi.createStandalone({
@@ -152,110 +159,87 @@ export function SportMatchSetupScreen({ sportId }: { sportId: ScoringSportId }) 
         matchFormat,
         sideAProfileIds: sides.sideA.map((player) => player!.sportProfileId),
         sideBProfileIds: sides.sideB.map((player) => player!.sportProfileId),
-        rulesSnapshot: { initial_server: initialServer, options: rules },
+        rulesSnapshot: { initial_server: initialServer, options: rules, ...(venue.trim() ? { venue: venue.trim() } : {}) },
       });
       router.replace(`/${presentation.routeSegment}/match/${scoringMatchId}/score` as Href);
     } catch (cause) {
-      Alert.alert('Could not start match', supabaseErrorMessage(
+      setSaveError(supabaseErrorMessage(
         cause,
         'Could not start scoring. Check your connection and try again.',
       ));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
-  return (
-    <Screen padded={false} edges={['top', 'bottom', 'left', 'right']}>
-      <AppHeader title="New match" eyebrow={config.name.toUpperCase()} back />
-      <View style={styles.steps}>
-        {['Players', 'Rules', 'Review'].map((label, index) => <View key={label} style={[styles.step, index === step && styles.currentStep]}><View style={[styles.stepNumber, index <= step && styles.stepNumberActive]}><Text variant="bodyStrong" style={index <= step ? styles.serverText : undefined}>{index < step ? '✓' : index + 1}</Text></View><Text variant="caption" tone={index === step ? 'default' : 'muted'}>{label}</Text></View>)}
-      </View>
-      <ScrollView key={step} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
-      <View style={styles.content}>
-        <View style={styles.sportHero}>
-          <View style={styles.sportIcon}><SportIcon code={presentation.catalogCode} color={colors.accent} size={30} /></View>
-          <View style={styles.flex}><Text variant="h2">{config.name}</Text><Text variant="caption" tone="muted">{presentation.rulesSummary}</Text></View>
-        </View>
-
-        {step === 0 ? <>
-        <Text variant="h2">Who’s playing?</Text>
-        <View style={styles.section}>
-          <Text variant="overline" tone="dim">MATCH FORMAT</Text>
-          <View style={styles.row}>{config.matchFormats.map((format) => <Pressable key={format} accessibilityRole="radio" accessibilityState={{ checked: matchFormat === format }} onPress={() => chooseFormat(format)} style={[styles.format, matchFormat === format && styles.selected]}><MaterialCommunityIcons name={format === 'DOUBLES' ? 'account-multiple' : 'account'} size={20} color={matchFormat === format ? colors.accent : colors.textDim} /><Text variant="bodyStrong" style={matchFormat === format ? styles.accentText : undefined}>{format === 'DOUBLES' ? 'Doubles' : 'Singles'}</Text></Pressable>)}</View>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.heading}><Text variant="overline" tone="dim">PLAYERS</Text><Text variant="caption" tone="muted">Same sport only</Text></View>
-          {requiredSlots.map((slot) => <Pressable key={slot} accessibilityRole="button" accessibilityLabel={`${slotLabel(slot)}: ${players[slot]?.displayName ?? 'Choose a player'}`} onPress={() => openPlayerPicker(slot)} style={[styles.playerSlot, playerPickerOpen && activeSlot === slot && styles.selected]}>
-            <View style={styles.avatar}><Text variant="bodyStrong" tone="accent">{players[slot]?.displayName.charAt(0).toUpperCase() || '+'}</Text></View>
-            <View style={styles.flex}><Text variant="overline" tone="dim">{slotLabel(slot)}</Text><Text variant="bodyStrong">{players[slot]?.displayName ?? 'Choose a player'}{players[slot]?.accountId === auth.session?.user.id ? ' · You' : ''}</Text></View>
-            {players[slot]
-              ? <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${players[slot]?.displayName}`} style={styles.closeButton} onPress={(event) => { event.stopPropagation(); setPlayers((current) => { const next = [...current] as typeof current; next[slot] = undefined; return next; }); }}><MaterialCommunityIcons name="close" size={19} color={colors.textDim} /></Pressable>
-              : <MaterialCommunityIcons name="chevron-right" size={21} color={colors.textDim} />}
-          </Pressable>)}
-          {profileError ? <View style={styles.section}><Text variant="caption" tone="danger">{profileError}</Text><Button title="Retry profile" variant="secondary" onPress={() => setProfileRetry(profileRetry + 1)} /><Button title="Manage my sports" variant="ghost" onPress={() => router.push('/account')} /></View> : null}
-          {allSlotsSelected && !creatorSelected ? <Text variant="caption" tone="danger">Select yourself in one of the player slots.</Text> : null}
-          <Text variant="caption" tone="muted">Select yourself in any slot, then choose SportStage users who have also selected {config.name}.</Text>
-        </View>
-        </> : null}
-
-        {step === 1 ? <>
-        <Text variant="h2">Make it your match</Text>
-        <View style={styles.section}>
-          <Text variant="overline" tone="dim">FIRST SERVER</Text>
-          <View style={styles.row}>{([0, 1] as const).map((side) => <Pressable key={side} accessibilityRole="radio" accessibilityState={{ checked: initialServer === side }} onPress={() => setInitialServer(side)} style={[styles.format, initialServer === side && styles.serverSelected]}><Text variant="bodyStrong" style={initialServer === side ? styles.serverText : undefined}>{players[side === 0 ? 0 : 2]?.displayName ?? `Side ${side ? 'B' : 'A'}`}</Text></Pressable>)}</View>
-        </View>
-
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: editingRules }} onPress={() => setEditingRules(!editingRules)} style={styles.rulesSummary}>
-          <View style={styles.flex}><Text variant="bodyStrong">Match rules</Text><Text variant="caption" tone="muted">{sportRulesSummary(sportId, rules)}</Text></View>
-          <MaterialCommunityIcons name={editingRules ? 'chevron-up' : 'pencil-outline'} size={22} color={colors.accent} />
-        </Pressable>
-        {editingRules ? <SportMatchRulesEditor sportId={sportId} value={rules} onChange={setRules} accent={presentation.accent} /> : <Text variant="caption" tone="muted">The standard format is ready to use. Tap above to customize it.</Text>}
-        </> : null}
-
-        {step === 2 ? <>
-          <Text variant="h2">Ready to play?</Text>
-          <View style={styles.reviewCard}>
-            <Text variant="overline" tone="accent">{matchFormat}</Text>
-            <Text variant="h2">{sides.sideA.map(player => player?.displayName).join(' / ')}</Text>
-            <Text variant="caption" tone="muted">versus</Text>
-            <Text variant="h2">{sides.sideB.map(player => player?.displayName).join(' / ')}</Text>
-            <View style={styles.reviewDivider} />
-            <Text tone="muted">First serve: {players[initialServer === 0 ? 0 : 2]?.displayName}</Text>
-            <Text variant="caption" tone="muted">{sportRulesSummary(sportId, rules)}</Text>
-          </View>
-          <Text tone="muted">Tap the rally winner to score. You can undo the last rally if you make a mistake.</Text>
-        </> : null}
-      </View>
-      </ScrollView>
-      <View style={styles.footer}>
-        {step === 0 && !canStart ? <Text variant="caption" tone="muted">{requiredSlots.filter(slot => !players[slot]).length} player slots remaining. Include yourself to continue.</Text> : null}
-        <View style={styles.row}>
-          {step > 0 ? <Button title="Back" variant="secondary" disabled={saving} onPress={() => setStep(step - 1)} /> : null}
-          {step < 2 ? <Button title={step === 0 ? 'Continue to rules' : 'Review match'} disabled={!canStart || Boolean(profileError)} onPress={() => setStep(step + 1)} style={styles.flex} /> : <Button title="Start scoring" size="lg" disabled={!canStart || Boolean(profileError)} loading={saving} onPress={() => void start()} style={styles.flex} />}
-        </View>
-      </View>
-
-      <Modal visible={playerPickerOpen} transparent animationType="fade" onRequestClose={() => setPlayerPickerOpen(false)}>
-        <View style={styles.overlay}>
-          <View style={styles.pickerCard}>
-            <View style={styles.pickerHeader}>
-              <View style={styles.flex}><Text variant="overline" tone="dim">{slotLabel(activeSlot)}</Text><Text variant="h3">Choose a player</Text></View>
-              <Pressable accessibilityLabel="Close player search" onPress={() => setPlayerPickerOpen(false)} style={styles.closeButton}><MaterialCommunityIcons name="close" size={21} color={colors.text} /></Pressable>
-            </View>
-            <TextInput accessibilityLabel={`Search ${config.name} players`} autoFocus value={query} onChangeText={setQuery} placeholder={`Search ${config.name} players`} placeholderTextColor={colors.textDim} style={styles.input} />
-            {searchError ? <View style={styles.section}><Text tone="danger">{searchError}</Text><Button title="Retry search" variant="secondary" onPress={() => setSearchRetry(searchRetry + 1)} /></View> : null}
-            {searching ? <Text variant="caption" tone="muted">Finding players…</Text> : null}
-            <ScrollView style={styles.resultList} contentContainerStyle={styles.resultListContent} keyboardShouldPersistTaps="handled">
-              {selectableResults.map((player) => <Pressable key={player.sportProfileId} onPress={() => choosePlayer(player)} style={styles.searchResult}><View style={styles.avatar}><Text variant="bodyStrong" tone="accent">{player.displayName.charAt(0).toUpperCase()}</Text></View><Text variant="bodyStrong" style={styles.flex}>{player.displayName}</Text><Text variant="overline" tone="accent">{player.accountId === auth.session?.user.id ? 'YOU' : 'SELECT'}</Text></Pressable>)}
-              {!selectableResults.length && !searching && !searchError ? <Text variant="caption" tone="muted" style={styles.emptyResults}>{query.trim().length === 1 ? 'Type one more character to search other players.' : `No matching ${config.name} players found.`}</Text> : null}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-    </Screen>
-  );
+  const serverName = players[initialServer === 0 ? 0 : 2]?.displayName;
+  const sideNames = [sides.sideA.map(player => player?.displayName).filter(Boolean).join(' / '), sides.sideB.map(player => player?.displayName).filter(Boolean).join(' / ')];
+  const header = step === 0 ? 'Players & serve' : step === 1 ? 'Match rules' : step === 2 ? 'Review match' : 'New match';
+  const back = () => step >= 0 ? setStep(-1) : router.canGoBack() ? router.back() : router.replace(`/${presentation.routeSegment}` as Href);
+  return <StagePage focused title={header} eyebrow={config.name.toUpperCase()} onBack={back} footer={
+    <StageButton primary title={step === 0 ? 'Use these players' : step === 1 ? 'Use these rules' : step === 2 ? 'Start match' : 'Review match'} disabled={saving || Boolean(profileError) || (step === 0 ? !canStart : step !== 1 && !canStart)} loading={saving} onPress={() => step === 0 || step === 1 ? setStep(-1) : step === 2 ? void start() : setStep(2)} />
+  }>
+    {step === -1 ? <>
+      <StageIntro eyebrow={`NEW ${config.name.toUpperCase()} MATCH`} title="Ready when you are." description="Review the essentials before play starts." />
+      <StageList>
+        <StageRow title="Players" detail={allSlotsSelected ? `${sideNames[0]} vs ${sideNames[1]}` : `${requiredSlots.filter(slot => !players[slot]).length} player slots to fill · ${matchFormat.toLowerCase()}`} symbol={playersReady ? '✓' : '+'} onPress={() => setStep(0)} />
+        <StageRow title="Match rules" detail={sportRulesSummary(sportId, rules)} symbol="✓" onPress={() => setStep(1)} />
+        <StageRow title="First server" detail={serverConfirmed ? serverName : 'Choose who serves first'} symbol={serverConfirmed ? '✓' : '↗'} onPress={() => setStep(0)} />
+      </StageList>
+      <StageField label="Venue (optional)" value={venue} onChangeText={setVenue} maxLength={160} placeholder="Club · Court" />
+      <StageNotice>Both sides and the first server must be confirmed before starting.</StageNotice>
+    </> : null}
+    {step === 0 ? <>
+      <StageIntro eyebrow="MATCH PLAYERS" title="Who’s playing?" description={`Select yourself and eligible SportStage ${config.name} players, then confirm the first server.`} />
+      <StageText variant="eyebrow" muted>MATCH FORMAT</StageText>
+      <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel="Match format">{config.matchFormats.map(format => <Pressable key={format} accessibilityRole="radio" aria-checked={matchFormat === format} accessibilityState={{ checked: matchFormat === format }} onPress={() => chooseFormat(format)} style={[styles.format, matchFormat === format && styles.selected]}><StageText style={matchFormat === format ? styles.accentText : undefined}>{format === 'DOUBLES' ? 'Doubles' : 'Singles'}</StageText></Pressable>)}</View>
+      {([0, 1] as const).map(side => <View key={side} style={styles.section}>
+        <StageText variant="eyebrow" muted>SIDE {side === 0 ? 'A' : 'B'}</StageText>
+        {requiredSlots.filter(slot => (slot < 2 ? 0 : 1) === side).map(slot => <View key={slot} style={styles.playerSlot}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`${slotLabel(slot)}: ${players[slot]?.displayName ?? 'Choose a player'}`} onPress={() => openPlayerPicker(slot)} style={{ flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={styles.avatar}><StageText style={styles.accentText}>{players[slot]?.displayName[0]?.toUpperCase() || '+'}</StageText></View>
+            <View style={styles.flex}><StageText variant="small" muted>{slotLabel(slot)}</StageText><StageText variant="rowTitle">{players[slot]?.displayName ?? 'Choose a player'}{players[slot]?.accountId === auth.session?.user.id ? ' · You' : ''}</StageText></View>
+          </Pressable>
+          {players[slot] ? <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${players[slot]?.displayName}`} style={styles.closeButton} onPress={() => { setPlayers(current => { const next = [...current] as typeof current; next[slot] = undefined; return next; }); setServerConfirmed(false); }}><MaterialCommunityIcons name="close" size={19} color={colors.textMuted} /></Pressable> : null}
+        </View>)}
+      </View>)}
+      {allSlotsSelected && !creatorSelected ? <StageNotice>Select yourself in one of the player slots.</StageNotice> : null}
+      <StageText variant="eyebrow" muted>FIRST SERVER</StageText>
+      <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel="First server">{([0, 1] as const).map(side => <Pressable key={side} accessibilityRole="radio" aria-checked={serverConfirmed && initialServer === side} accessibilityState={{ checked: serverConfirmed && initialServer === side, disabled: !playersReady }} disabled={!playersReady} onPress={() => { setInitialServer(side); setServerConfirmed(true); }} style={[styles.format, serverConfirmed && initialServer === side && styles.serverSelected]}><StageText style={serverConfirmed && initialServer === side ? styles.serverText : undefined}>{players[side === 0 ? 0 : 2]?.displayName ?? `Side ${side ? 'B' : 'A'}`}</StageText></Pressable>)}</View>
+    </> : null}
+    {step === 1 ? <>
+      <StageIntro eyebrow={config.name.toUpperCase()} title="Know the format." description="The selected rules are used when your match starts." />
+      <View style={styles.reviewCard}><StageText variant="heading">Standard match</StageText><StageText muted>{sportRulesSummary(sportId, rules)}</StageText></View>
+      <StageNotice>{sportId === 'pickleball' ? 'In side-out scoring, winning a rally does not always earn a point. The scoring screen names the rally winner.' : 'The scoring screen uses this sport’s points, games and sets.'}</StageNotice>
+      <StageButton title={editingRules ? 'Hide rule options' : 'Customize match rules'} onPress={() => setEditingRules(!editingRules)} />
+      {editingRules ? <SportMatchRulesEditor sportId={sportId} value={rules} onChange={setRules} accent={colors.accent} /> : null}
+    </> : null}
+    {step === 2 ? <>
+      <StageIntro eyebrow="READY TO PLAY" title="One last look." description="Starting creates the match and opens the scoring screen." />
+      <StageList>
+        <StageRow title="Players" detail={`${sideNames[0]} vs ${sideNames[1]} · ${matchFormat.toLowerCase()}`} symbol="1" onPress={() => setStep(0)} />
+        <StageRow title="Rules" detail={sportRulesSummary(sportId, rules)} symbol="2" onPress={() => setStep(1)} />
+        <StageRow title="First server" detail={serverName} symbol="3" onPress={() => setStep(0)} />
+        <StageRow title="Venue" detail={venue.trim() || 'Not specified'} symbol="4" onPress={() => setStep(-1)} />
+      </StageList>
+      <StageButton title="Edit match setup" onPress={() => setStep(-1)} />
+    </> : null}
+    {profileError ? <><StageNotice retry={() => setProfileRetry(value => value + 1)}>{profileError}</StageNotice><StageButton title="Manage my sports" onPress={() => router.push('/account')} /></> : null}
+    {saveError ? <StageNotice>{saveError} Your setup is retained; try starting again.</StageNotice> : null}
+    <Modal visible={playerPickerOpen} transparent animationType="fade" onRequestClose={() => setPlayerPickerOpen(false)}>
+      <View style={styles.overlay}><View style={styles.pickerCard}>
+        <View style={styles.pickerHeader}><View style={styles.flex}><StageText variant="eyebrow" muted>{slotLabel(activeSlot)}</StageText><StageText variant="heading">Choose a player</StageText></View><Pressable accessibilityRole="button" accessibilityLabel="Close player search" onPress={() => setPlayerPickerOpen(false)} style={styles.closeButton}><MaterialCommunityIcons name="close" size={21} color={colors.text} /></Pressable></View>
+        <TextInput accessibilityLabel={`Search ${config.name} players`} autoFocus value={query} onChangeText={setQuery} placeholder={`Search ${config.name} players`} placeholderTextColor={colors.textMuted} style={styles.input} />
+        {searchError ? <StageNotice retry={() => setSearchRetry(value => value + 1)}>{searchError}</StageNotice> : null}
+        {searching ? <StageText variant="small" muted>Finding players…</StageText> : null}
+        <ScrollView style={styles.resultList} contentContainerStyle={styles.resultListContent} keyboardShouldPersistTaps="handled">
+          {selectableResults.map(player => <Pressable key={player.sportProfileId} accessibilityRole="button" accessibilityLabel={`Select ${player.displayName}`} onPress={() => choosePlayer(player)} style={styles.searchResult}><View style={styles.avatar}><StageText style={styles.accentText}>{player.displayName[0]?.toUpperCase()}</StageText></View><StageText variant="rowTitle" style={styles.flex}>{player.displayName}</StageText><StageText variant="eyebrow" style={styles.accentText}>{player.accountId === auth.session?.user.id ? 'YOU' : 'SELECT'}</StageText></Pressable>)}
+          {!selectableResults.length && !searching && !searchError ? <StageText variant="small" muted style={styles.emptyResults}>{query.trim().length === 1 ? 'Type one more character to search other players.' : `No matching ${config.name} players found.`}</StageText> : null}
+        </ScrollView>
+      </View></View>
+    </Modal>
+  </StagePage>;
 }
 
 function slotLabel(slot: number): string {
@@ -263,37 +247,24 @@ function slotLabel(slot: number): string {
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { flexGrow: 1 },
-  steps: { flexDirection: 'row', paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: 8 },
-  step: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingBottom: 10, borderBottomWidth: 2, borderBottomColor: colors.border },
-  currentStep: { borderBottomColor: colors.accent },
-  stepNumber: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated },
-  stepNumberActive: { backgroundColor: colors.accent },
-  footer: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, gap: 10 },
-  rulesSummary: { padding: 18, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  reviewCard: { padding: 24, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, gap: 14 },
-  reviewDivider: { height: 1, backgroundColor: colors.border },
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.lg },
-  sportHero: { padding: spacing.md, borderWidth: 1, borderColor: colors.accent, borderRadius: radius.lg, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  sportIcon: { width: 48, height: 48, borderRadius: radius.md, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
-  section: { gap: spacing.sm },
-  heading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  row: { flexDirection: 'row', gap: spacing.sm },
-  format: { flex: 1, minHeight: 52, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: 3 },
-  selected: { borderColor: colors.accent, backgroundColor: colors.accentMuted },
+  section: { gap: 8 },
+  row: { flexDirection: 'row', gap: 10 },
+  format: { flex: 1, minWidth: 0, minHeight: 52, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.surface },
+  selected: { borderColor: '#6b8b53', backgroundColor: '#24361f' },
   serverSelected: { borderColor: colors.accent, backgroundColor: colors.accent },
-  serverText: { color: colors.accentInk },
+  serverText: { color: colors.bg },
   accentText: { color: colors.accent },
-  playerSlot: { minHeight: 62, padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
-  input: { minHeight: 50, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.bg, color: colors.text, fontFamily: 'Inter_500Medium', fontSize: 15 },
-  searchResult: { minHeight: 58, padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  overlay: { flex: 1, justifyContent: 'center', padding: spacing.lg, backgroundColor: 'rgba(0,0,0,0.72)' },
-  pickerCard: { width: '100%', maxWidth: 560, alignSelf: 'center', maxHeight: '80%', padding: spacing.lg, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.lg, backgroundColor: colors.surfaceElevated, gap: spacing.md },
-  pickerHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  closeButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  playerSlot: { padding: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  avatar: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#263b25', alignItems: 'center', justifyContent: 'center' },
+  reviewCard: { padding: 20, borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.surface, gap: 12 },
+  input: { minHeight: 48, paddingHorizontal: 12, borderWidth: 1, borderColor: '#41543b', borderRadius: 10, backgroundColor: '#111b13', color: colors.text, fontFamily: 'Inter_400Regular', fontSize: 13 },
+  searchResult: { minHeight: 58, padding: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  overlay: { flex: 1, justifyContent: 'center', padding: 18, backgroundColor: 'rgba(0,0,0,0.72)' },
+  pickerCard: { width: '100%', maxWidth: 560, alignSelf: 'center', maxHeight: '80%', padding: 18, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 16, backgroundColor: colors.surface, gap: 12 },
+  pickerHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  closeButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   resultList: { flexGrow: 0 },
-  resultListContent: { gap: spacing.sm },
-  emptyResults: { paddingVertical: spacing.lg, textAlign: 'center' },
+  resultListContent: { gap: 8 },
+  emptyResults: { paddingVertical: 18, textAlign: 'center' },
   flex: { flex: 1, minWidth: 0 },
 });

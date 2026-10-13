@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { getSupabaseClient } from './client';
+import { readIdChunks, readPages } from './readPages';
 
 let channelInstance = 0;
 const DEVICE_ID_KEY = 'sportstage.sport-scoring-device-id';
@@ -41,6 +42,8 @@ export interface SportCloudMatchFeed {
   sideBPlayers: string[];
   sideAProfileIds: string[];
   sideBProfileIds: string[];
+  sideAAccountIds?: string[];
+  sideBAccountIds?: string[];
   rulesSnapshot: Record<string, unknown>;
   createdBy: string;
   events: SportCloudScoringEvent[];
@@ -66,17 +69,16 @@ export const sportScoringApi = {
       client.from('sport_public_live_snapshots')
         .select('competition_name, participant_a, participant_b, headline_score')
         .eq('scoring_match_id', scoringMatchId).maybeSingle(),
-      client.from('sport_scoring_events')
+      readPages((start, end) => client.from('sport_scoring_events')
         .select('sequence, client_event_id, kind, payload, reverses_client_event_id, created_at')
-        .eq('scoring_match_id', scoringMatchId).order('sequence', { ascending: false }),
+        .eq('scoring_match_id', scoringMatchId).order('sequence', { ascending: true }).range(start, end)),
       client.from('sport_scoring_match_players')
-        .select('side, player_order, sport_profile_id, display_name_snapshot')
+        .select('side, player_order, sport_profile_id, account_id, display_name_snapshot')
         .eq('scoring_match_id', scoringMatchId).order('side').order('player_order'),
     ]);
     if (snapshotResult.error) throw snapshotResult.error;
-    if (eventResult.error) throw eventResult.error;
     if (playerResult.error) throw playerResult.error;
-    return toCloudFeed(match, snapshotResult.data, (eventResult.data ?? []).map(toCloudEvent), playerResult.data ?? []);
+    return toCloudFeed(match, snapshotResult.data, eventResult.map(toCloudEvent), playerResult.data ?? []);
   },
 
   async createStandalone(input: {
@@ -196,44 +198,50 @@ async function listAccountMatches(
   const client = getSupabaseClient();
   let participantMatchIds: string[] = [];
   if (!creatorOnly) {
-    const { data, error } = await client.from('sport_scoring_match_players')
-      .select('scoring_match_id').eq('account_id', input.accountId);
-    if (error) throw error;
-    participantMatchIds = [...new Set((data ?? []).map((row) => String(row.scoring_match_id)))];
+    const memberships = await readPages((start, end) => client.from('sport_scoring_match_players')
+      .select('scoring_match_id').eq('account_id', input.accountId)
+      .order('scoring_match_id').range(start, end));
+    participantMatchIds = [...new Set(memberships.map((row) => String(row.scoring_match_id)))];
   }
-  let matchQuery = client.from('sport_scoring_matches')
+  const matchQuery = () => client.from('sport_scoring_matches')
     .select('id, sport_id, competition_id, entrant_a_id, entrant_b_id, match_format, status, current_sequence, updated_at, side_a_players, side_b_players, rules_snapshot, created_by')
     .eq('sport_id', input.sportId);
-  matchQuery = creatorOnly || !participantMatchIds.length
-    ? matchQuery.eq('created_by', input.accountId)
-    : matchQuery.or(`created_by.eq.${input.accountId},id.in.(${participantMatchIds.join(',')})`);
-  const { data: matches, error: matchError } = await matchQuery
-    .order('updated_at', { ascending: false }).limit(input.limit ?? 100);
-  if (matchError) throw matchError;
-  const matchIds = (matches ?? []).map((match) => String(match.id));
+  const limit = input.limit ?? 100;
+  const [owned, participating] = await Promise.all([
+    matchQuery().eq('created_by', input.accountId).order('updated_at', { ascending: false }).order('id').limit(limit),
+    readIdChunks(participantMatchIds, async chunk => {
+      const { data, error } = await matchQuery().in('id', chunk).order('updated_at', { ascending: false }).order('id').limit(limit);
+      if (error) throw error;
+      return data ?? [];
+    }),
+  ]);
+  if (owned.error) throw owned.error;
+  const matches = [...new Map([...(owned.data ?? []), ...participating].map(match => [String(match.id), match])).values()]
+    .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)) || String(left.id).localeCompare(String(right.id)))
+    .slice(0, limit);
+  const matchIds = matches.map((match) => String(match.id));
   if (!matchIds.length) return [];
   const [eventResult, playerResult, snapshotResult] = await Promise.all([
-    client.from('sport_scoring_events')
+    readPages((start, end) => client.from('sport_scoring_events')
       .select('scoring_match_id, sequence, client_event_id, kind, payload, reverses_client_event_id, created_at')
-      .in('scoring_match_id', matchIds).order('sequence', { ascending: false }),
+      .in('scoring_match_id', matchIds).order('scoring_match_id').order('sequence').range(start, end)),
     client.from('sport_scoring_match_players')
-      .select('scoring_match_id, side, player_order, sport_profile_id, display_name_snapshot')
+      .select('scoring_match_id, side, player_order, sport_profile_id, account_id, display_name_snapshot')
       .in('scoring_match_id', matchIds).order('side').order('player_order'),
     client.from('sport_public_live_snapshots')
       .select('scoring_match_id, competition_name, participant_a, participant_b, headline_score')
       .in('scoring_match_id', matchIds),
   ]);
-  if (eventResult.error) throw eventResult.error;
   if (playerResult.error) throw playerResult.error;
   if (snapshotResult.error) throw snapshotResult.error;
   const eventsByMatch = new Map<string, SportCloudScoringEvent[]>();
-  (eventResult.data ?? []).forEach((event) => {
+  eventResult.forEach((event) => {
     const matchId = String(event.scoring_match_id);
     const current = eventsByMatch.get(matchId) ?? [];
     current.push(toCloudEvent(event));
     eventsByMatch.set(matchId, current);
   });
-  return (matches ?? []).map((match) => {
+  return matches.map((match) => {
     const matchId = String(match.id);
     return toCloudFeed(
       match,
@@ -295,6 +303,12 @@ function toCloudFeed(
     sideBProfileIds: players.filter((player) => Number(player.side) === 1)
       .sort((left, right) => Number(left.player_order) - Number(right.player_order))
       .map((player) => String(player.sport_profile_id)),
+    sideAAccountIds: players.filter((player) => Number(player.side) === 0)
+      .sort((left, right) => Number(left.player_order) - Number(right.player_order))
+      .map((player) => String(player.account_id ?? '')),
+    sideBAccountIds: players.filter((player) => Number(player.side) === 1)
+      .sort((left, right) => Number(left.player_order) - Number(right.player_order))
+      .map((player) => String(player.account_id ?? '')),
     rulesSnapshot: objectValue(match.rules_snapshot),
     createdBy: String(match.created_by),
     events,

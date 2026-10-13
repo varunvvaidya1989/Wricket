@@ -1,76 +1,62 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-
-import { AppHeader } from '@/components/ui/AppHeader';
-import { Screen } from '@/components/ui/Screen';
-import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
+import React, { useCallback, useRef, useState } from 'react';
+import { View } from 'react-native';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { StageIntro, StageList, StageNotice, StagePage, StageRow, StageStateArt, StageText } from './StageUI';
+import { notificationDestination } from '@/lib/sports/platform/notificationDestination';
 import { sportOperationsApi, type SportNotification } from '@/lib/supabase/sportOperationsApi';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
 
 export function SportNotificationCenterScreen() {
+  const auth = useAuth();
   const router = useRouter();
-  const [items, setItems] = useState<SportNotification[]>([]);
+  const accountId = auth.session?.user.id;
+  const generation = useRef(0);
+  const opening = useRef(false);
+  const [result, setResult] = useState<{ accountId?: string; items: SportNotification[] }>({ items: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const load = useCallback(() => {
+  const [attempt, setAttempt] = useState(0);
+  const items = result.accountId === accountId ? result.items : [];
+  useFocusEffect(useCallback(() => {
+    const request = ++generation.current;
     setLoading(true); setError(undefined);
-    void sportOperationsApi.notifications().then(setItems)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load notifications.'))
-      .finally(() => setLoading(false));
-  }, []);
-  useFocusEffect(load);
+    if (!accountId) { setResult({ items: [] }); setLoading(false); return; }
+    void sportOperationsApi.notifications().then(next => { if (request === generation.current) setResult({ accountId, items: next }); })
+      .catch(cause => { if (request === generation.current) setError(cause instanceof Error ? cause.message : 'Could not load notifications.'); })
+      .finally(() => { if (request === generation.current) setLoading(false); });
+    return () => { generation.current += 1; };
+    // A retry intentionally re-runs the focused request without changing the account.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, attempt]));
 
   const open = async (item: SportNotification) => {
+    if (opening.current) return;
+    opening.current = true;
+    const request = generation.current;
     try {
+      const destination = notificationDestination(item.deepLink);
+      if (item.deepLink && !destination) throw new Error('This notification link is unavailable. Open the sport to review the update.');
       if (!item.readAt) {
         await sportOperationsApi.markRead(item.id);
-        setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, readAt: new Date().toISOString() } : entry));
+        if (request !== generation.current) return;
+        setResult(current => ({ ...current, items: current.items.map(entry => entry.id === item.id ? { ...entry, readAt: new Date().toISOString() } : entry) }));
       }
-      if (item.deepLink?.startsWith('/')) router.push(item.deepLink as Href);
+      if (request === generation.current && destination) router.push(destination as Href);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not open notification.');
-    }
+      if (request === generation.current) setError(cause instanceof Error ? cause.message : 'Could not open notification.');
+    } finally { opening.current = false; }
   };
-
-  return <Screen scroll padded={false}>
-    <AppHeader title="Notifications" eyebrow="YOUR SPORTSTAGE" back />
-    <View style={styles.content}>
-      {error ? <View accessibilityRole="alert" style={styles.error}><Text variant="caption" tone="danger">{error}</Text></View> : null}
-      {loading ? <SportStageLoader variant="section" message="Checking your notifications" detail="Syncing invitations, schedules, and results" /> : null}
-      {!loading && !items.length ? <View style={styles.empty}><MaterialCommunityIcons name="bell-sleep-outline" size={34} color={colors.textDim} /><Text variant="h3">All caught up</Text><Text variant="caption" tone="muted">Invitations, lineups, schedules, assignments, starts, and results will appear here.</Text></View> : null}
-      {items.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => void open(item)} style={[styles.item, !item.readAt && styles.unread]}>
-        <View style={[styles.icon, !item.readAt && styles.iconUnread]}><MaterialCommunityIcons name={notificationIcon(item.kind)} size={21} color={!item.readAt ? colors.accent : colors.textMuted} /></View>
-        <View style={styles.flex}><View style={styles.titleRow}><Text variant="bodyStrong" style={styles.flex}>{item.title}</Text>{!item.readAt ? <View style={styles.dot} /> : null}</View><Text variant="caption" tone="muted">{item.body}</Text><Text variant="overline" tone="dim" style={styles.time}>{new Date(item.createdAt).toLocaleString()}</Text></View>
-        {item.deepLink ? <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textDim} /> : null}
-      </Pressable>)}
-    </View>
-  </Screen>;
+  const attention = items.filter(item => !item.readAt && ['INVITATION', 'OFFICIAL_ASSIGNMENT'].includes(item.kind));
+  const updates = items.filter(item => !attention.includes(item));
+  const rows = (entries: SportNotification[]) => <StageList>{entries.map(item => <StageRow key={item.id} symbol={item.kind === 'INVITATION' ? '+' : '↗'} title={`${!item.readAt ? '● ' : ''}${item.title}`} detail={`${item.body} · ${new Date(item.createdAt).toLocaleString()}`} onPress={() => void open(item)} />)}</StageList>;
+  return <StagePage focused title="Notifications">
+    <StageIntro eyebrow="YOUR UPDATES" title="Pick up where it matters." description="Invitations and useful changes in one place." />
+    {error ? <StageNotice retry={() => setAttempt(value => value + 1)}>{error}</StageNotice> : null}
+    {loading ? <StageNotice>Checking your notifications…</StageNotice> : null}
+    {!loading && !error && !items.length ? <View style={{ gap: 18 }}><StageStateArt symbol="✓" /><StageIntro eyebrow="ALL CAUGHT UP" title="Nothing waiting on you." description="Invitations, schedules and match results will appear here." /></View> : null}
+    {attention.length ? <><StageText variant="eyebrow" muted>NEEDS YOUR ATTENTION</StageText>{rows(attention)}</> : null}
+    {updates.length ? <><StageText variant="eyebrow" muted>MATCHDAY</StageText>{rows(updates)}</> : null}
+  </StagePage>;
 }
 
-function notificationIcon(kind: string) {
-  if (kind === 'INVITATION') return 'email-outline';
-  if (kind === 'MATCH_START') return 'play-circle-outline';
-  if (kind === 'FINAL_RESULT') return 'trophy-outline';
-  if (kind === 'OFFICIAL_ASSIGNMENT') return 'whistle-outline';
-  return 'bell-outline';
-}
-
-const styles = StyleSheet.create({
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.sm },
-  item: { minHeight: 88, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  unread: { borderColor: '#385A44', backgroundColor: '#111D17' },
-  icon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
-  iconUnread: { backgroundColor: colors.accentMuted },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent },
-  time: { marginTop: spacing.xs },
-  error: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger },
-  center: { minHeight: 180, alignItems: 'center', justifyContent: 'center' },
-  empty: { minHeight: 260, padding: spacing.xl, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg },
-  flex: { flex: 1, minWidth: 0 },
-});

@@ -389,6 +389,11 @@ export const MIGRATIONS: SqlMigration[] = [
     name: 'ball_strike_rotation',
     sql: BALL_STRIKE_ROTATION_SQL,
   },
+  {
+    version: 15,
+    name: 'pin_scoring_ui_version',
+    sql: "ALTER TABLE scoring_sessions ADD COLUMN ui_version TEXT NOT NULL DEFAULT 'revamp-v1';",
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
@@ -429,6 +434,8 @@ export async function runMigrations(db: MigrationDatabase): Promise<void> {
           ? { table: 'tournaments', column: 'overs_per_match' }
         : migration.version === 14
           ? { table: 'balls', column: 'rotate_strike' }
+        : migration.version === 15
+          ? { table: 'scoring_sessions', column: 'ui_version' }
         : null;
     const alreadyApplied = guardedColumn
       ? await db.getFirstAsync<{ count: number }>(

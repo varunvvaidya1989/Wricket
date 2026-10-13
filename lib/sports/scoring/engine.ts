@@ -118,6 +118,7 @@ export function replay(
   config: SportConfig,
   events: readonly PointEvent[],
   settings: ReplaySettings = {},
+  observe?: (event: PointEvent, before: MatchState, after: MatchState) => void,
 ): MatchState {
   validateConfig(config.root);
   const options = freezeOptions({ ...config.defaultOptions, ...settings.options });
@@ -194,6 +195,7 @@ export function replay(
     );
     const frozenEventEffects = freezeEffects(eventEffects);
 
+    const before = state;
     state = freezeMatchState({
       sportId: config.id,
       root: update.state,
@@ -205,6 +207,7 @@ export function replay(
       effects: [...state.effects, ...frozenEventEffects],
       effectsByEvent: [...state.effectsByEvent, frozenEventEffects],
     });
+    observe?.(event, before, state);
   }
 
   return state;

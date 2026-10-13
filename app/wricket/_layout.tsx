@@ -1,15 +1,10 @@
-import { Stack, usePathname } from 'expo-router';
+import { Stack } from 'expo-router';
 import { View } from 'react-native';
 
-import { WricketTabBar } from '@/components/wricket/navigation/WricketTabBar';
-import { WricketProfileDrawerProvider } from '@/components/wricket/navigation/WricketProfileDrawer';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 
 export default function WricketLayout() {
-  const pathname = usePathname();
-  const isScoring = /^\/wricket\/match\/[^/]+\/score$/.test(pathname);
   return (
-    <WricketProfileDrawerProvider>
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Stack
         screenOptions={{
@@ -23,6 +18,7 @@ export default function WricketLayout() {
         <Stack.Screen name="tournament/new" options={{ title: 'New Tournament' }} />
         <Stack.Screen name="tournament/[id]" options={{ title: '' }} />
         <Stack.Screen name="team/join" options={{ title: 'Join team' }} />
+        <Stack.Screen name="tournament/join" options={{ headerShown: false }} />
         <Stack.Screen name="team/[id]" options={{ title: 'Team' }} />
         <Stack.Screen name="match/new" options={{ title: 'New Match' }} />
         <Stack.Screen name="match/[id]/score" options={{ headerShown: false, gestureEnabled: false }} />
@@ -32,8 +28,6 @@ export default function WricketLayout() {
         <Stack.Screen name="user/[id]" options={{ title: '' }} />
         <Stack.Screen name="ay-profile-link" options={{ title: 'Connect player profile' }} />
       </Stack>
-        {!isScoring && !pathname.endsWith('/match/new') ? <WricketTabBar /> : null}
       </View>
-    </WricketProfileDrawerProvider>
   );
 }

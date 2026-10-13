@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
+import { chromium, expect } from '@playwright/test';
+import { checked, localClients, manifestPath } from './backend-fixture.mjs';
+import { loadDomainApi } from './load-domain-api.mjs';
+
+const check = expect.configure({ timeout: 60000 });
+const fixture = JSON.parse(await readFile(manifestPath, 'utf8'));
+const stack = await localClients(), owner = fixture.accounts[0], client = stack.client();
+await checked(client.auth.signInWithPassword({ email: owner.email, password: fixture.password }));
+const api = await loadDomainApi('fixturesApi', client);
+const record = await checked(stack.admin.from('tournaments').insert({ created_by: owner.id, source_local_id: randomUUID(), name: 'Large schedule acceptance', format: 'TURF', visibility: 'PRIVATE', start_date: '2026-10-11', planned_team_count: 64, players_per_team: 3, overs_per_match: 1 }).select('id').single());
+let browser;
+try {
+  const teams = await checked(stack.admin.from('teams').insert(Array.from({ length: 64 }, (_, i) => ({ tournament_id: record.id, entity_owner_id: owner.id, name: `Large Schedule Cricket Club ${i + 1}`, short_name: `L${i + 1}`, color_hex: '#a6f477' }))).select('id'));
+  const start = performance.now();
+  await api.generatePreset({ tournamentId: record.id, teamIds: teams.map(team => team.id), recommendation: { formatType: 'GROUPS_ONLY', knockoutRounds: [] }, pairingAlgorithm: 'ROUND_ROBIN', numberOfGroups: 1, advancePerGroup: 2 });
+  assert.equal((await api.getFixtureSetup(record.id)).matches.length, 2016);
+  const databaseMs = performance.now() - start;
+  browser = await chromium.launch({ channel: process.env.WRICKET_E2E_CHROME_CHANNEL ?? 'chrome' });
+  const page = await browser.newPage({ viewport: { width: 320, height: 900 }, reducedMotion: 'reduce' }); page.setDefaultTimeout(60000); page.setDefaultNavigationTimeout(180000);
+  await page.goto('http://127.0.0.1:4173/auth?returnTo=%2Fwricket', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Sign in with password', exact: true }).click();
+  await page.getByPlaceholder('Email', { exact: true }).fill(owner.email);
+  await page.getByPlaceholder('Password', { exact: true }).fill(fixture.password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForURL(url => url.pathname.startsWith('/wricket'));
+  const opening = performance.now();
+  await page.goto('http://127.0.0.1:4173/wricket/tournament/' + record.id, { waitUntil: 'domcontentloaded' });
+  await check(page.getByText('Fixtures 1-40 of 2016', { exact: true })).toBeVisible();
+  const openingMs = performance.now() - opening;
+  await check(page.getByRole('button', { name: 'Start match', exact: true })).toHaveCount(40);
+  const paging = performance.now();
+  await page.getByRole('button', { name: 'Last fixtures', exact: true }).click();
+  await check(page.getByText('Fixtures 2001-2016 of 2016', { exact: true })).toBeVisible();
+  await check(page.getByRole('button', { name: 'Start match', exact: true })).toHaveCount(16);
+  const pagingMs = performance.now() - paging;
+  await page.getByRole('button', { name: 'First fixtures', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await page.getByRole('button', { name: 'Fixture plan', exact: true }).click();
+  await check(page.getByText('Fixtures 1-40 of 2016', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Last fixtures', exact: true }).click();
+  await check(page.getByText('Fixtures 2001-2016 of 2016', { exact: true })).toBeVisible();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: '.e2e/r9-large-schedule-320.png', fullPage: true });
+  await writeFile('.e2e/r9-large-schedule-evidence.json', JSON.stringify({ recordedAt: new Date().toISOString(), passed: true, browser: browser.version(), fixtureCount: 2016, maximumRenderedFixtures: 40, databaseMs, openingMs, pagingMs, environment: 'Chrome on Windows; development bundle and isolated local Docker PostgreSQL. Automation timings include transport/assertion overhead; not physical-device performance acceptance.' }, null, 2));
+  console.info('PASS all 2016 fixtures, first/last pages in organiser and tournament views, 40-card rendering bound and 320px layout');
+} finally {
+  if (browser) await browser.close();
+  await checked(client.rpc('delete_owned_tournament', { p_tournament_id: record.id }));
+  await client.auth.signOut({ scope: 'local' });
+}

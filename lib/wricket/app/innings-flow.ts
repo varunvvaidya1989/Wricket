@@ -1,4 +1,5 @@
 import {
+  clearScoringSession,
   closeInnings,
   createInnings,
   getMatch,
@@ -8,6 +9,7 @@ import {
   setMatchStatus,
 } from '../db/repo';
 import { newId, newUuid } from '../db/client';
+import { withScoringTransaction, type ScoringDatabase, type ScoringTransaction } from '../db/scoringTransaction';
 import { Innings, Match, MatchResult } from '../domain/types';
 import { queueCloudScoringEvent } from '@/lib/supabase/cloudScoringApi';
 import { canEnforceFollowOn, followOnThresholdForOvers } from '../domain/test-match';
@@ -16,8 +18,8 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-async function requireCloudTeamId(localTeamId: string): Promise<string> {
-  const team = await getTeam(localTeamId);
+async function requireCloudTeamId(localTeamId: string, connection?: ScoringDatabase): Promise<string> {
+  const team = await getTeam(localTeamId, connection);
   const cloudTeamId = team?.cloudId ?? (isUuid(localTeamId) ? localTeamId : undefined);
   if (!cloudTeamId || !isUuid(cloudTeamId)) {
     throw new Error('A match team has not finished syncing. Sync the teams before continuing.');
@@ -25,11 +27,11 @@ async function requireCloudTeamId(localTeamId: string): Promise<string> {
   return cloudTeamId;
 }
 
-async function toCloudResult(result: MatchResult): Promise<MatchResult> {
+async function toCloudResult(result: MatchResult, connection?: ScoringDatabase): Promise<MatchResult> {
   if (!('winnerTeamId' in result) || !result.winnerTeamId) return result;
   return {
     ...result,
-    winnerTeamId: await requireCloudTeamId(result.winnerTeamId),
+    winnerTeamId: await requireCloudTeamId(result.winnerTeamId, connection),
   };
 }
 
@@ -49,10 +51,10 @@ export interface NextStep {
   result?: MatchResult;
 }
 
-export async function planNextStep(matchId: string): Promise<NextStep> {
-  const match = await getMatch(matchId);
+export async function planNextStep(matchId: string, connection?: ScoringDatabase): Promise<NextStep> {
+  const match = await getMatch(matchId, connection);
   if (!match) throw new Error('Match not found');
-  const innings = await listInningsForMatch(matchId);
+  const innings = await listInningsForMatch(matchId, connection);
   const rules = match.rules;
 
   const inningsPerTeam = rules.inningsPerTeam;
@@ -217,8 +219,12 @@ function computeTwoInningsResult(match: Match, innings: Innings[]): MatchResult 
 export async function closeAndAdvance(
   matchId: string,
   inningsId: string,
+  transaction?: ScoringTransaction,
 ): Promise<NextStep> {
-  const openInnings = (await listInningsForMatch(matchId)).find(item => item.id === inningsId);
+  if (!transaction) return withScoringTransaction(tx => closeAndAdvance(matchId, inningsId, tx));
+  const connection = transaction.db;
+  await clearScoringSession(matchId, connection);
+  const openInnings = (await listInningsForMatch(matchId, connection)).find(item => item.id === inningsId);
   if (!openInnings) throw new Error('Innings not found');
   if (isUuid(matchId) && isUuid(inningsId)) {
     await queueCloudScoringEvent({
@@ -227,30 +233,31 @@ export async function closeAndAdvance(
       inningsId,
       kind: 'INNINGS_CLOSED',
       payload: { innings_id: inningsId },
-    });
+    }, transaction);
   }
-  await closeInnings(inningsId);
-  const step = await planNextStep(matchId);
+  await closeInnings(inningsId, connection);
+  const step = await planNextStep(matchId, connection);
   if (step.kind === 'COMPLETED' && step.result) {
     if (isUuid(matchId)) {
-      const cloudResult = await toCloudResult(step.result);
+      const cloudResult = await toCloudResult(step.result, connection);
       await queueCloudScoringEvent({
         clientEventId: `complete-${matchId}`,
         matchId,
         inningsId,
         kind: 'MATCH_COMPLETED',
         payload: { innings_id: inningsId, result: cloudResult },
-      });
+      }, transaction);
     }
-    await setMatchResult(matchId, step.result);
+    await setMatchResult(matchId, step.result, connection);
     // MVP is derived data: scorecard finalization succeeds even if calculation
     // fails, and the recorded failure remains retryable from the admin action.
-    const { recalculateMatchMvp } = await import('./mvp');
-    void recalculateMatchMvp(matchId).catch(() => undefined);
+    transaction.afterCommit(() => {
+      void import('./mvp').then(({ recalculateMatchMvp }) => recalculateMatchMvp(matchId)).catch(() => undefined);
+    });
   } else if (step.kind === 'FOLLOW_ON_DECISION') {
-    await setMatchStatus(matchId, 'FOLLOW_ON_DECISION');
+    await setMatchStatus(matchId, 'FOLLOW_ON_DECISION', connection);
   } else if (step.kind === 'NEXT_INNINGS' && step.next) {
-    await setMatchStatus(matchId, 'INNINGS_BREAK');
+    await setMatchStatus(matchId, 'INNINGS_BREAK', connection);
   }
   return step;
 }
@@ -258,11 +265,14 @@ export async function closeAndAdvance(
 export async function startNextInnings(
   matchId: string,
   step: NonNullable<NextStep['next']>,
+  transaction?: ScoringTransaction,
 ): Promise<void> {
+  if (!transaction) return withScoringTransaction(tx => startNextInnings(matchId, step, tx));
+  const connection = transaction.db;
   const cloudTeams = isUuid(matchId)
     ? {
-        battingTeamId: await requireCloudTeamId(step.battingTeamId),
-        bowlingTeamId: await requireCloudTeamId(step.bowlingTeamId),
+        battingTeamId: await requireCloudTeamId(step.battingTeamId, connection),
+        bowlingTeamId: await requireCloudTeamId(step.bowlingTeamId, connection),
       }
     : undefined;
   const requestedInningsId = isUuid(matchId) ? newUuid() : newId();
@@ -278,7 +288,7 @@ export async function startNextInnings(
     bowlingTeamId: step.bowlingTeamId,
     target: step.target,
     isFollowOn: step.isFollowOn,
-  });
+  }, connection);
   if (isUuid(matchId)) {
     await queueCloudScoringEvent({
       clientEventId: `start-innings-${innings.id}`,
@@ -293,9 +303,9 @@ export async function startNextInnings(
         target: step.target,
         is_follow_on: step.isFollowOn ?? false,
       },
-    });
+    }, transaction);
   }
-  await setMatchStatus(matchId, 'IN_PROGRESS');
+  await setMatchStatus(matchId, 'IN_PROGRESS', connection);
 }
 
 export type MatchAbandonmentResolution = 'WALKOVER' | 'NO_RESULT' | 'CANCELLED';
@@ -305,14 +315,17 @@ export async function resolveAbandonedMatchLifecycle(
   inningsId: string,
   resolution: MatchAbandonmentResolution,
   winnerTeamId?: string,
+  transaction?: ScoringTransaction,
 ): Promise<void> {
+  if (!transaction) return withScoringTransaction(tx => resolveAbandonedMatchLifecycle(matchId, inningsId, resolution, winnerTeamId, tx));
+  const connection = transaction.db;
   if (resolution === 'WALKOVER' && !winnerTeamId) {
     throw new Error('Select the team receiving the walkover.');
   }
   const result: MatchResult = resolution === 'WALKOVER'
     ? { kind: 'WALKOVER', winnerTeamId }
     : { kind: resolution };
-  const cloudResult = await toCloudResult(result);
+  const cloudResult = await toCloudResult(result, connection);
   if (isUuid(matchId) && isUuid(inningsId)) {
     await queueCloudScoringEvent({
       clientEventId: `resolve-${resolution.toLowerCase()}-${matchId}`,
@@ -324,10 +337,11 @@ export async function resolveAbandonedMatchLifecycle(
         reason: 'ORGANISER_ENDED_MATCH',
         result: cloudResult as unknown as Record<string, unknown>,
       },
-    });
+    }, transaction);
   }
-  await setMatchResult(matchId, result);
-  if (resolution !== 'WALKOVER') await setMatchStatus(matchId, 'ABANDONED');
+  await clearScoringSession(matchId, connection);
+  await setMatchResult(matchId, result, connection);
+  if (resolution !== 'WALKOVER') await setMatchStatus(matchId, 'ABANDONED', connection);
 }
 
 export async function abandonMatchLifecycle(matchId: string, inningsId: string): Promise<void> {

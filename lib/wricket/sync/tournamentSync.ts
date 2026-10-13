@@ -31,7 +31,25 @@ export interface SyncSummary {
   failed: number;
 }
 
-export async function syncTournamentData(
+// Focus changes and cold links can request hydration together. SQLite uses one
+// connection, so overlapping outbox transactions must not start another sync.
+let syncTail: Promise<unknown> = Promise.resolve();
+const pendingSyncs = new Map<string, Promise<SyncSummary>>();
+
+export function syncTournamentData(
+  userId: string,
+  options: { forceRetry?: boolean } = {},
+): Promise<SyncSummary> {
+  const key = `${userId}:${Boolean(options.forceRetry)}`;
+  const pending = pendingSyncs.get(key);
+  if (pending) return pending;
+  const run = syncTail.then(() => runTournamentSync(userId, options));
+  pendingSyncs.set(key, run);
+  syncTail = run.then(() => { pendingSyncs.delete(key); }, () => { pendingSyncs.delete(key); });
+  return run;
+}
+
+async function runTournamentSync(
   userId: string,
   options: { forceRetry?: boolean } = {},
 ): Promise<SyncSummary> {
@@ -83,7 +101,7 @@ export async function syncTournamentData(
     }
   }
 
-  const cloudTournaments = await listCloudTournaments();
+  const cloudTournaments = await listCloudTournaments(userId);
   const ownedTournamentIds = new Set(
     cloudTournaments.filter(item => item.created_by === userId).map(item => item.id),
   );

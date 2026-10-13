@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Text } from '@/components/ui/Text';
+import { StageText } from '@/components/sports/platform/StageUI';
 import {
   normalizeSportRules,
   sportRuleProfile,
@@ -9,7 +9,7 @@ import {
   type MatchOptions,
   type ScoringSportId,
 } from '@/lib/sports/scoring';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 
 interface Props {
@@ -26,8 +26,8 @@ export function SportMatchRulesEditor({ sportId, value, onChange, accent }: Prop
 
   return <View style={styles.container}>
     <View style={styles.heading}>
-      <View style={styles.flex}><Text variant="overline" tone="dim">MATCH RULES</Text><Text variant="bodyStrong">Sport-approved format</Text></View>
-      <Text variant="overline" style={{ color: accent }}>CONFIGURABLE</Text>
+      <View style={styles.flex}><StageText variant="eyebrow" muted>MATCH RULES</StageText><StageText variant="rowTitle">Sport-approved format</StageText></View>
+      
     </View>
 
     <RuleGroup label={`NUMBER OF ${profile.unitName.toUpperCase()}`} detail="The match ends when one side wins the required majority.">
@@ -59,20 +59,20 @@ export function SportMatchRulesEditor({ sportId, value, onChange, accent }: Prop
       </View>
     </RuleGroup> : null}
 
-    <View style={[styles.summary, { borderColor: accent }]}><Text variant="caption" style={{ color: accent }}>{sportRulesSummary(sportId, options)}</Text></View>
+    <View style={[styles.summary, { borderColor: accent }]}><StageText variant="small" style={{ color: accent }}>{sportRulesSummary(sportId, options)}</StageText></View>
   </View>;
 }
 
 function RuleGroup({ label, detail, children }: { label: string; detail: string; children: React.ReactNode }) {
-  return <View style={styles.group}><Text variant="overline" tone="dim">{label}</Text><Text variant="caption" tone="muted">{detail}</Text>{children}</View>;
+  return <View style={styles.group}><StageText variant="eyebrow" muted>{label}</StageText><StageText variant="small" muted>{detail}</StageText>{children}</View>;
 }
 
 function Choice({ label, selected, accent, onPress }: { label: string; selected: boolean; accent: string; onPress: () => void }) {
-  return <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.choice, selected && { borderColor: accent, backgroundColor: `${accent}16` }]}><Text variant="caption" style={selected ? { color: accent } : undefined}>{label}</Text></Pressable>;
+  return <Pressable accessibilityRole="radio" aria-checked={selected} accessibilityState={{ checked: selected }} onPress={onPress} style={[styles.choice, selected && { borderColor: accent, backgroundColor: `${accent}16` }]}><StageText variant="small" style={selected ? { color: accent } : undefined}>{label}</StageText></Pressable>;
 }
 
 function LockedRule({ label }: { label: string }) {
-  return <View style={styles.locked}><Text variant="caption">{label}</Text><Text variant="overline" tone="dim">SPORT RULE</Text></View>;
+  return <View style={styles.locked}><StageText variant="small">{label}</StageText><StageText variant="eyebrow" muted>SPORT RULE</StageText></View>;
 }
 
 const styles = StyleSheet.create({

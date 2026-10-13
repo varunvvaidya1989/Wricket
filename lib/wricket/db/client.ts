@@ -33,7 +33,7 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
       const db = await SQLite.openDatabaseAsync(DB_NAME, {
         useNewConnection: false,
       });
-      await db.execAsync('PRAGMA foreign_keys = ON;');
+      await db.execAsync('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 10000;');
       await runMigrations(db);
       dbCache.db = db;
       return db;
@@ -43,6 +43,16 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
     });
   }
   return dbCache.promise;
+}
+
+/** A private native connection; configure foreign keys before BEGIN. */
+export async function openScoringTransactionConnection(): Promise<SQLite.SQLiteDatabase> {
+  await getDb(); // Schema initialization finishes before opening a command connection.
+  const db = await SQLite.openDatabaseAsync(DB_NAME, { useNewConnection: true });
+  try {
+    await db.execAsync('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 10000;');
+    return db;
+  } catch (error) { await db.closeAsync(); throw error; }
 }
 
 export async function resetDb(): Promise<void> {

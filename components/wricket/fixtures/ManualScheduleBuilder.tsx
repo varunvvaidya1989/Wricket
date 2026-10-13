@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { Text } from '@/components/ui/Text';
-import { colors } from '@/lib/theme/colors';
+import { Button } from '@/components/wricket/ui/Button';
+import { Card } from '@/components/wricket/ui/Card';
+import { Text } from '@/components/wricket/ui/Text';
+import { colors, fonts } from '@/lib/wricket/presentation/design';
+import { manualFixtureError } from '@/lib/wricket/fixtures/manual-fixture';
 import { radius, spacing } from '@/lib/theme/spacing';
 import type { GeneratedFixtureSetup, ManualFixtureInput } from '@/lib/supabase/fixturesApi';
 import type { Team } from '@/lib/wricket/domain/types';
@@ -18,6 +19,7 @@ export function ManualScheduleBuilder({
   onAddStage,
   onAddGroup,
   onAddFixture,
+  onEditFixture,
 }: {
   setup: GeneratedFixtureSetup;
   teams: Team[];
@@ -25,6 +27,7 @@ export function ManualScheduleBuilder({
   onAddStage: (type: 'GROUP' | 'KNOCKOUT') => Promise<void>;
   onAddGroup: (input: { stageId: string; name: string; teamIds: string[] }) => Promise<boolean>;
   onAddFixture: (input: ManualFixtureInput) => Promise<boolean>;
+  onEditFixture: (id: string, input: ManualFixtureInput) => Promise<boolean>;
 }) {
   const cloudTeams = teams.filter((team): team is ManualTeam => Boolean(team.cloudId));
   const groupStage = setup.stages.find(stage => stage.type === 'GROUP');
@@ -37,6 +40,7 @@ export function ManualScheduleBuilder({
   const [teamBId, setTeamBId] = useState('');
   const [round, setRound] = useState('1');
   const [knockoutRoundName, setKnockoutRoundName] = useState('QF');
+  const [editingId, setEditingId] = useState<string>();
 
   const manualStages = useMemo(
     () => setup.stages.filter(stage => stage.config?.manual),
@@ -70,10 +74,11 @@ export function ManualScheduleBuilder({
     }
   }, [fixtureGroupId, fixtureStage?.type, stageGroups]);
 
+  const editing = setup.matches.find(match => match.id === editingId);
   useEffect(() => {
-    setTeamAId('');
-    setTeamBId('');
-  }, [fixtureGroupId, fixtureStageId]);
+    setTeamAId(editing?.teamA ?? '');
+    setTeamBId(editing?.teamB ?? '');
+  }, [fixtureGroupId, fixtureStageId, editingId, editing?.teamA, editing?.teamB]);
 
   const toggleGroupTeam = (teamId: string) => {
     setGroupTeamIds(current => current.includes(teamId)
@@ -95,24 +100,28 @@ export function ManualScheduleBuilder({
 
   const addFixture = async () => {
     if (!fixtureStage) return;
-    const added = await onAddFixture({
+    const input = {
       stageId: fixtureStage.id,
       groupId: fixtureStage.type === 'GROUP' ? fixtureGroupId : undefined,
       teamAId,
       teamBId,
       round: Number(round),
       roundName: fixtureStage.type === 'KNOCKOUT' ? knockoutRoundName : undefined,
-    });
+    };
+    const added = editingId ? await onEditFixture(editingId, input) : await onAddFixture(input);
     if (!added) return;
     setTeamAId('');
     setTeamBId('');
+    setEditingId(undefined);
   };
+
+  const fixtureError = manualFixtureError({ stageId: fixtureStageId, groupId: fixtureGroupId, teamAId, teamBId, round: Number(round), roundName: fixtureStage?.type === 'KNOCKOUT' ? knockoutRoundName : undefined }, fixtureTeams.map(team => team.cloudId), setup.matches, editingId);
 
   return (
     <View style={styles.section}>
       <View>
         <Text variant="overline" tone="muted">MANUAL SCHEDULE</Text>
-        <Text variant="h2" style={{ marginTop: spacing.xs }}>Build your own stages</Text>
+        <Text variant="h1" style={{ marginTop: spacing.xs }}>Build stage by stage.</Text>
         <Text variant="body" tone="muted" style={{ marginTop: spacing.sm }}>
           Add only the groups and knockout stages you need, then choose every fixture yourself.
         </Text>
@@ -127,7 +136,7 @@ export function ManualScheduleBuilder({
           <Button
             title={groupStage ? 'Group stage added' : 'Add group stage'}
             variant="secondary"
-            disabled={Boolean(groupStage) || teams.length < 2}
+            disabled={saving || Boolean(groupStage) || teams.length < 2}
             loading={saving && !groupStage}
             onPress={() => void onAddStage('GROUP')}
             style={{ flex: 1 }}
@@ -135,7 +144,7 @@ export function ManualScheduleBuilder({
           <Button
             title={knockoutStage ? 'Knockout added' : 'Add knockout'}
             variant="secondary"
-            disabled={Boolean(knockoutStage) || teams.length < 2}
+            disabled={saving || Boolean(knockoutStage) || teams.length < 2}
             loading={saving && !knockoutStage}
             onPress={() => void onAddStage('KNOCKOUT')}
             style={{ flex: 1 }}
@@ -150,6 +159,8 @@ export function ManualScheduleBuilder({
             Teams already assigned to another group are unavailable.
           </Text>
           <TextInput
+            accessibilityLabel="Group name"
+            editable={!saving}
             value={groupName}
             onChangeText={setGroupName}
             placeholder={`Group ${String.fromCharCode(65 + setup.groups.length)}`}
@@ -159,10 +170,11 @@ export function ManualScheduleBuilder({
           <View style={styles.chips}>
             {cloudTeams.map(team => {
               const selected = groupTeamIds.includes(team.cloudId);
-              const disabled = assignedGroupTeamIds.has(team.cloudId) && !selected;
+              const disabled = saving || (assignedGroupTeamIds.has(team.cloudId) && !selected);
               return (
                 <Pressable
                   key={team.id}
+                  accessibilityRole="checkbox" accessibilityLabel={`Group team ${team.name}`} accessibilityState={{ checked: selected, disabled }}
                   disabled={disabled}
                   onPress={() => toggleGroupTeam(team.cloudId)}
                   style={[styles.chip, selected && styles.chipActive, disabled && styles.disabled]}
@@ -174,7 +186,7 @@ export function ManualScheduleBuilder({
           </View>
           <Button
             title="Add group"
-            disabled={groupTeamIds.length < 2}
+            disabled={saving || groupTeamIds.length < 2}
             loading={saving}
             onPress={() => void addGroup()}
             fullWidth
@@ -184,7 +196,7 @@ export function ManualScheduleBuilder({
 
       {manualStages.length > 0 && (
         <Card>
-          <Text variant="h3">Add a fixture</Text>
+          <Text variant="h3">{editingId ? 'Edit fixture' : 'Add a fixture'}</Text>
           <Text variant="caption" tone="muted" style={styles.help}>
             Choose the stage, round, and both teams. No other fixtures will be generated.
           </Text>
@@ -194,6 +206,7 @@ export function ManualScheduleBuilder({
               <ChoiceChip
                 key={stage.id}
                 label={stage.type === 'GROUP' ? 'Groups' : 'Knockout'}
+                disabled={saving || Boolean(editingId)}
                 selected={fixtureStageId === stage.id}
                 onPress={() => setFixtureStageId(stage.id)}
               />
@@ -208,6 +221,7 @@ export function ManualScheduleBuilder({
                   <ChoiceChip
                     key={group.id}
                     label={group.name}
+                    disabled={saving || Boolean(editingId)}
                     selected={fixtureGroupId === group.id}
                     onPress={() => setFixtureGroupId(group.id)}
                   />
@@ -233,6 +247,7 @@ export function ManualScheduleBuilder({
                   <ChoiceChip
                     key={value}
                     label={label}
+                    disabled={saving}
                     selected={knockoutRoundName === value}
                     onPress={() => setKnockoutRoundName(value)}
                   />
@@ -243,6 +258,8 @@ export function ManualScheduleBuilder({
 
           <FieldLabel>{fixtureStage?.type === 'KNOCKOUT' ? 'ROUND ORDER' : 'ROUND'}</FieldLabel>
           <TextInput
+            accessibilityLabel="Round order"
+            editable={!saving}
             value={round}
             onChangeText={setRound}
             keyboardType="number-pad"
@@ -260,8 +277,9 @@ export function ManualScheduleBuilder({
               <ChoiceChip
                 key={team.id}
                 label={team.shortName}
+                accessibilityLabel={`Team A ${team.name}`}
                 selected={teamAId === team.cloudId}
-                disabled={teamBId === team.cloudId}
+                disabled={saving || teamBId === team.cloudId}
                 onPress={() => setTeamAId(team.cloudId)}
               />
             ))}
@@ -273,17 +291,19 @@ export function ManualScheduleBuilder({
               <ChoiceChip
                 key={team.id}
                 label={team.shortName}
+                accessibilityLabel={`Team B ${team.name}`}
                 selected={teamBId === team.cloudId}
-                disabled={teamAId === team.cloudId}
+                disabled={saving || teamAId === team.cloudId}
                 onPress={() => setTeamBId(team.cloudId)}
               />
             ))}
           </View>
 
           <Button
-            title="Add fixture"
+            title={editingId ? 'Save fixture' : 'Add fixture'}
             disabled={
               !fixtureStage ||
+              saving || Boolean(fixtureError) ||
               (fixtureStage.type === 'GROUP' && !fixtureGroupId) ||
               !teamAId ||
               !teamBId ||
@@ -294,20 +314,32 @@ export function ManualScheduleBuilder({
             onPress={() => void addFixture()}
             fullWidth
           />
+          {teamAId && teamBId && fixtureError ? <Text accessibilityRole="alert" variant="caption" style={{ color: colors.danger, marginTop: 8 }}>{fixtureError}</Text> : null}
+          {editingId ? <Button title="Cancel edit" variant="ghost" disabled={saving} onPress={() => { setEditingId(undefined); setTeamAId(''); setTeamBId(''); }} /> : null}
         </Card>
       )}
+      {setup.matches.filter(match => manualStages.some(stage => stage.id === match.stageId)).map((match, index) => <Card key={match.id}>
+        <Text variant="overline" tone="muted">FIXTURE {index + 1} · ROUND {match.round} · {match.status}</Text>
+        <Text variant="h3" style={{ marginTop: 9 }}>{cloudTeams.find(team => team.cloudId === match.teamA)?.name ?? 'Unavailable team'} vs {cloudTeams.find(team => team.cloudId === match.teamB)?.name ?? 'Unavailable team'}</Text>
+        <Button title="Edit pairing" accessibilityLabel={`Edit fixture ${index + 1}`} variant="secondary" disabled={saving || match.status !== 'SCHEDULED'} onPress={() => {
+          setEditingId(match.id); setFixtureStageId(match.stageId); setFixtureGroupId(match.groupId ?? ''); setRound(String(match.round)); setKnockoutRoundName(match.roundId ?? 'QF');
+        }} />
+        {match.status !== 'SCHEDULED' ? <Text variant="caption" tone="muted">Pairing locked after the match starts.</Text> : null}
+      </Card>)}
     </View>
   );
 }
 
-function ChoiceChip({ label, selected, disabled, onPress }: {
+function ChoiceChip({ label, accessibilityLabel, selected, disabled, onPress }: {
   label: string;
+  accessibilityLabel?: string;
   selected: boolean;
   disabled?: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
+      accessibilityRole="radio" accessibilityLabel={accessibilityLabel ?? label} accessibilityState={{ checked: selected, disabled }}
       disabled={disabled}
       onPress={onPress}
       style={[styles.chip, selected && styles.chipActive, disabled && styles.disabled]}
@@ -335,8 +367,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  activeText: { color: colors.accentInk },
+  chipActive: { backgroundColor: '#243524', borderColor: '#719d59' },
+  activeText: { color: colors.accent },
   disabled: { opacity: 0.35 },
   input: {
     borderRadius: radius.lg,
@@ -344,7 +376,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
     color: colors.text,
-    fontSize: 16,
+    fontFamily: fonts.body,
+    fontSize: 13,
     padding: spacing.md,
     marginBottom: spacing.md,
   },

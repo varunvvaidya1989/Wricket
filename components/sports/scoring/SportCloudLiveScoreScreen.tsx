@@ -1,24 +1,16 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { Href } from 'expo-router';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { SportIcon } from '@/components/sports/SportIcon';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { Button } from '@/components/ui/Button';
-import { Screen } from '@/components/ui/Screen';
-import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
+import { StageButton, StageIntro, StageList, StageNotice, StagePage, StageRow, StageText } from '@/components/sports/platform/StageUI';
 import {
   SPORT_CONFIGS,
   SPORT_PRESENTATION,
   activePointEvents,
   appendPointEvent,
   formatLiveHeadline,
-  pointDetailChoiceLabel,
-  pointDetailOptions,
   type PointDetail,
   lastActivePointEvent,
   replay,
@@ -32,10 +24,14 @@ import {
   type SportCloudMatchFeed,
   type SportScoringLease,
 } from '@/lib/supabase/sportScoringApi';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
-import { RacquetScorePanel } from './RacquetScorePanel';
-import { TwoZonePointPad } from './TwoZonePointPad';
+import { supabaseErrorMessage } from '@/lib/supabase/errorMessage';
+import { isScoringAccessError } from '@/lib/sports/scoring/accessError';
+import { sportRulesSummary } from '@/lib/sports/scoring';
+import { buildRacketScorePresentation } from '@/lib/sports/scoring/scorePresentation';
+import { colors } from '@/lib/wricket/presentation/design';
+import { RacketScoringBoard, RacketScoringPage, ScoringAction, ScoringReceipt } from './RacketScoringBoard';
+import { RallyDetailsForm } from './RallyDetailsForm';
+import type { RallyObservation } from '@/lib/sports/analytics/types';
 
 export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId }) {
   const { id, mode } = useLocalSearchParams<{ id: string; mode?: string }>();
@@ -44,6 +40,8 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
   const config = SPORT_CONFIGS[sportId];
   const presentation = SPORT_PRESENTATION[sportId];
   const [feed, setFeed] = useState<SportCloudMatchFeed>();
+  const [feedOwner, setFeedOwner] = useState<string>();
+  const owner = `${auth.session?.user.id ?? ''}:${id}`;
   const [lease, setLease] = useState<SportScoringLease>();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -51,10 +49,22 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
   const [notice, setNotice] = useState<ScoringEffect>();
   const [pendingWinner, setPendingWinner] = useState<Side>();
   const [detailedScoring, setDetailedScoring] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [accessError, setAccessError] = useState<string>();
+  const [receipt, setReceipt] = useState<string>();
+  const loadRequest = useRef(0);
+  const leaseRequest = useRef(0);
   const savingRef = useRef(false);
   const queue = useRef<Promise<void>>(Promise.resolve());
 
+  useEffect(() => {
+    setReceipt(undefined); setPendingWinner(undefined); setNotice(undefined); setControlsOpen(false);
+  }, [owner]);
+
   const load = useCallback(async (silent = false) => {
+    const request = ++loadRequest.current;
     if (!id) {
       setError('The match ID is missing.');
       setLoading(false);
@@ -63,27 +73,35 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
     if (!silent) setLoading(true);
     try {
       const next = await sportScoringApi.feed(id);
+      if (request !== loadRequest.current) return;
       const connectedSport = auth.profile?.connectedSports.find((sport) => sport.code === presentation.catalogCode);
       if (!connectedSport || connectedSport.accessStatus !== 'ACTIVE' || connectedSport.id !== next.sportId) {
         throw new Error(`This match is not available with your current ${config.name} app selection.`);
       }
       setFeed(next);
+      setFeedOwner(owner);
       setError(undefined);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load this match.');
+      if (request === loadRequest.current) setError(supabaseErrorMessage(cause, 'Could not load this match.'));
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
-  }, [auth.profile?.connectedSports, config.name, id, presentation.catalogCode]);
+  }, [auth.profile?.connectedSports, config.name, id, owner, presentation.catalogCode]);
 
   const acquireLease = useCallback(async () => {
+    const request = ++leaseRequest.current;
+    setLease(undefined);
     if (!id || mode === 'view') return;
     try {
-      setLease(await sportScoringApi.acquireLease(id));
+      const next = await sportScoringApi.acquireLease(id);
+      if (request === leaseRequest.current) {
+        setLease(next); setAccessError(undefined);
+        setError(current => current && isScoringAccessError({ message: current }) ? undefined : current);
+      }
     } catch (cause) {
+      if (request !== leaseRequest.current) return;
       setLease(undefined);
-      const message = cause instanceof Error ? cause.message : 'Only the assigned scorer can record points.';
-      if (!/only an assigned|another scoring device/i.test(message)) setError(message);
+      setAccessError(supabaseErrorMessage(cause, 'Scoring access is unavailable on this device.'));
     }
   }, [id, mode]);
 
@@ -91,11 +109,12 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
     void load();
     void acquireLease();
     if (!id) return undefined;
-    return sportScoringApi.subscribe(id, () => void load(true), (message) => setError(message));
+    const unsubscribe = sportScoringApi.subscribe(id, () => void load(true), (message) => setError(message), setRealtimeConnected);
+    return () => { loadRequest.current++; leaseRequest.current++; unsubscribe(); };
   }, [acquireLease, id, load]));
 
   const setup = useMemo(() => {
-    if (!feed) return undefined;
+    if (!feed || feed.id !== id || feedOwner !== owner) return undefined;
     const initialServer: Side = feed.rulesSnapshot.initial_server === 1 ? 1 : 0;
     const options = feed.rulesSnapshot.options && typeof feed.rulesSnapshot.options === 'object'
       && !Array.isArray(feed.rulesSnapshot.options)
@@ -104,7 +123,7 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
     const sideNames = [feed.sideAPlayers.join(' / ') || 'Side A', feed.sideBPlayers.join(' / ') || 'Side B'] as const;
     const events = activePointEvents(feed.events);
     return { initialServer, options, sideNames, events };
-  }, [feed]);
+  }, [feed, feedOwner, id, owner]);
   const state = useMemo(() => setup ? replay(config, setup.events, {
     initialServer: setup.initialServer,
     options: setup.options,
@@ -114,7 +133,10 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
   const record = (operation: () => Promise<void>) => {
     queue.current = queue.current
       .then(operation)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not save this rally.'));
+      .catch((cause) => {
+        setError(supabaseErrorMessage(cause, 'Could not save this rally.'));
+        if (isScoringAccessError(cause)) { setLease(undefined); setAccessError(supabaseErrorMessage(cause, 'Scoring access changed.')); }
+      });
   };
 
   const choosePointWinner = (winner: Side) => {
@@ -123,7 +145,7 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
     else confirmPoint('RALLY_WINNER', winner);
   };
 
-  const confirmPoint = (selectedPointDetail: PointDetail, winner: Side | undefined = pendingWinner) => {
+  const confirmPoint = (selectedPointDetail: PointDetail, winner: Side | undefined = pendingWinner, observation?: RallyObservation) => {
     setPendingWinner(undefined);
     if (!feed || !setup || !state || !lease || state.isComplete || submitting || savingRef.current) return;
     if (winner === undefined) return;
@@ -144,9 +166,11 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
           payload: {
             winner,
             point_type: selectedPointDetail,
+            ...(observation ? { analytics: observation } : {}),
             headline_score: formatLiveHeadline(config, nextState),
           },
         });
+        setReceipt(`Rally ${nextState.eventCount}: ${setup.sideNames[winner]} won${formatLiveHeadline(config, nextState) === formatLiveHeadline(config, state) ? ' · Score unchanged · service changed' : ''}`);
         if (nextState.isComplete && nextState.winner !== undefined) {
           await sportScoringApi.append({
             scoringMatchId: feed.id,
@@ -197,6 +221,7 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
           reversesClientEventId: target.clientEventId,
         });
         setNotice(undefined);
+        setReceipt('Last rally undone');
         await load(true);
       } finally {
         savingRef.current = false;
@@ -205,98 +230,56 @@ export function SportCloudLiveScoreScreen({ sportId }: { sportId: ScoringSportId
     });
   };
 
-  if (loading && !feed) {
-    return <Screen padded={false}><SportStageLoader message="Opening your match" detail="Getting the latest score" accent={presentation.accent} /></Screen>;
-  }
-  if (!feed || !setup || !state) {
-    return <Screen padded={false}><AppHeader title={`${config.name} score`} back /><View style={styles.center}><MaterialCommunityIcons name="scoreboard-outline" size={38} color={colors.textDim} /><Text variant="h3">Match unavailable</Text><Text tone="muted" style={styles.centerText}>{error ?? 'This match could not be restored.'}</Text></View></Screen>;
-  }
+  if (loading && (!feed || feed.id !== id)) return <StagePage focused title="Match score" eyebrow={config.name.toUpperCase()}><StageNotice>Opening your match · getting the latest score…</StageNotice></StagePage>;
+  if (!feed || !setup || !state) return <StagePage focused title="Match score" eyebrow={config.name.toUpperCase()}><StageIntro title="Match unavailable." description={error ?? 'This match could not be restored.'} /><StageButton title="Try again" onPress={() => void load()} /></StagePage>;
 
-  const switchCount = state.effects.filter((effect) => effect.type === 'SWITCH_ENDS').length;
-  const padOrder: readonly [Side, Side] = switchCount % 2 === 1 ? [1, 0] : [0, 1];
   const undoTarget = lastActivePointEvent(feed.events);
-  const doubles = feed.matchFormat !== 'SINGLES';
-
-  return (
-    <Screen padded={false} edges={['top', 'bottom', 'left', 'right']}>
-      <AppHeader title={config.name} eyebrow={canScore ? 'LIVE SCORING' : 'SPECTATOR VIEW'} back />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.matchIdentity}>
-          <View style={[styles.sportIcon, { backgroundColor: `${presentation.accent}16` }]}><SportIcon code={presentation.catalogCode} color={presentation.accent} size={21} /></View>
-          <Text variant="caption" tone="muted" style={styles.flex} numberOfLines={1}>{setup.sideNames[0]} vs {setup.sideNames[1]}</Text>
-          <View style={[styles.rulePill, { borderColor: presentation.accent }]}><Text variant="overline" style={{ color: presentation.accent }}>{feed.matchFormat}</Text></View>
-          <Text variant="overline" style={{ color: error ? colors.danger : presentation.accent }}>{error ? 'SYNC ERROR' : submitting ? 'SAVING' : 'SYNCED'}</Text>
-        </View>
-
-        {error ? <View style={styles.errorBanner}><MaterialCommunityIcons name="cloud-alert-outline" size={18} color={colors.danger} /><Text variant="caption" tone="danger" style={styles.flex}>{error}</Text><Pressable onPress={() => setError(undefined)}><MaterialCommunityIcons name="close" size={18} color={colors.textMuted} /></Pressable></View> : null}
-
-        {doubles ? <View style={styles.lineupCard}>{([0, 1] as const).map((side) => <View key={side} style={styles.lineupSide}><Text variant="overline" tone="dim">SIDE {side === 0 ? 'A' : 'B'}</Text><Text variant="caption" numberOfLines={2}>{side === 0 ? feed.sideAPlayers.join(' / ') : feed.sideBPlayers.join(' / ')}</Text></View>)}</View> : null}
-
-        {!canScore && !state.isComplete ? <View style={[styles.viewerBanner, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="eye-outline" size={22} color={presentation.accent} /><View style={styles.flex}><Text variant="bodyStrong">Spectator view</Text><Text variant="caption" tone="muted">Only the assigned scorer can record points from this device.</Text></View></View> : null}
-
-        {notice?.type === 'SWITCH_ENDS' ? <View style={[styles.switchBanner, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="swap-horizontal-bold" size={24} color={presentation.accent} /><View style={styles.flex}><Text variant="bodyStrong">Switch ends</Text><Text variant="caption" tone="muted">The scoring zones have swapped to match the court.</Text></View><Pressable accessibilityLabel="Dismiss" onPress={() => setNotice(undefined)}><MaterialCommunityIcons name="close" size={19} color={colors.textMuted} /></Pressable></View> : null}
-
-        <RacquetScorePanel config={config} state={state} sideNames={setup.sideNames} accent={presentation.accent} />
-
-        {state.isComplete ? <View style={[styles.completeCard, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="trophy-outline" size={34} color={presentation.accent} /><Text variant="overline" style={{ color: presentation.accent }}>MATCH WINNER</Text><Text variant="h1" style={styles.winner}>{setup.sideNames[state.winner!]}</Text><Text variant="caption" tone="muted">Final score {state.root.score[0]}-{state.root.score[1]}</Text><Button title="New match" onPress={() => router.replace(`/${presentation.routeSegment}/match/new` as Href)} style={{ backgroundColor: presentation.accent }} /></View> : canScore ? <TwoZonePointPad sideNames={setup.sideNames} sideOrder={padOrder} servingSide={state.serve.servingSide} accent={presentation.accent} disabled={submitting} onPoint={choosePointWinner} /> : null}
-
-        {!state.isComplete && canScore ? <View style={styles.scoringMode}>
-          <View style={styles.flex}><Text variant="bodyStrong">Add point details</Text><Text variant="caption" tone="muted">{detailedScoring ? 'Choose how each rally was won.' : 'Quick scoring: tap once to record a rally.'}</Text></View>
-          <Switch accessibilityLabel="Add details to each point" value={detailedScoring} onValueChange={setDetailedScoring} disabled={submitting} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.text} />
-        </View> : null}
-
-      </ScrollView>
-        {!state.isComplete && canScore ? <View style={styles.controls}><Button title="Undo last rally" variant="secondary" disabled={!undoTarget} loading={submitting} onPress={undo} style={styles.flexButton} /></View> : null}
-      <Modal visible={pendingWinner !== undefined} transparent animationType="fade" onRequestClose={() => setPendingWinner(undefined)}>
-        <View style={styles.detailOverlay}>
-          {pendingWinner !== undefined ? <View style={styles.detailDialog}>
-            <View style={styles.detailHeader}>
-              <View style={styles.flex}>
-                <Text variant="overline" style={{ color: presentation.accent }}>POINT TO</Text>
-                <Text variant="h2" numberOfLines={2}>{setup.sideNames[pendingWinner]}</Text>
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="Cancel point" onPress={() => setPendingWinner(undefined)} style={styles.detailClose}>
-                <MaterialCommunityIcons name="close" size={22} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            <Text variant="body" tone="muted">How was the point decided?</Text>
-            <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={styles.detailOptions}>
-              {pointDetailOptions(sportId).map((option) => <Pressable key={option.value} accessibilityRole="button" onPress={() => confirmPoint(option.value)} style={({ pressed }) => [styles.detailOption, pressed && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}14` }]}>
-                <Text variant="bodyStrong" style={styles.flex}>{pointDetailChoiceLabel(option.value, pendingWinner, setup.sideNames)}</Text>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={presentation.accent} />
-              </Pressable>)}
-            </ScrollView>
-            <Button title="Cancel" variant="secondary" onPress={() => setPendingWinner(undefined)} fullWidth />
-          </View> : null}
-        </View>
-      </Modal>
-    </Screen>
-  );
+  const openFeed = (tab = 'watch') => router.push(`/${presentation.routeSegment}/match/${feed.id}/feed?tab=${tab}` as Href);
+  const restoredWinner = undoTarget?.payload.winner === 0 || undoTarget?.payload.winner === 1 ? setup.sideNames[undoTarget.payload.winner] : undefined;
+  const recorded = receipt ?? (restoredWinner ? `Rally ${state.eventCount}: ${restoredWinner} won` : undefined);
+  const scorePresentation = buildRacketScorePresentation(config, state, setup.events, setup.initialServer);
+  return <RacketScoringPage title={`${setup.sideNames[0]} vs ${setup.sideNames[1]}`} context={state.isComplete ? `${config.name.toUpperCase()} · MATCH COMPLETE` : `${scorePresentation.context}${canScore ? '' : ' · VIEW'}`}>
+    <RacketScoringBoard config={config} state={state} events={setup.events} initialServer={setup.initialServer} sideNames={setup.sideNames} sidePlayers={[feed.sideAPlayers, feed.sideBPlayers]} onPoint={canScore && !state.isComplete ? choosePointWinner : undefined} disabled={submitting} />
+    {error ? <StageNotice retry={() => void load(true)}>{error}</StageNotice> : null}
+    <ScoringReceipt text={submitting ? 'Saving rally…' : recorded ?? (realtimeConnected ? 'Connected · waiting for the first rally' : 'Reconnecting · last loaded score')} undo={canScore && !state.isComplete ? undo : undefined} disabled={!undoTarget || submitting} />
+    {!canScore && !state.isComplete ? <>
+      <StageNotice>{accessError ?? 'Spectator view. Scoring controls are available only to the authorised scorer.'}</StageNotice>
+      {mode !== 'view' ? <StageButton title="Check scoring access" onPress={() => void acquireLease()} /> : null}
+    </> : null}
+    {notice?.type === 'SWITCH_ENDS' ? <StageNotice>Switch ends before the next rally.</StageNotice> : null}
+    {state.isComplete ? <>
+      <StageIntro eyebrow="MATCH WINNER" title={setup.sideNames[state.winner!]} description={`Final result · ${formatLiveHeadline(config, state)}`} />
+      <StageButton title="View result" onPress={() => openFeed()} />
+      <StageButton primary title="New match" onPress={() => router.replace(`/${presentation.routeSegment}/match/new` as Href)} />
+    </> : null}
+    <View style={{ flexDirection: 'row', gap: 8 }}>{canScore && !state.isComplete ? <ScoringAction title="Point details" icon="tune" selected={detailedScoring} disabled={submitting} onPress={() => setDetailsOpen(true)} /> : null}<ScoringAction title="Match controls" icon="dots-horizontal" onPress={() => setControlsOpen(true)} /></View>
+    <Modal accessibilityLabel="Point details settings" visible={detailsOpen} transparent animationType="fade" onRequestClose={() => setDetailsOpen(false)}><View style={styles.overlay}><View style={styles.dialog}>
+      <StageIntro eyebrow="RALLY DETAILS" title="Capture the whole rally." description="Enable details, then tap the winning side. Choose an outcome and optional observations, then record the point." />
+      <View style={styles.scoringMode}><StageText style={styles.flex}>Add details to each point</StageText><Switch accessibilityLabel="Add details to each point" value={detailedScoring} onValueChange={setDetailedScoring} disabled={submitting} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.text} /></View>
+      <StageButton title="Back to scoring" onPress={() => setDetailsOpen(false)} />
+    </View></View></Modal>
+    <Modal accessibilityLabel="Match controls" visible={controlsOpen} transparent animationType="fade" onRequestClose={() => setControlsOpen(false)}>
+      <View style={styles.overlay}><View style={styles.dialog}><ScrollView contentContainerStyle={{ gap: 18 }}>
+        <StageIntro eyebrow="MATCH CONTROLS" title="Manage the match." description="Tap a score card to record a rally." />
+        <StageList><StageRow title="View match history" detail="Recorded rallies and corrections" symbol="↗" onPress={() => { setControlsOpen(false); openFeed('history'); }} /><StageRow title="Match information" detail="Players, venue and rules" symbol="↗" onPress={() => { setControlsOpen(false); openFeed('info'); }} /><StageRow title="View as spectator" detail="Open the match view" symbol="↗" onPress={() => { setControlsOpen(false); openFeed(); }} /></StageList>
+        <StageText variant="rowTitle">Selected match rules</StageText>
+        <StageText muted>{sportRulesSummary(sportId, setup.options)}</StageText>
+        <StageButton title="Back to match" onPress={() => setControlsOpen(false)} />
+      </ScrollView></View></View>
+    </Modal>
+    <Modal accessibilityLabel="Record rally details" visible={pendingWinner !== undefined} transparent animationType="fade" onRequestClose={() => setPendingWinner(undefined)}>
+      <View style={styles.overlay}>{pendingWinner !== undefined ? <View style={styles.dialog}>
+        <StageIntro eyebrow="RALLY DETAILS" title="Read the rally." description={`${setup.sideNames[pendingWinner]} won this rally. Add observations, then record the point.`} />
+        <RallyDetailsForm key={`${feed?.id}:${feed?.currentSequence}:${pendingWinner}`} sportId={sportId} winner={pendingWinner} sideNames={setup.sideNames} playerIds={[feed?.sideAProfileIds ?? [], feed?.sideBProfileIds ?? []]} playerNames={[feed?.sideAPlayers ?? [], feed?.sideBPlayers ?? []]} onConfirm={(detail, observation) => confirmPoint(detail, pendingWinner, observation)} />
+        <StageButton title="Cancel point" onPress={() => setPendingWinner(undefined)} />
+      </View> : null}</View>
+    </Modal>
+  </RacketScoringPage>;
 }
 
 const styles = StyleSheet.create({
-  scoringMode: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: radius.lg, backgroundColor: colors.surface },
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.md },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
-  centerText: { textAlign: 'center' },
-  matchIdentity: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  sportIcon: { width: 34, height: 34, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  rulePill: { maxWidth: 110, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderRadius: radius.pill },
-  errorBanner: { padding: spacing.sm, borderRadius: radius.md, backgroundColor: 'rgba(224,57,75,0.10)', flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  lineupCard: { padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', gap: spacing.sm },
-  lineupSide: { flex: 1, minWidth: 0, gap: 3 },
-  detailOverlay: { flex: 1, padding: spacing.md, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center' },
-  detailDialog: { width: '100%', maxWidth: 560, alignSelf: 'center', maxHeight: '90%', padding: spacing.lg, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.lg, backgroundColor: colors.surface, gap: spacing.md },
-  detailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-  detailClose: { width: 40, height: 40, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated },
-  detailOptions: { gap: spacing.sm },
-  detailOption: { minHeight: 48, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  switchBanner: { padding: spacing.md, borderWidth: 1, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  viewerBanner: { padding: spacing.md, borderWidth: 1, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  completeCard: { padding: spacing.xl, borderWidth: 1, borderRadius: radius.lg, backgroundColor: colors.surface, alignItems: 'center', gap: spacing.sm },
-  winner: { textAlign: 'center' },
-  controls: { padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  flexButton: { flex: 1 },
+  scoringMode: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 13, borderRadius: 11, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  overlay: { flex: 1, padding: 18, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center' },
+  dialog: { width: '100%', maxWidth: 560, alignSelf: 'center', maxHeight: '90%', padding: 18, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 16, backgroundColor: colors.bg, gap: 18 },
   flex: { flex: 1, minWidth: 0 },
 });

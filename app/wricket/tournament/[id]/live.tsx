@@ -3,12 +3,13 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
+import { StatusBadge } from '@/components/wricket/ui/StatusBadge';
+import { Card } from '@/components/wricket/ui/Card';
 import { TournamentSponsors } from '@/components/sponsors/TournamentSponsors';
 import { Screen } from '@/components/ui/Screen';
-import { Text } from '@/components/ui/Text';
+import { Text } from '@/components/wricket/ui/Text';
 import { CloudLiveTournament, liveMatchApi } from '@/lib/supabase/liveMatchApi';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { spacing } from '@/lib/theme/spacing';
 import { formatOver } from '@/lib/wricket/domain/scoring';
 
@@ -51,8 +52,7 @@ export default function TournamentLivePage() {
             params: { id: match.id },
           })}>
             <View style={styles.row}>
-              <View style={styles.liveDot} />
-              <Text variant="caption" style={{ color: colors.danger }}>LIVE</Text>
+              <StatusBadge status={match.status} />
               <Text variant="caption" tone="dim" style={{ marginLeft: 'auto' }}>
                 {formatOver(match.score.legalBalls)} ov
               </Text>

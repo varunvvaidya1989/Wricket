@@ -2,15 +2,15 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as Sharing from 'expo-sharing';
 import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Image, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
-import { captureRef } from 'react-native-view-shot';
+import { capturePoster } from '@/lib/wricket/presentation/capturePoster';
 
 import { SportStageLogo } from '@/components/branding/SportStageLogo';
 import { SponsorList } from '@/components/sponsors/SponsorList';
 import { useTournamentSponsors } from '@/hooks/useTournamentSponsors';
 import { sponsorsForPlacement } from '@/lib/sponsors/types';
-import { Button } from '@/components/ui/Button';
-import { Text } from '@/components/ui/Text';
-import { colors, palette } from '@/lib/theme/colors';
+import { Button } from '@/components/wricket/ui/Button';
+import { Text } from '@/components/wricket/ui/Text';
+import { colors, palette } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 import type { GeneratedFixtureSetup } from '@/lib/supabase/fixturesApi';
 import { FORMAT_LABEL, type Team, type Tournament } from '@/lib/wricket/domain/types';
@@ -32,6 +32,7 @@ interface TournamentShareBannerProps {
 export function TournamentShareBanner({ tournament, teams, captainByTeamId, fixtureSetup, visible, onClose }: TournamentShareBannerProps) {
   const posterRef = useRef<View>(null);
   const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState<string>();
   const [posterSize, setPosterSize] = useState({ width: 0, height: 0 });
   const { sponsors, loading: sponsorsLoading, error: sponsorsError, refresh: refreshSponsors } = useTournamentSponsors({ kind: 'cricket', id: tournament.cloudId ?? '' }, visible && Boolean(tournament.cloudId));
   const [loadedLogos, setLoadedLogos] = useState<ReadonlySet<string>>(new Set());
@@ -46,18 +47,19 @@ export function TournamentShareBanner({ tournament, teams, captainByTeamId, fixt
       return;
     }
     setSharing(true);
+    setShareError(undefined);
     try {
       const exportHeight = posterSize.width > 0 ? Math.max(1350, Math.round(EXPORT_WIDTH * posterSize.height / posterSize.width)) : 1350;
       if (Platform.OS === 'web') {
-        const dataUri = await captureRef(posterRef, { format: 'png', quality: 1, width: EXPORT_WIDTH, height: exportHeight, result: 'data-uri' });
+        const dataUri = await capturePoster(posterRef.current, EXPORT_WIDTH, exportHeight);
         await shareWebPoster(dataUri, tournament.name, shareUrl);
       } else {
         if (!(await Sharing.isAvailableAsync())) throw new Error('Sharing is unavailable on this device.');
-        const uri = await captureRef(posterRef, { format: 'png', quality: 1, width: EXPORT_WIDTH, height: exportHeight, result: 'tmpfile' });
+        const uri = await capturePoster(posterRef.current, EXPORT_WIDTH, exportHeight);
         await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: `Share ${tournament.name}` });
       }
     } catch (cause) {
-      Alert.alert('Could not share tournament', cause instanceof Error ? cause.message : 'Please try again.');
+      if ((cause as { name?: string }).name !== 'AbortError') setShareError(cause instanceof Error ? cause.message : 'Please try again.');
     } finally {
       setSharing(false);
     }
@@ -106,7 +108,6 @@ export function TournamentShareBanner({ tournament, teams, captainByTeamId, fixt
                   <BannerDetail icon="star-four-points-outline" label="POINTS" value={`${tournament.pointsWin} win / ${tournament.pointsTie} tie / ${tournament.pointsNoResult} no result`} />
                 </View>
                 {tournament.rewards ? <InfoStrip icon="trophy-award" text={tournament.rewards} /> : null}
-                {tournament.organizerPhone ? <InfoStrip icon="phone-outline" text={`Organiser: ${tournament.organizerPhone}`} /> : null}
               </PosterSection>
 
               <SponsorList sponsors={sponsors} placement="share" interactive={false} onLogoSettled={uri => setLoadedLogos(previous => previous.has(uri) ? previous : new Set([...previous, uri]))} />
@@ -129,6 +130,7 @@ export function TournamentShareBanner({ tournament, teams, captainByTeamId, fixt
 
         <Text variant="caption" tone="muted" style={styles.note}>The exported image includes every team, captain, and fixture plus a link that opens this tournament after SportStage sign-in.</Text>
         <View style={styles.shareActions}>
+          {shareError ? <Text accessibilityRole="alert" tone="danger">Could not share tournament: {shareError}</Text> : null}
           {sponsorsError ? <View><Text variant="caption" tone="danger">Load sponsors before exporting this card.</Text><Button title="Retry sponsors" variant="ghost" onPress={() => void refreshSponsors()} /></View> : null}
           <Button title={sponsorsLoading || !logosReady ? 'Preparing sponsors…' : Platform.OS === 'web' ? 'Share or download image' : 'Share complete image'} onPress={() => void share()} loading={sharing} disabled={!shareUrl || sponsorsLoading || Boolean(sponsorsError) || !logosReady} fullWidth />
           <Button title="Share tournament link" variant="secondary" onPress={() => void shareLink()} disabled={!shareUrl || sharing} fullWidth />
@@ -151,7 +153,7 @@ function PosterHero({ tournament, teamCount, fixtureCount }: { tournament: Tourn
       <TournamentLogo name={tournament.name} uri={tournament.logoUrl ?? tournament.logoLocalUri} size={66} style={styles.tournamentLogo} />
       <Text variant="overline" style={styles.format}>{FORMAT_LABEL[tournament.format]}</Text>
       <Text variant="h1" style={styles.name}>{tournament.name}</Text>
-      <View style={styles.heroStats}><HeroStat value={String(teamCount || tournament.plannedTeamCount)} label="TEAMS" /><HeroStat value={String(fixtureCount)} label="FIXTURES" /><HeroStat value={String(tournament.oversPerMatch)} label="OVERS" /></View>
+      <View style={styles.heroStats}><HeroStat value={String(teamCount)} label="TEAMS" /><HeroStat value={String(fixtureCount)} label="FIXTURES" /><HeroStat value={String(tournament.oversPerMatch)} label="OVERS" /></View>
     </View>
   </View>;
 }
@@ -173,7 +175,7 @@ function InfoStrip({ icon, text }: { icon: keyof typeof MaterialCommunityIcons.g
 }
 
 function ShareTeamCard({ team, captainName }: { team: Team; captainName?: string }) {
-  return <View style={styles.teamCard}><TournamentLogo name={team.name} uri={team.logoUrl} size={44} style={{ backgroundColor: team.colorHex }} /><View style={styles.flex}><Text variant="bodyStrong" style={styles.teamName} numberOfLines={2}>{team.name}</Text><Text variant="overline" style={styles.captainLabel}>CAPTAIN</Text><Text variant="caption" style={captainName ? styles.captainName : styles.unassigned} numberOfLines={2}>{captainName ?? 'Not assigned'}</Text></View></View>;
+  return <View style={styles.teamCard}><TournamentLogo name={team.name} uri={team.logoUrl} size={44} style={{ backgroundColor: team.colorHex }} /><View style={styles.flex}><Text variant="bodyStrong" style={styles.teamName}>{team.name}</Text><Text variant="overline" style={styles.captainLabel}>CAPTAIN</Text><Text variant="caption" style={captainName ? styles.captainName : styles.unassigned}>{captainName ?? 'Not assigned'}</Text></View></View>;
 }
 
 interface ShareFixture { fixture: FixtureMatch; teamAName: string; teamBName: string; context: string }
@@ -183,7 +185,7 @@ function ShareFixtureCard({ item }: { item: ShareFixture }) {
   const score = fixture.scoreA !== undefined || fixture.scoreB !== undefined ? `${fixture.scoreA ?? '-'} - ${fixture.scoreB ?? '-'}` : undefined;
   return <View style={styles.fixtureCard}>
     <View style={styles.fixtureTop}><Text variant="overline" style={styles.fixtureContext}>{item.context}</Text><Text variant="overline" style={[styles.fixtureStatus, fixture.status === 'LIVE' && styles.live]}>{fixture.status}</Text></View>
-    <View style={styles.fixtureTeams}><Text variant="caption" style={styles.fixtureTeam} numberOfLines={2}>{item.teamAName}</Text><Text variant="overline" style={styles.versus}>{score ?? 'VS'}</Text><Text variant="caption" style={[styles.fixtureTeam, styles.fixtureTeamRight]} numberOfLines={2}>{item.teamBName}</Text></View>
+    <View style={styles.fixtureTeams}><Text variant="caption" style={styles.fixtureTeam}>{item.teamAName}</Text><Text variant="overline" style={styles.versus}>{score ?? 'VS'}</Text><Text variant="caption" style={[styles.fixtureTeam, styles.fixtureTeamRight]}>{item.teamBName}</Text></View>
     <Text variant="caption" style={styles.fixtureMeta}>{fixture.scheduledAt ? formatFixtureDate(fixture.scheduledAt) : 'Schedule to be announced'}{fixture.venue ? ` / ${fixture.venue}` : ''}</Text>
   </View>;
 }

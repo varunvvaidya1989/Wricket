@@ -1,0 +1,21 @@
+[Unit]
+Description=Wricket MVP queue and worker heartbeat monitor
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=wricket-mvp
+Group=wricket-mvp
+WorkingDirectory=/opt/wricket/mobile
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/wricket/mvp-worker.env
+ExecStart=/usr/bin/node scripts/cricket-mvp-monitor.mjs --production
+TimeoutStartSec=45
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+UMask=0077
+StandardOutput=journal
+StandardError=journal

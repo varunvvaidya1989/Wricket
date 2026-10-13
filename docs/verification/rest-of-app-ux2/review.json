@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-12",
+  "target": "isolated local Supabase",
+  "checks": [
+    "Sign-in, signup validation, recovery task retention and typography at 320/390/1280",
+    "Actual signup, sports onboarding and requested profile return",
+    "Profile and private identity separation, actual identity save, connected sports and account layout at all widths",
+    "Actual password change validates confirmation, accepts the new password and rejects the old one",
+    "Real notifications grouped, acknowledged and opened; cross-account RLS and unsafe link rejection",
+    "Actual captain invitation survives guest sign-in and creates the invited captain membership",
+    "Failed notification load is distinct from empty; actual retry restores rows",
+    "Local sign-out removes private profile access without clearing app data",
+    "Actual recovery request retains task; real local recovery token changes password and returns to profile",
+    "Expired authentication link preserves the requested task"
+  ],
+  "visuals": [
+    {
+      "width": 320,
+      "title": {
+        "font": "SpaceGrotesk_600SemiBold",
+        "size": "29px"
+      },
+      "field": {
+        "font": "Inter_400Regular",
+        "size": "13px",
+        "height": 48
+      },
+      "noOverflow": true
+    },
+    {
+      "width": 390,
+      "title": {
+        "font": "SpaceGrotesk_600SemiBold",
+        "size": "29px"
+      },
+      "field": {
+        "font": "Inter_400Regular",
+        "size": "13px",
+        "height": 48
+      },
+      "noOverflow": true
+    },
+    {
+      "width": 1280,
+      "title": {
+        "font": "SpaceGrotesk_600SemiBold",
+        "size": "29px"
+      },
+      "field": {
+        "font": "Inter_400Regular",
+        "size": "13px",
+        "height": 48
+      },
+      "noOverflow": true
+    }
+  ],
+  "pageErrors": [],
+  "result": "PASS"
+}

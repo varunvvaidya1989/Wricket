@@ -1,0 +1,170 @@
+import assert from 'node:assert/strict';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chromium, expect as baseExpect } from '@playwright/test';
+import { checked, localClients, manifestPath } from './backend-fixture.mjs';
+
+const expect = baseExpect.configure({ timeout: 30000 });
+const stack = await localClients();
+const fixture = JSON.parse(await readFile(manifestPath, 'utf8'));
+assert.equal(fixture.cleaned, false);
+const actors = fixture.accounts.slice(0, 3);
+const clients = actors.map(() => stack.client());
+const originals = [];
+const competitionIds = [];
+const clubIds = [];
+const teamIds = [];
+const base = 'http://127.0.0.1:4173';
+const evidence = '.e2e/rest-of-app-ux4';
+const report = { target: 'isolated local Supabase', checks: [], pageErrors: [] };
+await mkdir(evidence, { recursive: true });
+const browser = await chromium.launch({ channel: 'chrome' });
+async function pageFor(actor) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 900 }, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  page.setDefaultTimeout(60000); page.setDefaultNavigationTimeout(120000);
+  page.on('pageerror', error => report.pageErrors.push(error.message));
+  await page.goto(`${base}/auth?returnTo=%2Fbadminton`);
+  await page.getByRole('button', { name: 'Back', exact: true }).click({ trial: true });
+  await expect(page.getByText('Opening your stage', { exact: true })).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Email address', exact: true }).fill(actor.email);
+  await page.getByPlaceholder('Password', { exact: true }).fill(fixture.password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForURL(url => url.pathname === '/badminton');
+  return page;
+}
+async function capture(page, name) {
+  await page.getByRole('button', { name: 'Back', exact: true }).click({ trial: true });
+  await page.evaluate(() => document.fonts.ready);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, name);
+  await page.screenshot({ path: `${evidence}/${name}.png`, animations: 'disabled' });
+}
+try {
+  const catalog = await checked(stack.admin.from('sports').select('id,code'));
+  for (const [index, actor] of actors.entries()) {
+    await checked(clients[index].auth.signInWithPassword({ email: actor.email, password: fixture.password }));
+    const existing = await checked(clients[index].from('account_sports').select('sport_id,is_primary,access_status').eq('account_id', actor.id));
+    assert.ok(existing.every(row => row.access_status === 'ACTIVE'));
+    const codes = existing.map(row => catalog.find(sport => sport.id === row.sport_id).code);
+    const primary = catalog.find(sport => sport.id === existing.find(row => row.is_primary).sport_id).code;
+    originals.push({ actor, codes, primary });
+    await writeFile('.e2e/ux4-private-originals.json', JSON.stringify(originals));
+    await checked(clients[index].rpc('save_my_sports', { p_display_name: actor.name, p_sport_codes: [...new Set([...codes, 'BADMINTON'])], p_primary_sport_code: primary }));
+  }
+  const id = await checked(clients[0].rpc('create_sport_competition_profile', { p_sport_code: 'BADMINTON', p_kind: 'LEAGUE', p_name: 'UX4 Matchday Review', p_rules: { matchUnitsToWin: 2 }, p_match_format: 'SINGLES', p_visibility: 'PUBLIC', p_timezone: 'Asia/Kolkata', p_planned_entry_count: 8 }));
+  competitionIds.push(id);
+  const profile = async index => (await checked(clients[index].from('sport_profiles').select('id').eq('account_id', actors[index].id).eq('sport_id', catalog.find(sport => sport.code === 'BADMINTON').id).single())).id;
+  await checked(clients[0].rpc('transition_sport_competition', { p_competition_id: id, p_target: 'REGISTRATION_OPEN' }));
+  const owner = await pageFor(actors[0]);
+  const entrant = await pageFor(actors[1]);
+  const route = `${base}/badminton/competition/${id}`;
+  console.info('Reviewing public and organiser separation');
+  await entrant.goto(route);
+  await expect(entrant.getByRole('button', { name: 'Manage competition', exact: true })).toHaveCount(0);
+  await entrant.getByRole('button', { name: 'Register myself', exact: true }).click();
+  await expect(entrant.getByText('Put your name in.', { exact: true })).toBeVisible();
+  await entrant.getByRole('button', { name: 'Submit registration', exact: true }).dblclick();
+  await expect(entrant.getByText('Registration submitted. Your entry is awaiting organiser approval.', { exact: true })).toBeVisible();
+  let entries = await checked(stack.admin.from('sport_competition_entries').select('id,status').eq('competition_id', id));
+  assert.equal(entries.length, 1); assert.equal(entries[0].status, 'PENDING');
+  const second = await checked(clients[0].rpc('register_sport_league_player', { p_competition_id: id, p_sport_profile_id: await profile(2), p_division_key: 'OPEN' }));
+  await owner.goto(`${route}?section=manage`);
+  await expect(owner.getByText('Run a calmer matchday.', { exact: true })).toBeVisible();
+  for (const width of [320, 390, 1280]) {
+    await owner.setViewportSize({ width, height: 900 });
+    await capture(owner, `workspace-${width}`);
+    const title = await owner.getByText('Run a calmer matchday.', { exact: true }).evaluate(element => ({ font: getComputedStyle(element).fontFamily, size: getComputedStyle(element).fontSize }));
+    assert.match(title.font, /SpaceGrotesk_600SemiBold/); assert.equal(title.size, '29px');
+  }
+  await owner.setViewportSize({ width: 390, height: 900 });
+  await owner.getByRole('button', { name: /^Entries & approval,/ }).click();
+  await owner.reload();
+  await expect(owner.getByText('Ready for a decision.', { exact: true })).toBeVisible();
+  await owner.getByRole('button', { name: `Approve ${actors[1].name}`, exact: true }).click();
+  await expect(owner.getByText('Review entry decision', { exact: true })).toBeVisible();
+  await owner.getByRole('button', { name: 'Confirm entry decision', exact: true }).dblclick();
+  await expect.poll(async () => (await checked(stack.admin.from('sport_competition_entries').select('status').eq('id', entries[0].id).single())).status).toBe('APPROVED');
+  await checked(clients[0].rpc('set_sport_entry_status', { p_entry_id: second, p_status: 'APPROVED' }));
+  await owner.reload(); await capture(owner, 'entries-390');
+  report.checks.push('Actual registration reviewed before submission, single entry after rapid repeat, approval reviewed and persisted, grouped statuses, direct refresh');
+  await entrant.goto(`${route}?section=manage`);
+  await expect(entrant.getByText('Only the owner or an accepted organiser can manage this competition.', { exact: true })).toBeVisible();
+  const denied = await clients[1].rpc('set_sport_entry_status', { p_entry_id: second, p_status: 'REJECTED' });
+  assert.ok(denied.error);
+  await entrant.getByRole('button', { name: 'View public competition', exact: true }).click();
+  await expect(entrant.getByText('Your entry is approved. You can be scheduled in a fixture.', { exact: true })).toBeVisible();
+  await capture(entrant, 'public-competition-390');
+  report.checks.push('Non-organiser direct links show access message, public page has no organiser action, backend denies mutation');
+  console.info('Reviewing scheduling and lifecycle review');
+  await owner.goto(`${route}?section=publish`);
+  await owner.getByRole('button', { name: 'REGISTRATION LOCKED', exact: true }).click();
+  await owner.getByRole('button', { name: 'Confirm state change', exact: true }).click();
+  await expect.poll(async () => (await checked(stack.admin.from('sport_competitions').select('lifecycle').eq('id', id).single())).lifecycle).toBe('REGISTRATION_LOCKED');
+  await owner.goto(`${route}?section=schedule`);
+  await owner.getByRole('button', { name: 'ADD FIXTURE', exact: true }).click();
+  await owner.getByRole('button', { name: actors[1].name, exact: true }).first().click();
+  await owner.getByRole('button', { name: actors[2].name, exact: true }).last().click();
+  await owner.getByRole('textbox', { name: 'Court', exact: true }).fill('Court 2');
+  await owner.getByRole('textbox', { name: 'Start time in Asia/Kolkata', exact: true }).fill('2026-10-20 10:30');
+  await owner.context().route('**/rest/v1/rpc/schedule_sport_fixture', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Controlled schedule save unavailable' }) }));
+  await owner.getByRole('button', { name: 'Schedule fixture', exact: true }).click();
+  await expect(owner.getByText(/Could not schedule/).filter({ visible: true }).last()).toBeVisible();
+  await owner.screenshot({ path: `${evidence}/schedule-save-error-390.png` });
+  await owner.context().unroute('**/rest/v1/rpc/schedule_sport_fixture');
+  await owner.getByRole('button', { name: 'Schedule fixture', exact: true }).dblclick();
+  await expect.poll(async () => (await checked(stack.admin.from('sport_fixtures').select('id').eq('competition_id', id))).length).toBe(1);
+  await expect(owner.getByText('Court 2', { exact: true })).toBeVisible();
+  await capture(owner, 'schedule-390');
+  const scheduled = await checked(stack.admin.from('sport_fixtures').select('scheduled_at').eq('competition_id', id).single());
+  assert.equal(new Date(scheduled.scheduled_at).toISOString(), '2026-10-20T05:00:00.000Z');
+  report.checks.push('Actual one-fixture scheduling between approved entrants, explicit timezone converted correctly, repeat guarded, no fabricated live score');
+  for (const section of ['officials', 'resources', 'publish', 'advanced', 'recovery', 'organizers']) {
+    await owner.goto(`${route}?section=${section}`);
+    await expect(owner.getByText('Opening Badminton competition', { exact: true })).toHaveCount(0);
+    await capture(owner, `${section}-390`);
+  }
+  await owner.goto(`${route}?section=publish`);
+  await owner.getByRole('button', { name: 'PUBLISHED', exact: true }).click();
+  await expect(owner.getByText('Review lifecycle change', { exact: true })).toBeVisible();
+  assert.equal((await checked(stack.admin.from('sport_competitions').select('lifecycle').eq('id', id).single())).lifecycle, 'REGISTRATION_LOCKED');
+  await owner.getByRole('button', { name: 'Close', exact: true }).click();
+  report.checks.push('Lifecycle action requires review; dismissing causes no mutation; resources, officials and advanced tasks directly refresh');
+  await owner.context().route('**/rest/v1/sport_competitions?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Controlled competition unavailable' }) }));
+  await owner.reload();
+  await expect(owner.getByText('Competition unavailable', { exact: true })).toBeVisible();
+  await capture(owner, 'competition-error-390');
+  await owner.context().unroute('**/rest/v1/sport_competitions?*');
+  await owner.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(owner.getByText('Review before changing state.', { exact: true })).toBeVisible();
+  const club = await checked(clients[0].rpc('create_sport_club', { p_sport_code: 'BADMINTON', p_name: 'UX4 Court Club', p_short_name: 'UX4', p_visibility: 'PUBLIC' }));
+  clubIds.push(club);
+  const team = await checked(clients[0].rpc('create_sport_team', { p_club_id: club, p_name: 'UX4 Doubles', p_short_name: 'UX4', p_color_hex: '#a6f477' }));
+  teamIds.push(team);
+  await owner.goto(`${base}/badminton/club/${club}`);
+  await expect(owner.getByText('PUBLIC \u00b7 OWNER', { exact: true })).toBeVisible();
+  await capture(owner, 'club-owner-390');
+  await entrant.goto(`${base}/badminton/team/${team}`);
+  await expect(entrant.getByText(/VIEWER/, { exact: false })).toBeVisible();
+  await expect(entrant.getByText('INVITE', { exact: true })).toHaveCount(0);
+  await capture(entrant, 'team-viewer-390');
+  await owner.goto(`${base}/badminton/team/${team}`);
+  await expect(owner.getByText(/OWNER/, { exact: false })).toBeVisible();
+  await capture(owner, 'team-owner-390');
+  report.checks.push('Actual club and reusable-team owner/viewer roles, narrow rosters and organiser-only invitation controls');
+  await owner.goto(`${base}/badminton/competitions`);
+  await expect(owner.getByText('A bigger day of play.', { exact: true })).toBeVisible();
+  await capture(owner, 'competition-list-390');
+  report.checks.push('Controlled unavailable response hides stale manager state and retries; list separates public pages and authorised workspaces');
+  assert.deepEqual(report.pageErrors, []);
+  report.status = 'PASS';
+} catch (error) {
+  for (const [index, context] of browser.contexts().entries()) { const page = context.pages()[0]; if (page) await page.screenshot({ path: `${evidence}/failure-${index}.png` }).catch(() => {}); }
+  throw error;
+} finally {
+  await browser.close();
+  for (const id of teamIds) await checked(stack.admin.from('sport_teams').delete().eq('id', id).eq('owner_account_id', actors[0].id));
+  for (const id of clubIds) await checked(stack.admin.from('sport_clubs').delete().eq('id', id).eq('owner_account_id', actors[0].id));
+  for (const id of competitionIds) await checked(stack.admin.from('sport_competitions').delete().eq('id', id).eq('owner_account_id', actors[0].id));
+  for (const [index, { actor, codes, primary }] of originals.entries()) await checked(clients[index].rpc('save_my_sports', { p_display_name: actor.name, p_sport_codes: codes, p_primary_sport_code: primary }));
+  await writeFile(`${evidence}/review.json`, JSON.stringify(report, null, 2));
+}
+console.info(JSON.stringify(report));

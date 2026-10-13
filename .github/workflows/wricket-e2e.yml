@@ -1,0 +1,86 @@
+name: Wricket validation
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      full_acceptance:
+        description: Run isolated backend tournament and community acceptance
+        type: boolean
+        default: false
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build:check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:web:smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wricket-browser-smoke
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  backend-acceptance:
+    if: github.event_name == 'workflow_dispatch' && inputs.full_acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - name: Start isolated database and seed prerequisite identities
+        run: |
+          node scripts/e2e/prepare-stack.mjs
+          npx supabase start --workdir .e2e/stack
+          node --input-type=module -e "import {seedFixture} from './scripts/e2e/backend-fixture.mjs'; await seedFixture();"
+      - name: Start local application
+        run: |
+          node scripts/e2e/serve-backend.mjs > .e2e/server.log 2>&1 &
+          echo $! > .e2e/server.pid
+      - name: Test every persisted fixture and bracket strategy
+        run: node scripts/e2e/verify-preset-backend.mjs > .e2e/preset.log 2>&1
+      - name: Complete tournament through organiser and scorer screens
+        env:
+          WRICKET_E2E_CHROME_CHANNEL: chromium
+        run: node scripts/e2e/verify-tournament-complete.mjs > .e2e/tournament.log 2>&1
+      - name: Verify completed statistics and correction recalculation
+        run: node scripts/e2e/verify-statistics-backend.mjs > .e2e/statistics.log 2>&1
+      - name: Verify large schedule read-back and bounded rendering
+        env:
+          WRICKET_E2E_CHROME_CHANNEL: chromium
+        run: node scripts/e2e/verify-large-schedule.mjs > .e2e/large-schedule.log 2>&1
+      - name: Test community journeys in three browsers
+        env:
+          WRICKET_E2E_CHROME_CHANNEL: chromium
+        run: |
+          WRICKET_REVIEW_BROWSER=chromium node scripts/e2e/verify-moments.mjs > .e2e/moments-chromium.log 2>&1
+          WRICKET_REVIEW_BROWSER=firefox node scripts/e2e/verify-moments.mjs > .e2e/moments-firefox.log 2>&1
+          WRICKET_REVIEW_BROWSER=webkit node scripts/e2e/verify-moments.mjs > .e2e/moments-webkit.log 2>&1
+      - name: Stop only the isolated stack
+        if: always()
+        run: npx supabase stop --workdir .e2e/stack --no-backup
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wricket-backend-acceptance
+          path: |
+            .e2e/*.log
+            .e2e/*-evidence.json
+            .e2e/*.png
+          retention-days: 7

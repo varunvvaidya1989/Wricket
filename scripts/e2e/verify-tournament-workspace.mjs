@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { chromium, expect } from '@playwright/test';
+import { checked, localClients, manifestPath } from './backend-fixture.mjs';
+
+const fixture = JSON.parse(await readFile(manifestPath, 'utf8'));
+const stack = await localClients();
+const owner = fixture.accounts[0];
+const tournament = await checked(stack.admin.from('tournaments').insert({ created_by: owner.id, source_local_id: randomUUID(), name: 'Phase 7 Workspace Review', format: 'TURF', visibility: 'PRIVATE', start_date: '2026-09-29', start_at: '2026-09-29T09:00:00Z', planned_team_count: 8, players_per_team: 7, overs_per_match: 10, settings: { status: 'ACTIVE' } }).select('id').single());
+const browser = await chromium.launch({ channel: 'chrome' });
+const context = await browser.newContext({ viewport: { width: 376, height: 900 }, reducedMotion: 'reduce' });
+const page = await context.newPage();
+page.setDefaultTimeout(60000); page.setDefaultNavigationTimeout(180000);
+const errors = []; page.on('pageerror', error => errors.push(error.stack ?? error.message));
+try {
+  await page.goto(`http://127.0.0.1:4173/auth?returnTo=${encodeURIComponent(`/tournament?id=${tournament.id}`)}`, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Sign in with password', exact: true }).click();
+  await page.getByPlaceholder('Email', { exact: true }).fill(owner.email);
+  await page.getByPlaceholder('Password', { exact: true }).fill(fixture.password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForURL(url => url.pathname.startsWith('/wricket/tournament/'));
+  await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await expect(page.getByText('ORGANISER WORKSPACE', { exact: true })).toBeVisible();
+  await expect(page.getByText('0 of 8 planned teams added', { exact: true })).toBeVisible();
+  await page.screenshot({ path: '.e2e/r6-workspace.png', fullPage: true });
+  const workspaceUrl = page.url();
+  await page.getByRole('button', { name: 'Scorer access', exact: true }).click();
+  await expect(page.getByText('ORGANISER WORKSPACE', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: '.e2e/r6-scorer-access.png', fullPage: true });
+  await page.getByRole('button', { name: 'Go back', exact: true }).click();
+  await page.getByRole('button', { name: 'Tournament details', exact: true }).click();
+  await expect(page.getByText('Tournament settings', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Go back', exact: true }).click();
+  await page.getByRole('button', { name: 'Fixture plan', exact: true }).click();
+  await expect(page.getByText('A plan for every game.', { exact: true })).toBeVisible();
+  await page.screenshot({ path: '.e2e/r6-fixture-plan.png', fullPage: true });
+  await page.goto(workspaceUrl, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Winning bracket', exact: true }).click();
+  await expect(page.getByText('Winning bracket.', { exact: true })).toBeVisible();
+  assert.equal(new URL(page.url()).searchParams.get('focus'), 'knockout');
+  await page.goto(workspaceUrl, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Open next task', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Teams', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.goto(workspaceUrl, { waitUntil: 'domcontentloaded' });
+  await page.setViewportSize({ width: 320, height: 740 });
+  await expect(page.getByText('ORGANISER WORKSPACE', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sponsors', exact: true })).toBeVisible();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.screenshot({ path: '.e2e/r6-workspace-320.png', fullPage: true });
+  assert.deepEqual(errors, []);
+  console.log('PASS: owned organiser workspace, real readiness, scorer/details drill-down, fixtures/bracket destinations, next-task teams navigation and narrow layout.');
+} catch (error) {
+  console.error(error.stack ?? error);
+  console.error((await page.locator('body').innerText()).slice(0, 5000));
+  await page.screenshot({ path: '.e2e/r6-failure.png', fullPage: true, timeout: 10000 }).catch(() => undefined);
+  throw error;
+} finally {
+  await browser.close();
+  await checked(stack.admin.from('tournaments').delete().eq('id', tournament.id).eq('created_by', owner.id));
+}

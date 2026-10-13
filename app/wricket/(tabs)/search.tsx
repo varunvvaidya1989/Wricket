@@ -1,24 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Href, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Image, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
+import { Text } from '@/components/wricket/ui/Text';
 import { globalSearchApi, GlobalSearchResult, GlobalSearchType } from '@/lib/supabase/globalSearchApi';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
-import { WricketAvatarButton } from '@/components/wricket/navigation/WricketProfileDrawer';
+import { colors } from '@/lib/wricket/presentation/design';
+import { DesignIcon } from '@/components/wricket/ui/DesignIcon';
+import { LinkRow } from '@/components/wricket/ui/DesignRows';
 
 const RECENT_SEARCHES_KEY = 'wricket.global-search.recent.v1';
 const filters: { id: GlobalSearchType; label: string }[] = [
   { id: 'ALL', label: 'All' },
   { id: 'TOURNAMENT', label: 'Tournaments' },
-  { id: 'MATCH', label: 'Matches' },
-  { id: 'USER', label: 'People' },
-  { id: 'SCORER', label: 'Scorers' },
+  { id: 'TEAM', label: 'Teams' },
+  { id: 'USER', label: 'Players' },
 ];
 
 export default function GlobalSearchScreen() {
@@ -27,6 +25,7 @@ export default function GlobalSearchScreen() {
   const requestRef = useRef(0);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<GlobalSearchType>('ALL');
+  const [suggestions, setSuggestions] = useState<GlobalSearchResult[]>([]);
   const [results, setResults] = useState<GlobalSearchResult[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
   const [searching, setSearching] = useState(false);
@@ -36,8 +35,9 @@ export default function GlobalSearchScreen() {
     void AsyncStorage.getItem(RECENT_SEARCHES_KEY).then(value => {
       if (value) setRecent(JSON.parse(value) as string[]);
     }).catch(() => undefined);
-    const timer = setTimeout(() => inputRef.current?.focus(), 120);
-    return () => clearTimeout(timer);
+    let active = true;
+    void globalSearchApi.suggested().then(items => { if (active) setSuggestions(items); }).catch(() => { if (active) setError('Could not load cricket suggestions'); });
+    return () => { active = false; };
   }, []));
 
   useEffect(() => {
@@ -50,6 +50,7 @@ export default function GlobalSearchScreen() {
       return;
     }
     const requestId = ++requestRef.current;
+    setSearching(true);
     const timer = setTimeout(() => {
       setSearching(true);
       globalSearchApi.search(clean, filter)
@@ -92,118 +93,47 @@ export default function GlobalSearchScreen() {
     void AsyncStorage.removeItem(RECENT_SEARCHES_KEY);
   };
 
-  return <Screen padded={false}>
-    <View style={styles.header}>
-      <View>
-        <Text variant="overline" tone="muted">DISCOVER WRICKET</Text>
-        <Text variant="h1">Search</Text>
+  const shown = query.trim().length < 2 ? suggestions.filter(item => filter === 'ALL' || item.type === filter) : visibleResults;
+  return <Screen padded={false} edges={['left', 'right', 'bottom']}>
+    <View style={styles.content}>
+      <Text variant="h1">Find your next game.</Text>
+      <View style={styles.searchBox}>
+        <DesignIcon name="search" size={18} color={colors.textMuted} />
+        <TextInput ref={inputRef} value={query} onChangeText={setQuery} placeholder="Team, tournament or player" accessibilityLabel="Search cricket"
+          placeholderTextColor={colors.textDim} returnKeyType="search" autoCapitalize="none" autoCorrect={false} style={styles.input} />
+        {query ? <Pressable accessibilityRole="button" accessibilityLabel="Clear search" onPress={() => setQuery('')} style={styles.clear}><Text tone="muted">×</Text></Pressable> : null}
       </View>
-      <WricketAvatarButton />
+      <View style={styles.filters}>{filters.map(item => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={item.label}
+        accessibilityState={{ selected: filter === item.id }} onPress={() => setFilter(item.id)} style={[styles.filter, filter === item.id && styles.filterActive]}>
+        <Text style={{ fontSize: 10, lineHeight: 15 }} tone={filter === item.id ? 'accent' : 'muted'}>{item.label}</Text>
+      </Pressable>)}</View>
+      <Text variant="overline" tone="muted">{query.trim().length < 2 ? 'Around your game' : 'Search results'}</Text>
+      {searching ? <SportStageLoader variant="compact" message="Searching cricket" detail="" /> : error ? <Text tone="danger">Search is unavailable. Check your connection and try again.</Text> :
+        <FlatList data={shown} keyExtractor={item => `${item.type}-${item.id}`} keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 30 }}
+          ListEmptyComponent={<View style={styles.empty}><Text variant="h3">No cricket found here yet.</Text><Text variant="caption" tone="muted">Try another name or choose All to widen your search.</Text>
+            {recent.length ? recent.map(value => <Pressable key={value} accessibilityRole="button" onPress={() => runRecent(value)}><Text tone="accent">{value}</Text></Pressable>) : null}
+            {recent.length ? <Pressable accessibilityRole="button" onPress={clearRecent}><Text tone="muted">Clear recent searches</Text></Pressable> : null}
+          </View>}
+          renderItem={({ item }) => <LinkRow title={item.title} detail={item.subtitle} icon={item.type === 'TOURNAMENT' ? 'trophy' : item.type === 'TEAM' ? 'users' : item.type === 'MATCH' ? 'ball' : 'bat'} onPress={() => void openResult(item)} />} />}
     </View>
-    <View style={styles.searchBox}>
-      <MaterialCommunityIcons name="magnify" size={21} color={colors.textDim} />
-      <TextInput
-        ref={inputRef}
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Teams, matches, people, tournaments"
-        placeholderTextColor={colors.textDim}
-        returnKeyType="search"
-        autoCapitalize="none"
-        autoCorrect={false}
-        style={styles.input}
-      />
-      {query.length ? <Pressable accessibilityRole="button" accessibilityLabel="Clear search" onPress={() => setQuery('')} style={styles.clearButton}>
-        <MaterialCommunityIcons name="close-circle" size={19} color={colors.textMuted} />
-      </Pressable> : null}
-    </View>
-    <View style={styles.filters}>{filters.map(item => <Pressable key={item.id} onPress={() => setFilter(item.id)} style={[styles.filter, filter === item.id && styles.filterActive]}>
-      <Text variant="caption" tone={filter === item.id ? 'accent' : 'muted'} style={styles.filterLabel}>{item.label}</Text>
-    </Pressable>)}</View>
-
-    {query.trim().length < 2 ? <SearchStart recent={recent} onRecent={runRecent} onClear={clearRecent} /> : searching && !visibleResults.length ? <SportStageLoader variant="compact" message="Searching SportStage" detail="" /> : error ? <View style={styles.center}>
-      <MaterialCommunityIcons name="cloud-alert-outline" size={30} color={colors.textMuted} />
-      <Text variant="h3">Search is unavailable</Text>
-      <Text tone="muted" style={styles.centerText}>Check your connection and try again.</Text>
-    </View> : !visibleResults.length ? <View style={styles.center}>
-      <MaterialCommunityIcons name="magnify-close" size={32} color={colors.textDim} />
-      <Text variant="h3">No results for “{query.trim()}”</Text>
-      <Text tone="muted" style={styles.centerText}>Try a team name, tournament, player, scorer, or venue.</Text>
-    </View> : <FlatList
-      data={visibleResults}
-      keyExtractor={item => `${item.type}-${item.id}`}
-      keyboardShouldPersistTaps="handled"
-      contentContainerStyle={styles.results}
-      ItemSeparatorComponent={() => <View style={styles.divider} />}
-      ListHeaderComponent={<Text variant="overline" tone="dim" style={styles.resultCount}>{visibleResults.length} RESULTS</Text>}
-      renderItem={({ item }) => <SearchResultRow item={item} onPress={() => void openResult(item)} />}
-    />}
   </Screen>;
 }
 
-function SearchStart({ recent, onRecent, onClear }: { recent: string[]; onRecent: (value: string) => void; onClear: () => void }) {
-  return <View style={styles.start}>
-    {recent.length ? <>
-      <View style={styles.startHeader}><Text variant="overline" tone="muted">RECENT SEARCHES</Text><Pressable onPress={onClear}><Text variant="caption" tone="dim">CLEAR</Text></Pressable></View>
-      {recent.map(value => <Pressable key={value} onPress={() => onRecent(value)} style={styles.recentRow}><MaterialCommunityIcons name="history" size={19} color={colors.textDim} /><Text style={styles.recentText}>{value}</Text><MaterialCommunityIcons name="arrow-top-left" size={17} color={colors.textDim} /></Pressable>)}
-    </> : <View style={styles.center}>
-      <View style={styles.searchIllustration}><MaterialCommunityIcons name="magnify" size={34} color={colors.accent} /></View>
-      <Text variant="h3">Find anything in Wricket</Text>
-      <Text tone="muted" style={styles.centerText}>Search across tournaments, matches, players, members, scorers, and venues.</Text>
-    </View>}
-  </View>;
-}
-
-function SearchResultRow({ item, onPress }: { item: GlobalSearchResult; onPress: () => void }) {
-  const meta = resultMeta(item.type);
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.resultRow, pressed && styles.pressed]}>
-    {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.resultImage} /> : <View style={[styles.resultIcon, { backgroundColor: meta.background }]}><MaterialCommunityIcons name={meta.icon} size={21} color={meta.color} /></View>}
-    <View style={styles.resultMain}><View style={styles.resultTitleLine}><Text variant="bodyStrong" numberOfLines={1} style={styles.resultTitle}>{item.title}</Text>{item.type === 'SCORER' ? <View style={styles.scorerChip}><Text variant="overline" tone="accent" style={styles.scorerChipText}>SCORER</Text></View> : null}</View><Text variant="caption" tone="dim" numberOfLines={1}>{item.subtitle || meta.label}</Text></View>
-    <View style={styles.typeLabel}><Text variant="overline" style={{ color: meta.color }}>{meta.label}</Text></View>
-    <MaterialCommunityIcons name="chevron-right" size={19} color={colors.textDim} />
-  </Pressable>;
-}
-
 function resultHref(item: GlobalSearchResult): Href {
+  if (item.type === 'TEAM') return { pathname: '/wricket/team/[id]', params: { id: item.id } };
   if (item.type === 'TOURNAMENT') return { pathname: '/wricket/tournament/[id]', params: { id: item.id } };
   if (item.type === 'MATCH') return { pathname: '/wricket/match/[id]/live', params: { id: item.id, tab: 'summary' } };
   return { pathname: '/wricket/user/[id]', params: { id: item.id } };
 }
 
-function resultMeta(type: GlobalSearchResult['type']) {
-  if (type === 'TOURNAMENT') return { icon: 'trophy-outline' as const, label: 'TOURNAMENT', color: colors.gold, background: colors.goldMuted };
-  if (type === 'MATCH') return { icon: 'scoreboard-outline' as const, label: 'MATCH', color: colors.boundary, background: 'rgba(61,217,214,0.12)' };
-  if (type === 'SCORER') return { icon: 'whistle-outline' as const, label: 'SCORER', color: colors.accent, background: colors.accentMuted };
-  return { icon: 'account-outline' as const, label: 'PERSON', color: colors.textMuted, background: colors.surfaceElevated };
-}
-
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  searchBox: { marginHorizontal: spacing.lg, minHeight: 48, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, gap: spacing.sm },
-  input: { flex: 1, color: colors.text, fontFamily: 'Inter_400Regular', fontSize: 15, paddingVertical: spacing.md },
-  clearButton: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
-  filters: { flexDirection: 'row', paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.xs },
-  filter: { flex: 1, minWidth: 0, height: 32, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceElevated },
-  filterActive: { borderColor: colors.accent, backgroundColor: colors.accentMuted },
-  filterLabel: { fontSize: 9 },
-  start: { flex: 1, paddingHorizontal: spacing.lg },
-  startHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.sm },
-  recentRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  recentText: { flex: 1 },
-  center: { flex: 1, minHeight: 220, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingHorizontal: spacing.xl },
-  centerText: { textAlign: 'center', lineHeight: 21 },
-  searchIllustration: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
-  results: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
-  resultCount: { marginVertical: spacing.sm },
-  resultRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
-  resultImage: { width: 42, height: 42, borderRadius: radius.md, backgroundColor: colors.surfaceElevated },
-  resultIcon: { width: 42, height: 42, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  resultMain: { flex: 1, minWidth: 0, gap: 3 },
-  resultTitleLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  resultTitle: { flexShrink: 1 },
-  scorerChip: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: radius.sm, backgroundColor: colors.accentMuted },
-  scorerChipText: { fontSize: 8 },
-  typeLabel: { display: 'none' },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 50 },
-  pressed: { opacity: 0.68 },
+  content: { flex: 1, paddingHorizontal: 18, paddingTop: 19, gap: 14 },
+  searchBox: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: 11, borderWidth: 1, borderColor: '#465e38', backgroundColor: colors.surface },
+  input: { flex: 1, minWidth: 0, fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 20, color: colors.text, paddingVertical: 12 },
+  clear: { minWidth: 28, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  filter: { borderRadius: 20, borderWidth: 1, borderColor: colors.border, paddingVertical: 8, paddingHorizontal: 11 },
+  filterActive: { backgroundColor: '#233a24', borderColor: '#4e7142' },
+  empty: { paddingVertical: 24, gap: 12 },
 });

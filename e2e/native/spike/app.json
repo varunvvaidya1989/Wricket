@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "Wricket Gesture Spike",
+    "slug": "wricket-gesture-spike",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "wricket-gesture-spike",
+    "android": { "package": "com.vcreativestudio.wricket.gesturespike" },
+    "ios": { "bundleIdentifier": "com.vcreativestudio.wricket.gesturespike" }
+  }
+}

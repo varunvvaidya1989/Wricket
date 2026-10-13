@@ -10,19 +10,29 @@ export async function saveScoringSessionInDb(
   db: ScoringSessionDatabase,
   input: Omit<ScoringSession, 'updatedAt'> & { updatedAt?: number },
 ): Promise<ScoringSession> {
+  let session!: ScoringSession;
+  await db.withTransactionAsync(async () => { session = await writeScoringSessionInDb(db, input); });
+  return session;
+}
+
+// Used by a scoring command that already owns the encompassing transaction.
+export async function writeScoringSessionInDb(
+  db: Pick<ScoringSessionDatabase, 'runAsync'>,
+  input: Omit<ScoringSession, 'updatedAt'> & { updatedAt?: number },
+): Promise<ScoringSession> {
   const session: ScoringSession = {
     ...input,
     updatedAt: input.updatedAt ?? Date.now(),
   };
 
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(
+  await db.runAsync(
       `INSERT OR REPLACE INTO scoring_sessions (
          match_id, innings_id, striker_id, non_striker_id, bowler_id,
          pending_prompt, pending_player_id, completed_over,
-         last_committed_event_sequence, updated_at
+         last_committed_event_sequence, updated_at, ui_version
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         COALESCE(?, (SELECT ui_version FROM scoring_sessions WHERE match_id = ?), 'revamp-v1'))`,
       session.matchId,
       session.inningsId,
       session.strikerId ?? null,
@@ -33,8 +43,9 @@ export async function saveScoringSessionInDb(
       session.completedOver ?? null,
       session.lastCommittedEventSequence,
       session.updatedAt,
-    );
-  });
+      session.uiVersion ?? null,
+      session.matchId,
+  );
 
   return session;
 }
@@ -61,6 +72,7 @@ export async function clearScoringSessionInDb(
 
 export function rowToScoringSession(row: any): ScoringSession {
   return {
+    ...(row.ui_version ? { uiVersion: row.ui_version === 'recovery-v1' ? 'recovery-v1' as const : 'revamp-v1' as const } : {}),
     matchId: row.match_id,
     inningsId: row.innings_id,
     strikerId: row.striker_id ?? undefined,

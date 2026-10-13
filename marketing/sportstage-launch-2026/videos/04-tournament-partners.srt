@@ -1,11 +1,11 @@
 1
 00:00:00,000 --> 00:00:05,100
-Fixtures, results and tournament sponsors.
+Registrations, fixture plan, bracket and sponsors.
 
 2
 00:00:05,100 --> 00:00:09,900
-Add one sponsor or many to your tournament.
+Seed qualifiers. Watch the bracket advance.
 
 3
 00:00:09,900 --> 00:00:15,000
-Make your next match count. Follow SportStage.
+Add your sponsors to the tournament.

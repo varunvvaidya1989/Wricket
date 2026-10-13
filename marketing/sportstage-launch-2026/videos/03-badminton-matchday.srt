@@ -1,11 +1,11 @@
 1
 00:00:00,000 --> 00:00:05,100
-Own the rally. Keep the score.
+Which sport today? Choose, then review players and rules.
 
 2
 00:00:05,100 --> 00:00:09,900
-Choose players. Review your rules. Start scoring.
+Tap a score card to record the rally.
 
 3
 00:00:09,900 --> 00:00:15,000
-Meet SportStage. Follow for launch updates.
+See the patterns. Shape your game.

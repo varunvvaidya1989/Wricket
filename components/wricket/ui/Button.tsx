@@ -1,0 +1,120 @@
+import React from 'react';
+import {
+  Pressable,
+  StyleSheet,
+  ViewStyle,
+  ActivityIndicator,
+  GestureResponderEvent,
+} from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { colors, palette } from '@/lib/wricket/presentation/design';
+import { spacing } from '@/lib/theme/spacing';
+import { Text } from './Text';
+
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Size = 'sm' | 'md' | 'lg';
+
+interface ButtonProps {
+  title: string;
+  accessibilityLabel?: string;
+  onPress?: (e: GestureResponderEvent) => void;
+  variant?: Variant;
+  size?: Size;
+  disabled?: boolean;
+  loading?: boolean;
+  fullWidth?: boolean;
+  style?: ViewStyle;
+}
+
+export function Button({
+  title,
+  accessibilityLabel,
+  onPress,
+  variant = 'primary',
+  size = 'md',
+  disabled,
+  loading,
+  fullWidth,
+  style,
+}: ButtonProps) {
+  const handlePress = (e: GestureResponderEvent) => {
+    if (disabled || loading) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+    onPress?.(e);
+  };
+
+  const v = variantStyles[variant];
+  const s = sizeStyles[size];
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
+      onPress={handlePress}
+      disabled={disabled || loading}
+      style={({ pressed }) => [
+        styles.base,
+        v.container,
+        s.container,
+        fullWidth && { alignSelf: 'stretch' },
+        pressed && { opacity: 0.85 },
+        (disabled || loading) && { opacity: 0.5 },
+        style,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color={v.text.color} />
+      ) : (
+        <Text style={[s.text, v.text]}>{title}</Text>
+      )}
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  base: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    flexDirection: 'row',
+  },
+});
+
+const variantStyles = {
+  primary: {
+    container: { backgroundColor: colors.accent },
+    text: { color: colors.accentInk },
+  },
+  secondary: {
+    container: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    text: { color: colors.text },
+  },
+  ghost: {
+    container: { backgroundColor: 'transparent' },
+    text: { color: colors.text },
+  },
+  danger: {
+    container: { backgroundColor: colors.danger },
+    text: { color: palette.white },
+  },
+} as const;
+
+const sizeStyles = {
+  sm: {
+    container: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, minHeight: 44 },
+    text: { fontSize: 11 },
+  },
+  md: {
+    container: { paddingVertical: 13, paddingHorizontal: 15, minHeight: 46 },
+    text: { fontSize: 13 },
+  },
+  lg: {
+    container: { paddingVertical: spacing.lg, paddingHorizontal: spacing.xl, minHeight: 56 },
+    text: { fontSize: 15 },
+  },
+} as const;

@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, View, ViewStyle } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
-import { Text } from '@/components/ui/Text';
-import { colors } from '@/lib/theme/colors';
+import { Text } from '@/components/wricket/ui/Text';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius } from '@/lib/theme/spacing';
 
 interface TournamentLogoProps {

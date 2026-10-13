@@ -101,7 +101,8 @@ describe('complete sport platform surfaces', () => {
     expect(competitionScreen).toContain("tab === 'standings'");
     expect(competitionScreen).toContain('sportResultsApi.rebuild');
     expect(profileScreen).toContain('sportResultsApi.listMine');
-    expect(profileScreen).toContain('CROSS-SPORT MATCH RECORD');
+    expect(profileScreen).toContain('YOUR SPORTS');
+    expect(profileScreen).toContain('stat.matchesPlayed');
     expect(competitionScreen).toContain('sportOperationsApi.supportAction');
     expect(competitionScreen).toContain('CREATE_RECOVERY_CHECKPOINT');
   });
@@ -109,7 +110,8 @@ describe('complete sport platform surfaces', () => {
   it('renders and acknowledges deep-linked notifications', () => {
     expect(notificationScreen).toContain('sportOperationsApi.notifications');
     expect(notificationScreen).toContain('sportOperationsApi.markRead');
-    expect(notificationScreen).toContain('router.push(item.deepLink as Href)');
+    expect(notificationScreen).toContain('notificationDestination(item.deepLink)');
+    expect(notificationScreen).toContain('router.push(destination as Href)');
   });
 
   it('renders only opt-in public player cards with shareable links', () => {

@@ -4,8 +4,8 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Text } from '@/components/ui/Text';
-import { colors } from '@/lib/theme/colors';
+import { Text } from '@/components/wricket/ui/Text';
+import { colors } from '@/lib/wricket/presentation/design';
 import { spacing } from '@/lib/theme/spacing';
 
 const tabs: {

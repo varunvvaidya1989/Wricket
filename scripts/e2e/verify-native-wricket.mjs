@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { manifestPath } from './backend-fixture.mjs';
+import { adb, nativePackage, nodes, tap, tapNode, type, hideKeyboard, openAuth, waitFor, scrollTo, screenshot } from './native-driver.mjs';
+const fixture = JSON.parse(await readFile(manifestPath, 'utf8')); const account = fixture.accounts[0];
+assert.ok(adb('shell', 'pm', 'list', 'packages', nativePackage).includes(nativePackage));
+// Only the dedicated E2E app is reset; retain the emulator and local backend fixture.
+adb('shell', 'am', 'force-stop', nativePackage); adb('shell', 'pm', 'clear', nativePackage);
+adb('shell', 'run-as', nativePackage, 'mkdir', '-p', 'shared_prefs');
+adb('shell', 'run-as', nativePackage, 'cp', '/data/local/tmp/wricket-e2e-prefs.xml', 'shared_prefs/' + nativePackage + '_preferences.xml');
+adb('reverse','tcp:4173','tcp:4173'); adb('reverse','tcp:54321','tcp:54321');
+adb('shell', 'am', 'start', '-n', nativePackage + '/.MainActivity');
+await waitFor('SPORTSTAGE NOW');
+openAuth('/wricket');
+await tap('Sign in with password');
+const fields = nodes().filter(node => node.class === 'android.widget.EditText');
+assert.ok(fields.length >= 2, 'Native password sign-in has two editable fields');
+tapNode(fields.find(node => node.password !== 'true')); type(account.email);
+tapNode(nodes().find(node => node.class === 'android.widget.EditText' && node.password === 'true')); type(fixture.password); hideKeyboard();
+await tap('Sign in');
+await waitFor('My cricket');
+await tap('My cricket');
+await scrollTo('My applications');
+screenshot('native-my-cricket.png');
+await tap('My applications'); await waitFor('Your tournament applications.');
+screenshot('native-my-applications.png');
+adb('shell', 'input', 'keyevent', '4'); await waitFor('My cricket');
+console.info('PASS isolated Android app, authenticated deep-link continuation, My cricket, application tracking and native back');

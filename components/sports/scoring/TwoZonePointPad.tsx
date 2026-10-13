@@ -1,92 +1,23 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import * as Haptics from 'expo-haptics';
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import * as Haptics from 'expo-haptics';
 
-import { Text } from '@/components/ui/Text';
+import { StageText, stageColors as colors } from '@/components/sports/platform/StageUI';
 import type { Side } from '@/lib/sports/scoring';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
 
-export function TwoZonePointPad({
-  sideNames,
-  sideOrder = [0, 1],
-  servingSide,
-  accent,
-  disabled,
-  onPoint,
-}: {
-  sideNames: readonly [string, string];
-  sideOrder?: readonly [Side, Side];
-  servingSide: Side;
-  accent: string;
-  disabled?: boolean;
-  onPoint: (side: Side) => void;
-}) {
-  return (
-    <View style={styles.root}>
-      <View style={styles.instruction}>
-        <MaterialCommunityIcons name="gesture-tap" size={16} color={colors.textDim} />
-        <Text variant="bodyStrong" tone="muted">Who won the rally?</Text>
-      </View>
-      <View style={styles.zones}>
-        {sideOrder.map((side) => (
-          <Pressable
-            key={side}
-            accessibilityRole="button"
-            accessibilityLabel={`Point to ${sideNames[side]}`}
-            accessibilityHint="Records one rally in the match event log"
-            accessibilityState={{ disabled: Boolean(disabled) }}
-            disabled={disabled}
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
-              onPoint(side);
-            }}
-            style={({ pressed }) => [
-              styles.zone,
-              { borderColor: side === servingSide ? accent : colors.border },
-              side === servingSide && { backgroundColor: `${accent}12` },
-              pressed && styles.pressed,
-              disabled && styles.disabled,
-            ]}
-          >
-            <View style={styles.zoneTop}>
-              <Text variant="overline" style={{ color: side === servingSide ? accent : colors.textDim }}>
-                {side === servingSide ? 'SERVING' : 'RECEIVING'}
-              </Text>
-              <MaterialCommunityIcons
-                name="plus-circle-outline"
-                size={32}
-                color={side === servingSide ? accent : colors.textMuted}
-              />
-            </View>
-            <View style={styles.zoneCopy}>
-              <Text variant="caption" tone="muted">Rally won by</Text>
-              <Text variant="h2" numberOfLines={2} style={styles.name}>{sideNames[side]}</Text>
-            </View>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
+export function TwoZonePointPad({ sideNames, sideOrder = [0, 1], servingSide, accent, disabled, onPoint }: { sideNames: readonly [string, string]; sideOrder?: readonly [Side, Side]; servingSide: Side; accent: string; disabled?: boolean; onPoint: (side: Side) => void }) {
+  return <View style={styles.root}>
+    <StageText variant="eyebrow" muted>WHO WON THE RALLY?</StageText>
+    <View style={styles.zones}>{sideOrder.map(side => <Pressable key={side} accessibilityRole="button" accessibilityLabel={`Rally won by ${sideNames[side]}`} accessibilityHint="Records one rally using this sport’s scoring rules" accessibilityState={{ disabled: Boolean(disabled) }} disabled={disabled} onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined); onPoint(side); }} style={({ pressed }) => [styles.zone, side === servingSide ? { backgroundColor: accent, borderColor: accent } : styles.receiving, (pressed || disabled) && { opacity: 0.55 }]}>
+      <StageText variant="heading" style={{ color: side === servingSide ? colors.bg : accent, textAlign: 'center' }}>{sideNames[side]}</StageText>
+      <StageText variant="small" style={{ color: side === servingSide ? colors.bg : accent }}>Rally winner</StageText>
+    </Pressable>)}</View>
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  root: { gap: spacing.sm },
-  instruction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
-  zones: { minHeight: 180, flexDirection: 'row', gap: spacing.md },
-  zone: {
-    flex: 1,
-    minWidth: 0,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    backgroundColor: colors.surface,
-    justifyContent: 'space-between',
-  },
-  zoneTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  zoneCopy: { gap: 5 },
-  name: { lineHeight: 23 },
-  pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
-  disabled: { opacity: 0.45 },
+  root: { gap: 16 },
+  zones: { flexDirection: 'row', gap: 10 },
+  zone: { flex: 1, minWidth: 0, minHeight: 98, padding: 16, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  receiving: { backgroundColor: '#263b20', borderColor: '#6b8b53' },
 });

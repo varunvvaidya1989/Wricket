@@ -1,43 +1,34 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, StyleSheet, TextInput, View } from 'react-native';
-
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Button } from '@/components/ui/Button';
-import { Text } from '@/components/ui/Text';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
+import { StageButton, StageField, StageIntro, StageNotice, StagePage, StageStateArt } from '@/components/sports/platform/StageUI';
+import { safeAuthReturnTo } from '@/lib/auth/returnTo';
+import { authReturnDescription } from '@/lib/auth/authExperience';
 import { authErrorMessage } from '@/lib/supabase/authErrors';
 
 export default function ForgotPasswordScreen() {
   const auth = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams<{ returnTo?: string }>();
+  const returnTo = safeAuthReturnTo(params.returnTo);
   const [email, setEmail] = useState('');
   const [saving, setSaving] = useState(false);
-
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string>();
   const send = async () => {
-    if (!email.trim()) return Alert.alert('Email required', 'Enter the email used for your SportStage account.');
-    setSaving(true);
-    try {
-      await auth.requestPasswordReset(email);
-      Alert.alert('Check your email', 'If an account exists, a password reset link has been sent.');
-      router.replace('/auth');
-    } catch (cause) {
-      Alert.alert('Could not send reset link', authErrorMessage(cause, 'Could not send a reset link. Please try again.'));
-    } finally { setSaving(false); }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a valid email address.'); return; }
+    setSaving(true); setError(undefined);
+    try { await auth.requestPasswordReset(email, returnTo); setSent(true); }
+    catch (cause) { setError(authErrorMessage(cause, 'Could not send a reset link. Please try again.')); }
+    finally { setSaving(false); }
   };
-
-  return <View style={styles.page}>
-    <Text variant="overline" tone="accent">ACCOUNT RECOVERY</Text>
-    <Text variant="h1">Reset your password</Text>
-    <Text variant="body" tone="muted">We’ll email you a secure link that opens SportStage.</Text>
-    <TextInput value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor={colors.textDim} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} style={styles.input} />
-    <Button title="Send reset link" onPress={() => void send()} loading={saving} fullWidth />
-    <Button title="Back to sign in" variant="ghost" onPress={() => router.replace('/auth')} disabled={saving} fullWidth />
-  </View>;
+  const signIn = () => router.replace({ pathname: '/auth', params: returnTo ? { returnTo } : {} });
+  return <StagePage focused title={sent ? 'Check email' : 'Reset password'} footer={<StageButton primary title={sent ? 'Back to sign in' : 'Send reset link'} loading={saving} onPress={sent ? signIn : () => void send()} />}>
+    {sent ? <StageStateArt symbol="↗" /> : null}
+    <StageIntro eyebrow={sent ? 'RESET REQUESTED' : 'ACCOUNT RECOVERY'} title={sent ? 'Check your inbox.' : 'Forgot your password?'} description={sent ? 'If an account exists for this email, we sent a reset link. Open the newest link on this device.' : 'Enter your email. If an account exists, we’ll send a reset link.'} />
+    {!sent ? <StageField label="Email address" placeholder="Email" value={email} onChangeText={value => { setEmail(value); setError(undefined); }} keyboardType="email-address" autoComplete="email" autoCapitalize="none" autoCorrect={false} /> : null}
+    {returnTo ? <StageNotice>After recovery → {authReturnDescription(returnTo)}</StageNotice> : null}
+    {error ? <StageNotice>{error}</StageNotice> : null}
+    {sent ? <><StageButton title="Use a different email" disabled={saving} onPress={() => { setSent(false); setError(undefined); }} /><StageButton title="Resend link" loading={saving} onPress={() => void send()} /></> : <StageButton title="Back to sign in" disabled={saving} onPress={signIn} />}
+  </StagePage>;
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.md, backgroundColor: colors.bg },
-  input: { minHeight: 50, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: spacing.md, fontSize: 16 },
-});

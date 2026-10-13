@@ -4,6 +4,7 @@ import { getTeamByCloudId, updateTeamLogoByCloudId } from '@/lib/wricket/db/repo
 import { mergeCloudPlayer, mergeCloudTeam, mergeCloudTeamPlayer } from '@/lib/wricket/db/syncRepo';
 import type { PlayerRole, Team } from '@/lib/wricket/domain/types';
 import { getSupabaseClient } from './client';
+import { liveMatchApi, type CloudLiveMatch } from './liveMatchApi';
 
 export type TeamRole = 'CAPTAIN' | 'PLAYER';
 
@@ -37,6 +38,8 @@ export interface TeamInvitation {
   revokedAt?: string;
 }
 
+export interface TeamRosterSummary { playerCount: number; hasCaptain: boolean }
+
 export interface RegisteredPlayerSearchResult {
   playerId: string;
   accountId?: string;
@@ -67,6 +70,31 @@ export interface StandaloneMatchTeamSummary {
 }
 
 export const teamManagementApi = {
+  async removeTournamentTeam(tournamentId: string, teamId: string): Promise<void> {
+    const { data, error } = await getSupabaseClient().rpc('remove_owned_tournament_team', { p_tournament_id: tournamentId, p_team_id: teamId });
+    if (error) throw new Error(error.message);
+    if (data !== teamId) throw new Error('Team removal was not confirmed. Refresh the tournament and try again.');
+  },
+  async onFieldMatch(teamId: string): Promise<CloudLiveMatch | null> {
+    const client = getSupabaseClient();
+    const { data: live, error: liveError } = await client.from('matches').select('id').or(`team_a_id.eq.${teamId},team_b_id.eq.${teamId}`).in('status', ['IN_PROGRESS', 'INNINGS_BREAK', 'FOLLOW_ON_DECISION']).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (liveError) throw liveError;
+    if (live) return liveMatchApi.getSummary(live.id);
+    const { data: upcoming, error } = await client.from('matches').select('id').or(`team_a_id.eq.${teamId},team_b_id.eq.${teamId}`).in('status', ['SCHEDULED', 'SETUP']).order('scheduled_at', { ascending: true, nullsFirst: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    return upcoming ? liveMatchApi.get(upcoming.id) : null;
+  },
+  async listRosterSummaries(teamIds: string[]): Promise<Map<string, TeamRosterSummary>> {
+    const summaries = new Map(teamIds.map(id => [id, { playerCount: 0, hasCaptain: false }]));
+    if (!teamIds.length) return summaries;
+    const { data, error } = await getSupabaseClient().from('team_players').select('team_id,is_captain').in('team_id', teamIds);
+    if (error) throw error;
+    for (const member of data ?? []) {
+      const summary = summaries.get(member.team_id);
+      if (summary) { summary.playerCount += 1; summary.hasCaptain ||= Boolean(member.is_captain); }
+    }
+    return summaries;
+  },
   async listStandaloneMatchTeams(): Promise<StandaloneMatchTeamSummary[]> {
     const { data, error } = await getSupabaseClient().rpc('list_standalone_match_teams');
     if (error) throw error;
@@ -264,12 +292,14 @@ export const teamManagementApi = {
   },
 
   async listTeamLogos(teamIds: string[]): Promise<Map<string, string | undefined>> {
-    if (teamIds.length === 0) return new Map();
-    const { data, error } = await getSupabaseClient().from('teams')
-      .select('id, logo_url')
-      .in('id', teamIds);
-    if (error) throw error;
-    return new Map((data ?? []).map(team => [team.id, team.logo_url ?? undefined]));
+    const teams = new Map<string, string | undefined>();
+    // Bound each request below the API row limit before treating absent IDs as removed.
+    for (let offset = 0; offset < teamIds.length; offset += 100) {
+      const { data, error } = await getSupabaseClient().from('teams').select('id, logo_url').in('id', teamIds.slice(offset, offset + 100));
+      if (error) throw error;
+      for (const team of data ?? []) teams.set(team.id, team.logo_url ?? undefined);
+    }
+    return teams;
   },
 
   async createInvitation(input: {
@@ -291,8 +321,7 @@ export const teamManagementApi = {
       invitationId: data.invitation_id,
       token: data.token,
       expiresAt: data.expires_at,
-      link: Linking.createURL('wricket/team/join', {
-        scheme: 'sportstage',
+      link: Linking.createURL('wricket/team/join', { isTripleSlashed: true,
         queryParams: { token: data.token },
       }),
     };

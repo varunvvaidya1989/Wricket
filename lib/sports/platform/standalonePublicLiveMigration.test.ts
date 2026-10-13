@@ -47,9 +47,10 @@ describe('standalone matches in public live discovery', () => {
     expect(scoreScreen.match(/headline_score: formatLiveHeadline/g)).toHaveLength(3);
   });
 
-  it('refreshes sport homes and pulses while a match is live', () => {
-    expect(sportHome).toContain('sportScoringApi.subscribeSportLive');
-    expect(sportHome).toContain('<SportLiveActivityBadge count={1} appearance="card" />');
+  it('refreshes sport homes and offers resume only for a real live match', () => {
+    const matchHook = readFileSync(resolve(__dirname, '../../../hooks/useSportMatches.ts'), 'utf8');
+    expect(matchHook).toContain('sportScoringApi.subscribeSportLive');
+    expect(sportHome).toContain("match.status === 'LIVE' && match.createdBy === auth.session?.user.id");
     expect(liveBadge).toContain('Animated.loop');
     expect(liveBadge).toContain('useNativeDriver: true');
   });

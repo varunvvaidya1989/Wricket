@@ -3,25 +3,35 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, AppState, Easing, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
+import { WricketHeader } from '@/components/wricket/ui/WricketHeader';
+import { SectionRow } from '@/components/wricket/ui/SectionRow';
+import { DesignIcon } from '@/components/wricket/ui/DesignIcon';
+import { SpectatorMatchHeader } from '@/components/wricket/scoring/SpectatorMatchHeader';
+import { SpectatorMatchInfo } from '@/components/wricket/scoring/SpectatorMatchInfo';
+import { spectatorHistory } from '@/lib/wricket/presentation/spectatorHistory';
+import { buildCompleteScorecard, type CompleteScorecardData, type CompleteInningsScorecardData } from '@/lib/wricket/presentation/spectatorScorecard';
+import { spectatorResult } from '@/lib/wricket/presentation/matchShare';
+import { MatchShare } from '@/components/wricket/scoring/MatchShare';
+import { ChaseComparison } from '@/components/wricket/scoring/ChaseComparison';
+import { matchStatus } from '@/lib/wricket/presentation/status';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { Card } from '@/components/wricket/ui/Card';
 import { TournamentSponsors } from '@/components/sponsors/TournamentSponsors';
 import { Screen } from '@/components/ui/Screen';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
+import { Text } from '@/components/wricket/ui/Text';
 import { CloudLiveMatch, CloudMatchContext, CloudMatchEvent, CloudMatchSquadPlayer, liveMatchApi } from '@/lib/supabase/liveMatchApi';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { DEFAULT_RULES, MatchFormat } from '@/lib/wricket/domain/types';
 import { formatOver } from '@/lib/wricket/domain/scoring';
-import { scoreAtLegalBalls, testMatchSituation } from '@/lib/wricket/domain/test-match';
+import { testMatchSituation } from '@/lib/wricket/domain/test-match';
 
 type FeedTab = 'summary' | 'squads' | 'commentary' | 'scorecard' | 'insights';
 const FEED_TABS: { id: FeedTab; label: string }[] = [
-  { id: 'summary', label: 'Summary' },
-  { id: 'squads', label: 'Squads' },
-  { id: 'commentary', label: 'Commentary' },
+  { id: 'summary', label: 'Overview' },
+  { id: 'commentary', label: 'Ball by ball' },
   { id: 'scorecard', label: 'Scorecard' },
-  { id: 'insights', label: 'Insights' },
 ];
 type CelebrationType = 'WICKET' | 'FOUR' | 'SIX' | 'MATCH_WIN';
 interface Celebration {
@@ -31,16 +41,21 @@ interface Celebration {
 }
 
 export default function CloudLiveMatchScreen() {
-  const { id, tab: initialTab } = useLocalSearchParams<{ id: string; tab?: FeedTab }>();
+  const { id, tab: initialTab, share } = useLocalSearchParams<{ id: string; tab?: FeedTab; share?: string }>();
   const router = useRouter();
+  const reducedMotion = useReducedMotion();
   const [match, setMatch] = useState<CloudLiveMatch | null>(null);
   const [context, setContext] = useState<CloudMatchContext>();
   const [contextError, setContextError] = useState(false);
-  const [venueExpanded, setVenueExpanded] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(share === '1');
+  const [historyMatch, setHistoryMatch] = useState<CloudLiveMatch | null>(null);
+  const [pendingUpdates, setPendingUpdates] = useState(false);
+  const browsingHistory = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const loadVersion = useRef(0);
   const [tab, setTab] = useState<FeedTab>(
-    initialTab && FEED_TABS.some(item => item.id === initialTab)
-      ? initialTab
-      : 'summary',
+    initialTab === 'commentary' || initialTab === 'scorecard' ? initialTab : 'summary',
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -53,8 +68,13 @@ export default function CloudLiveMatchScreen() {
 
   const load = useCallback(async () => {
     if (!id) return;
+    const version = ++loadVersion.current;
     try {
-      const next = await liveMatchApi.get(id);
+      const raw = await liveMatchApi.get(id);
+      if (version !== loadVersion.current) return;
+      const next = raw ? { ...raw, commentary: spectatorHistory(raw.commentary) } : null;
+      if (!browsingHistory.current) { setHistoryMatch(next); setPendingUpdates(false); }
+      else if (next && next.score.latestSequence > latestSequenceRef.current) setPendingUpdates(true);
       if (next && initializedRef.current) {
         const completedNow = next.status === 'COMPLETED' && statusRef.current !== 'COMPLETED';
         if (completedNow) {
@@ -73,17 +93,28 @@ export default function CloudLiveMatchScreen() {
       setMatch(next);
       setError(next ? undefined : 'This match is unavailable');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load the live feed');
+      if (version === loadVersion.current) setError(cause instanceof Error ? cause.message : 'Could not load the live feed');
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   }, [id]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const requests = loadVersion;
+    setMatch(null); setHistoryMatch(null); setLoading(true); setPendingUpdates(false);
+    browsingHistory.current = false; initializedRef.current = false;
+    latestSequenceRef.current = 0; statusRef.current = undefined;
+    void load();
+    return () => { requests.current++; };
+  }, [load]);
+  useEffect(() => { setTab(initialTab === 'commentary' || initialTab === 'scorecard' ? initialTab : 'summary'); }, [initialTab]);
   useEffect(() => {
     if (!id) return;
+    let active = true;
+    setContext(undefined);
     setContextError(false);
-    void liveMatchApi.getContext(id).then(setContext).catch(() => setContextError(true));
+    void liveMatchApi.getContext(id).then(next => { if (active) setContext(next); }).catch(() => { if (active) setContextError(true); });
+    return () => { active = false; };
   }, [id]);
   useEffect(() => id ? liveMatchApi.subscribe(id, () => {
     setRealtimeError(undefined);
@@ -93,13 +124,15 @@ export default function CloudLiveMatchScreen() {
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') void load();
     });
-    return () => subscription.remove();
+    // Recover missed updates after a socket reconnect, without clearing cached play.
+    const recovery = setInterval(() => { if (AppState.currentState === 'active') void load(); }, 15000);
+    return () => { subscription.remove(); clearInterval(recovery); };
   }, [load]);
 
   const scorecard = useMemo(() => match ? buildCompleteScorecard(match) : null, [match]);
-  if (loading && !match) return <Screen padded={false}><SportStageLoader message="Connecting to the live feed" detail="Tuning into score, commentary, and match signals" /></Screen>;
+  if (loading && !match) return <Screen padded={false}><Stack.Screen options={{ headerShown: false }} /><WricketHeader title="Match" backTo="/wricket/live" /><SportStageLoader message="Connecting to the live feed" detail="Tuning into score, commentary, and match signals" /></Screen>;
   if (!match) {
-    return <Screen><Stack.Screen options={{ title: 'Live match' }} /><View style={styles.centered}>
+    return <Screen><Stack.Screen options={{ headerShown: false }} /><WricketHeader title="Match" backTo="/wricket/live" /><View style={styles.centered}>
       <Text variant="h2">Match unavailable</Text><Text tone="muted">{error}</Text>
       <Pressable style={styles.retryButton} onPress={() => void load()}>
         <Text variant="bodyStrong" style={{ color: colors.accentInk }}>Try again</Text>
@@ -108,99 +141,42 @@ export default function CloudLiveMatchScreen() {
   }
 
   const insights = calculateInsights(match);
-  const testSituation = currentTestSituation(match);
-  const overComparison = sameOverComparison(match);
-  const battingTeam = match.innings?.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
-  const isComplete = match.status === 'COMPLETED';
-  const isLive = ['IN_PROGRESS', 'INNINGS_BREAK', 'FOLLOW_ON_DECISION'].includes(match.status);
+
   return (
     <Screen padded={false}>
-      <Stack.Screen options={{ title: `${match.teamA.shortName} vs ${match.teamB.shortName}` }} />
+      <Stack.Screen options={{ headerShown: false }} /><WricketHeader title={`${match.teamA.shortName} vs ${match.teamB.shortName}`} backTo="/wricket/live">
+        <Pressable accessibilityRole="button" accessibilityLabel="Share match" onPress={() => setShareOpen(true)} style={{ minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' }}><DesignIcon name="share" /></Pressable>
+      </WricketHeader>
+      <SpectatorMatchHeader match={match} result={spectatorResult(match)} />
       <View style={styles.stickyHeader}>
-        <View style={styles.statusRow}>
-          {isComplete
-            ? <View style={styles.completeTag}><Text variant="overline" tone="accent">COMPLETE</Text></View>
-            : isLive
-              ? <><View style={styles.liveDot} /><Text variant="overline" tone="accent">LIVE</Text></>
-              : <View style={styles.upcomingTag}><Text variant="overline" tone="muted">UPCOMING</Text></View>}
-          <Text variant="caption" tone="muted" style={{ flex: 1 }}>{match.tournamentName}</Text>
-          <MaterialCommunityIcons
-            name={realtimeError ? 'cloud-alert-outline' : 'access-point'}
-            size={20}
-            color={realtimeError ? colors.danger : colors.accent}
-          />
-        </View>
         {(realtimeError || error) && <Card style={{ borderColor: colors.danger }}>
-          <Text variant="caption">{realtimeError ?? error} Pull down to refresh.</Text>
+          <Text variant="caption" accessibilityRole="alert">Updates interrupted. Showing the last received score.</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Retry live updates" onPress={() => void load()} style={{ minHeight: 44, justifyContent: 'center' }}><Text tone="accent">Retry live updates</Text></Pressable>
         </Card>}
 
-        <View style={styles.matchHeader}>
-          <View style={styles.teamsLine}>
-            <Text variant="h2" numberOfLines={1} style={styles.teamName}>{match.teamA.name}</Text>
-            <Text variant="caption" tone="dim">vs</Text>
-            <Text variant="h2" numberOfLines={1} style={[styles.teamName, { textAlign: 'right' }]}>{match.teamB.name}</Text>
-          </View>
-          {match.venue && <Pressable onPress={() => setVenueExpanded(value => !value)} style={styles.venueRow}>
-            <MaterialCommunityIcons name="map-marker-outline" size={15} color={colors.textMuted} />
-            <Text variant="caption" tone="muted" numberOfLines={venueExpanded ? undefined : 1} style={{ flex: 1 }}>{match.venue}</Text>
-            <MaterialCommunityIcons name={venueExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
-          </Pressable>}
-        </View>
-
-        <Card style={styles.hero}>
-          {!isLive && !isComplete ? <>
-            <MaterialCommunityIcons name="cricket" size={30} color={colors.textMuted} />
-            <Text variant="h2" style={{ marginTop: spacing.sm }}>Match yet to start</Text>
-            <Text variant="caption" tone="muted">TOSS AND PLAYING CONDITIONS PENDING</Text>
-          </> : <>
-          <Text variant="overline" tone="muted">{battingTeam.shortName} · INNINGS {match.innings?.sequence ?? 1}</Text>
-          <Text style={styles.score}>{match.score.runs}/{match.score.wickets}</Text>
-          <Text variant="h3" tone="muted">{formatOver(match.score.legalBalls)} overs</Text>
-          {isComplete ? <Text variant="h3" tone="accent" style={{ marginTop: spacing.sm }}>
-            {matchResultText(match)}
-          </Text> : match.innings?.target != null && <Text variant="bodyStrong" style={{ marginTop: spacing.sm }}>
-            Target {match.innings.target} · Need {Math.max(0, match.innings.target - match.score.runs)} runs
-          </Text>}
-          {!isComplete && match.innings?.target == null && testSituation.positionText && <Text variant="bodyStrong" style={{ marginTop: spacing.sm }}>
-            {testSituation.positionText}
-          </Text>}
-          {!isComplete && testSituation.followOnText && <Text variant="caption" tone="accent" style={{ marginTop: spacing.xs }}>
-            {testSituation.followOnText}
-          </Text>}
-          {!isComplete && overComparison && <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>
-            {overComparison}
-          </Text>}
-          {isLive && <View style={styles.quickStats}>
-            <MiniStat label="CRR" value={insights.crr.toFixed(2)} />
-            <MiniStat label="RRR" value={insights.rrr == null ? '—' : insights.rrr.toFixed(2)} />
-            <MiniStat label="BALLS" value={String(insights.ballsRemaining)} />
-          </View>}</>}
-        </Card>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-          {FEED_TABS.map(item => (
-            <Pressable key={item.id} onPress={() => setTab(item.id)} style={[styles.tab, tab === item.id && styles.tabActive]}>
-              <Text variant="caption" tone={tab === item.id ? 'accent' : 'muted'}>
-                {item.label.toUpperCase()}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        <SectionRow label="Match sections" items={FEED_TABS} selected={tab}
+          onSelect={next => { browsingHistory.current = false; setHistoryMatch(match); setPendingUpdates(false); router.setParams({ tab: next }); scrollRef.current?.scrollTo({ y: 0, animated: false }); }} />
       </View>
 
-      <ScrollView
+      {tab === 'commentary' && pendingUpdates ? <Pressable accessibilityRole="button" accessibilityLabel="New updates" onPress={() => { browsingHistory.current = false; setHistoryMatch(match); setPendingUpdates(false); scrollRef.current?.scrollTo({ y: 0, animated: !reducedMotion }); }} style={{ padding: 12, backgroundColor: colors.accentMuted }}><Text tone="accent">New updates · Show latest</Text></Pressable> : null}
+      <ScrollView ref={scrollRef} testID="spectator-history" scrollEventThrottle={100}
+        onScroll={event => { browsingHistory.current = tab === 'commentary' && (event.nativeEvent.contentOffset.y > 100 || pendingUpdates); }}
         style={styles.feedScroll}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
         contentContainerStyle={styles.feedContent}
       >
         {match.tournamentId ? <TournamentSponsors key={match.tournamentId} parent={{ kind: 'cricket', id: match.tournamentId }} placement="match" /> : null}
-        {tab === 'summary' && <Summary match={match} insights={insights} />}
+        {tab === 'summary' && <><View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}><Pressable accessibilityRole="button" accessibilityLabel="Match info" onPress={() => setInfoOpen(true)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 }}><Text variant="caption" tone="accent">Match info</Text><DesignIcon name="arrow" size={14} color={colors.accent} /></Pressable></View><Summary match={match} insights={insights} /></>}
         {tab === 'squads' && <SquadsAndH2H match={match} context={context} failed={contextError} onMeetingPress={matchId => router.push({ pathname: '/wricket/match/[id]/live', params: { id: matchId } })} />}
-        {tab === 'commentary' && <Commentary match={match} />}
+        {tab === 'commentary' && <Commentary match={historyMatch ?? match} />}
         {tab === 'scorecard' && scorecard && <CompleteScorecard match={match} data={scorecard} squads={context?.squads ?? []} />}
         {tab === 'insights' && <Insights match={match} insights={insights} context={context} />}
       </ScrollView>
-      {celebration && (
+      {infoOpen ? <SpectatorMatchInfo visible onClose={() => setInfoOpen(false)} match={match} context={context} failed={contextError}
+        onRetry={() => { setContextError(false); void liveMatchApi.getContext(match.id).then(setContext).catch(() => setContextError(true)); }}
+        onTournament={() => { setInfoOpen(false); router.push({ pathname: '/tournament', params: { id: match.tournamentId! } }); }} /> : null}
+      {shareOpen ? <MatchShare match={match} onClose={() => setShareOpen(false)} /> : null}
+      {celebration && !reducedMotion && (
         <ViewerCelebration celebration={celebration} onDone={clearCelebration} />
       )}
     </Screen>
@@ -306,23 +282,22 @@ function celebrationTheme(type: CelebrationType): {
 }
 
 function Summary({ match, insights }: { match: CloudLiveMatch; insights: MatchInsights }) {
-  if (match.status === 'SETUP' || (!match.commentary.length && match.score.legalBalls === 0)) {
+  if (matchStatus(match.status).terminal && !match.commentary.some(event => event.kind === 'BALL_RECORDED')) return <EmptyState icon="cricket" title="No deliveries recorded" detail="Match information and the official outcome remain available above." />;
+  if (!matchStatus(match.status).terminal && (match.status === 'SETUP' || (!match.commentary.length && match.score.legalBalls === 0))) {
     return <EmptyState icon="cricket" title="Ready for the first ball" detail="The match story will build here as play begins." />;
   }
-  if (match.status === 'COMPLETED') {
+  if (matchStatus(match.status).terminal) {
     const card = buildCompleteScorecard(match);
     const batters = card.flatMap(innings => innings.batters);
     const bowlers = card.flatMap(innings => innings.bowlers);
     const topBatter = [...batters].sort((a, b) => b.runs - a.runs)[0];
     const topBowler = [...bowlers].sort((a, b) => b.wickets - a.wickets || a.runs - b.runs)[0];
     const moments = match.commentary.filter(event => event.kind === 'BALL_RECORDED' && (event.payload.is_wicket || Number(event.payload.runs_bat) >= 6)).slice(0, 3);
-    const winnerId = resultWinner(match);
-    const winner = winnerId === match.teamA.id ? match.teamA : winnerId === match.teamB.id ? match.teamB : undefined;
     return <View style={styles.section}>
       <View style={styles.recapLead}>
         <Text variant="overline" tone="muted">THE STORY</Text>
         <Text variant="h2" style={{ marginTop: spacing.sm }}>
-          {winner ? `${winner.name} controlled the defining passages and finished on top.` : 'A contest decided only after both sides had their moments.'}
+          Recorded performances
         </Text>
       </View>
       <View style={styles.performerGrid}>
@@ -333,49 +308,50 @@ function Summary({ match, insights }: { match: CloudLiveMatch; insights: MatchIn
         <Text variant="overline" tone="muted">KEY MOMENTS</Text>
         {moments.length ? moments.map((event, index) => <View key={event.id} style={styles.momentLine}>
           <Text variant="caption" tone="accent">{String(index + 1).padStart(2, '0')}</Text>
-          <Text variant="body" style={{ flex: 1 }} numberOfLines={2}>{ballLabel(event)} · {commentaryHeadline(match, event)}</Text>
+          <Text variant="body" style={{ flex: 1 }}>{ballLabel(event)} · {commentaryHeadline(match, event)}</Text>
         </View>) : <Text tone="muted" style={{ marginTop: spacing.md }}>No defining delivery was recorded.</Text>}
       </Card>
     </View>;
   }
-  const recentBalls = match.commentary.filter(event => event.kind === 'BALL_RECORDED').slice(0, 5).reverse();
+  const balls = match.commentary.filter(event => event.kind === 'BALL_RECORDED' && event.payload.innings_id === match.innings?.id);
+  const latest = balls[0];
+  const card = buildCompleteScorecard(match).find(item => item.inningsId === match.innings?.id);
+  const pair = latest ? [latest.payload.striker_id, latest.payload.non_striker_id].filter((value): value is string => typeof value === 'string') : [];
+  const active = pair.filter(id => { const row = card?.batters.find(batter => batter.id === id); return !row?.out && row?.dismissal !== 'retired hurt'; });
+  const partnership = currentPartnership(match);
   return <View style={styles.section}>
-    <Card accentColor={colors.accent}>
-      <Text variant="overline" tone="muted">RIGHT NOW</Text>
-      <Text variant="h2" style={{ marginTop: spacing.sm }}>{situationText(match, insights)}</Text>
-      {sameOverComparison(match) && <Text variant="caption" tone="muted" style={{ marginTop: spacing.sm }}>{sameOverComparison(match)}</Text>}
-      <View style={styles.rateRow}>
-        <MiniStat label="RUN RATE" value={insights.crr.toFixed(2)} />
-        <MiniStat label="REQUIRED" value={insights.rrr == null ? '—' : insights.rrr.toFixed(2)} />
-      </View>
-    </Card>
-    <Card>
-      <Text variant="overline" tone="muted">LAST 5 BALLS</Text>
-      <View style={styles.ballStrip}>{recentBalls.map(event => <OutcomeDot key={event.id} event={event} />)}</View>
-    </Card>
-    <View style={styles.storyline}><MaterialCommunityIcons name="lightning-bolt" size={20} color={colors.accent} /><Text variant="bodyStrong" style={{ flex: 1 }}>{liveStoryline(match, insights)}</Text></View>
+    <Text variant="overline" tone="muted">AT THE CREASE</Text>
+    {active.length ? active.map(id => {
+      const batter = card?.batters.find(row => row.id === id);
+      return <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, borderBottomWidth: 1, borderColor: colors.border }}><Text style={{ flex: 1 }}>{playerName(match, id, 'Batter')}</Text><Text variant="h3">{batter?.runs ?? 0}</Text><Text variant="mono" tone="muted">({batter?.balls ?? 0})</Text></View>;
+    }) : <Text tone="muted">Waiting for the next batting pair.</Text>}
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}><Text variant="caption" tone="muted">CURRENT PARTNERSHIP</Text><Text variant="mono">{partnership.runs} from {partnership.balls}</Text></View>
+    <ChaseComparison match={match} />
+    {latest ? <View style={styles.storyline}><DesignIcon name="info" color={colors.accent} /><View style={{ flex: 1 }}><Text variant="bodyStrong">{ballLabel(latest)} · {commentaryHeadline(match, latest)}</Text><Text variant="caption" tone="muted">{liveStoryline(match, insights)}</Text></View></View> : null}
   </View>;
 }
 
 function Commentary({ match }: { match: CloudLiveMatch }) {
   if (!match.commentary.length) return <EmptyState icon="message-text-outline" title="No commentary yet" detail="Deliveries and match events will appear here once scoring begins." />;
   const insights = buildCommentaryInsights(match);
-  return <View style={styles.section}>{match.commentary.map(event => (
-    <View key={event.id} style={[styles.commentaryRow, event.kind !== 'BALL_RECORDED' && styles.systemEvent]}>
-      {event.kind === 'BALL_RECORDED' ? <View style={[styles.ballBadge, outcomeBadgeStyle(event)]}>
-        <Text variant="caption" style={{ color: outcomeColor(event) }}>{ballLabel(event)}</Text>
-      </View> : <View style={styles.systemIcon}><MaterialCommunityIcons name="information-outline" size={18} color={colors.textMuted} /></View>}
-      <View style={{ flex: 1 }}>
-        <Text variant="bodyStrong">{commentaryHeadline(match, event)}</Text>
-        {insights.get(event.id)?.detail && (
-          <Text variant="caption" tone="muted" style={styles.commentaryDetail}>
-            {insights.get(event.id)?.detail}
-          </Text>
-        )}
-        <Text variant="caption" tone="dim">{formatEventTime(event.createdAt)}</Text>
+  return <View style={styles.section}>{match.commentary.map((event, index) => {
+    const innings = match.allInnings.find(item => item.id === event.payload.innings_id);
+    const previous = match.commentary[index - 1];
+    const heading = innings && (!previous || previous.payload.innings_id !== event.payload.innings_id);
+    const team = innings?.battingTeamId === match.teamB.id ? match.teamB : match.teamA;
+    const label = event.kind === 'BALL_RECORDED' ? event.payload.is_wicket ? 'W' : Number(event.payload.runs_extra) > 0 ? 'EX' : String(Number(event.payload.runs_bat ?? 0)) : 'i';
+    return <View key={event.id}>
+      {heading ? <Text variant="overline" tone="muted" style={{ paddingVertical: 14 }}>INNINGS {innings.sequence} · {team.name}</Text> : null}
+      <View style={[styles.commentaryRow, event.kind !== 'BALL_RECORDED' && styles.systemEvent]}>
+        {event.kind === 'BALL_RECORDED' ? <Text variant="mono" tone="muted" style={{ width: 32 }}>{ballLabel(event)}</Text> : null}
+        <View style={[styles.ballBadge, outcomeBadgeStyle(event)]}><Text variant="mono" style={{ color: outcomeColor(event) }}>{label}</Text></View>
+        <View style={{ flex: 1 }}><Text variant="bodyStrong">{commentaryHeadline(match, event)}</Text>
+          {insights.get(event.id)?.detail ? <Text variant="caption" tone="muted" style={styles.commentaryDetail}>{insights.get(event.id)?.detail}</Text> : null}
+          <Text variant="caption" tone="dim">{formatEventTime(event.createdAt)}</Text>
+        </View>
       </View>
-    </View>
-  ))}</View>;
+    </View>;
+  })}</View>;
 }
 
 function SquadsAndH2H({ match, context, failed, onMeetingPress }: { match: CloudLiveMatch; context?: CloudMatchContext; failed: boolean; onMeetingPress: (id: string) => void }) {
@@ -395,7 +371,7 @@ function SquadsAndH2H({ match, context, failed, onMeetingPress }: { match: Cloud
     {section === 'squads' ? <>
       <View><Text variant="h3">Playing XIs</Text><Text variant="caption" tone="muted">Roles and match status</Text></View>
       <View style={styles.squadsGrid}>{[match.teamA, match.teamB].map(team => <View key={team.id} style={styles.squadColumn}>
-        <View style={styles.squadHeader}><Text variant="h3" numberOfLines={1} style={{ flex: 1 }}>{team.shortName}</Text><Text variant="overline" tone="muted">XI</Text></View>
+        <View style={styles.squadHeader}><Text variant="h3" style={{ flex: 1 }}>{team.shortName}</Text><Text variant="overline" tone="muted">XI</Text></View>
         {context.squads.filter(player => player.teamId === team.id).map((player, index) => <SquadRow key={player.id} player={player} number={player.jerseyNo ?? index + 1} status={playerMatchStatus(match, cards, player)} />)}
         {!context.squads.some(player => player.teamId === team.id) && <Text variant="caption" tone="muted" style={styles.squadEmpty}>XI not submitted</Text>}
       </View>)}</View>
@@ -415,23 +391,12 @@ function SquadsAndH2H({ match, context, failed, onMeetingPress }: { match: Cloud
 
 function SquadRow({ player, number, status }: { player: CloudMatchSquadPlayer; number: number; status?: string }) {
   return <View style={styles.squadRow}>
-    <View style={styles.squadPlayerLine}><View style={styles.jerseyBadge}><Text variant="caption">{number}</Text></View><Text variant="bodyStrong" numberOfLines={1} style={{ flex: 1, fontSize: 13 }}>{player.name}</Text></View>
+    <View style={styles.squadPlayerLine}><View style={styles.jerseyBadge}><Text variant="caption">{number}</Text></View><Text variant="bodyStrong" style={{ flex: 1, fontSize: 13 }}>{player.name}</Text></View>
     <View style={styles.squadMetaLine}><View style={styles.roleTag}><Text variant="overline" tone="muted">{player.role}</Text></View>{(player.isCaptain || player.isKeeper) && <Text variant="overline" tone="muted">{player.isCaptain ? 'C' : ''}{player.isCaptain && player.isKeeper ? ' · ' : ''}{player.isKeeper ? 'WK' : ''}</Text>}</View>
-    {status && <Text variant="caption" tone={status.startsWith('BATTING NOW') ? 'accent' : 'muted'} numberOfLines={1} style={styles.squadStatus}>{status}</Text>}
+    {status && <Text variant="caption" tone={status.startsWith('BATTING NOW') ? 'accent' : 'muted'} style={styles.squadStatus}>{status}</Text>}
   </View>;
 }
 
-interface CompleteInningsScorecardData {
-  inningsId: string;
-  sequence: number;
-  battingTeamId: string;
-  totalRuns: number;
-  totalWickets: number;
-  totalBalls: number;
-  batters: { id: string; runs: number; balls: number; fours: number; sixes: number; out: boolean; dismissal?: string }[];
-  bowlers: { id: string; runs: number; balls: number; wickets: number }[];
-}
-type CompleteScorecardData = CompleteInningsScorecardData[];
 interface ScorecardData {
   batters: { id: string; runs: number; balls: number; fours: number; sixes: number; out: boolean; dismissal?: string }[];
   bowlers: { id: string; runs: number; balls: number; wickets: number }[];
@@ -482,99 +447,29 @@ function CompleteScorecard({
   return <View style={styles.section}>
     <View style={styles.inningsSwitcher}>{data.map((item, index) => {
       const team = item.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
-      return <Pressable key={item.inningsId} onPress={() => setSelected(index)} style={[styles.inningsPill, selected === index && styles.inningsPillActive]}>
+      return <Pressable key={item.inningsId} accessibilityRole="tab" accessibilityLabel={`Innings ${item.sequence}: ${team.name}`} accessibilityState={{ selected: selected === index }} onPress={() => setSelected(index)} style={[styles.inningsPill, selected === index && styles.inningsPillActive]}>
         <Text variant="caption" tone={selected === index ? 'accent' : 'muted'}>{team.shortName} {item.totalRuns}/{item.totalWickets}</Text>
       </Pressable>;
     })}</View>
-    <View style={styles.scorecardHeading}><View><Text variant="h3">{battingTeam.name}</Text><Text variant="caption" tone="muted">INNINGS {innings.sequence} · {formatOver(innings.totalBalls)} OV</Text></View><Text variant="h2" tone="accent">{innings.totalRuns}/{innings.totalWickets}</Text></View>
-    <Card style={styles.tableCard}>
+    <Text variant="caption" tone="muted">{battingTeam.name} · innings {innings.sequence} · {formatOver(innings.totalBalls)} ov</Text>
+    <View>
       <Text variant="overline" tone="muted">BATTING</Text>
       <BattingHeader />
-      {innings.batters.map(row => <BattingRow key={row.id} name={playerName(match, row.id, 'Batter')} row={row} live={!row.out && match.status !== 'COMPLETED'} />)}
-      {match.status !== 'COMPLETED' && yetToBat.length > 0 && <><Text variant="overline" tone="dim" style={styles.groupLabel}>YET TO BAT</Text>{yetToBat.map(player => <Text key={player.id} variant="caption" tone="muted" style={styles.yetToBat}>{player.name}</Text>)}</>}
-    </Card>
-    <Card style={styles.tableCard}>
+      {innings.batters.map(row => <BattingRow key={row.id} name={playerName(match, row.id, 'Batter')} row={row} live={!row.out && !row.dismissal && innings.inningsId === match.innings?.id && match.status === 'IN_PROGRESS'} />)}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 14 }}><Text variant="caption" tone="muted">Extras / adjustments</Text><Text variant="mono">{innings.totalRuns - innings.batters.reduce((sum, row) => sum + row.runs, 0)}</Text></View>
+      {yetToBat.length > 0 && <Card><Text variant="overline" tone="dim">{matchStatus(match.status).terminal ? 'DID NOT BAT' : 'YET TO BAT'}</Text><Text variant="caption" tone="muted" style={{ marginTop: 8 }}>{yetToBat.map(player => player.name).join(', ')}</Text></Card>}
+    </View>
+    <View>
       <Text variant="overline" tone="muted">BOWLING</Text>
       <BowlingHeader />
       {innings.bowlers.map(row => <BowlingRow key={row.id} name={playerName(match, row.id, 'Bowler')} row={row} />)}
-    </Card>
-    {match.status === 'COMPLETED' && <Card><Text variant="overline" tone="muted">FALL OF WICKETS</Text><Text variant="body" style={{ marginTop: spacing.sm }}>{falls.length ? falls.map((event, index) => `${index + 1}-${ballLabel(event)}`).join('  ·  ') : 'No wickets fell.'}</Text></Card>}
+    </View>
+    {falls.length > 0 && <Card><Text variant="overline" tone="muted">WICKET DELIVERIES</Text><Text variant="body" style={{ marginTop: spacing.sm }}>{falls.map(event => `${ballLabel(event)} · ${playerName(match, event.payload.out_player_id, 'Batter')}`).join('  ·  ')}</Text></Card>}
   </View>;
 }
 
-function buildCompleteScorecard(match: CloudLiveMatch): CompleteScorecardData {
-  const rowsByInnings = new Map<string, {
-    batters: Map<string, CompleteInningsScorecardData['batters'][number]>;
-    bowlers: Map<string, CompleteInningsScorecardData['bowlers'][number]>;
-  }>();
-  match.allInnings.forEach(innings => {
-    rowsByInnings.set(innings.id, { batters: new Map(), bowlers: new Map() });
-  });
-
-  [...match.commentary].reverse().forEach(event => {
-    if (event.kind !== 'BALL_RECORDED') return;
-    const payload = event.payload;
-    const rows = rowsByInnings.get(String(payload.innings_id ?? ''));
-    if (!rows) return;
-    const striker = String(payload.striker_id ?? '');
-    const bowler = String(payload.bowler_id ?? '');
-    const batRuns = Number(payload.runs_bat ?? 0);
-    const extraKind = String(payload.extra_kind ?? '');
-    const bowlerRuns = batRuns +
-      (extraKind === 'BYE' || extraKind === 'LEG_BYE' ? 0 : Number(payload.runs_extra ?? 0));
-    const legal = Boolean(payload.is_legal);
-
-    if (striker) {
-      const batter = rows.batters.get(striker) ??
-        { id: striker, runs: 0, balls: 0, fours: 0, sixes: 0, out: false };
-      batter.runs += batRuns;
-      batter.balls += legal ? 1 : 0;
-      batter.fours += batRuns === 4 ? 1 : 0;
-      batter.sixes += batRuns === 6 ? 1 : 0;
-      rows.batters.set(striker, batter);
-    }
-    if (bowler) {
-      const bowling = rows.bowlers.get(bowler) ?? { id: bowler, runs: 0, balls: 0, wickets: 0 };
-      bowling.runs += bowlerRuns;
-      bowling.balls += legal ? 1 : 0;
-      if (
-        payload.is_wicket &&
-        !['RUN_OUT', 'RETIRED_OUT', 'OBSTRUCTING_FIELD', 'TIMED_OUT'].includes(
-          String(payload.dismissal_kind ?? ''),
-        )
-      ) {
-        bowling.wickets += 1;
-      }
-      rows.bowlers.set(bowler, bowling);
-    }
-    const outId = typeof payload.out_player_id === 'string' ? payload.out_player_id : undefined;
-    if (outId) {
-      const batter = rows.batters.get(outId) ??
-        { id: outId, runs: 0, balls: 0, fours: 0, sixes: 0, out: false };
-      batter.out = true;
-      batter.dismissal = dismissalScorecardText(match, event);
-      rows.batters.set(outId, batter);
-    }
-  });
-
-  return match.allInnings.map(innings => {
-    const rows = rowsByInnings.get(innings.id)!;
-    return {
-      inningsId: innings.id,
-      sequence: innings.sequence,
-      battingTeamId: innings.battingTeamId,
-      totalRuns: innings.totalRuns,
-      totalWickets: innings.totalWickets,
-      totalBalls: innings.totalBalls,
-      batters: [...rows.batters.values()],
-      bowlers: [...rows.bowlers.values()],
-    };
-  });
-}
 
 function Insights({ match, insights, context }: { match: CloudLiveMatch; insights: MatchInsights; context?: CloudMatchContext }) {
-  const batting = match.innings?.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
-  const bowling = batting.id === match.teamA.id ? match.teamB : match.teamA;
   if (!match.commentary.some(event => event.kind === 'BALL_RECORDED')) return <EmptyState icon="chart-line" title="Insights need match data" detail="Trends will appear once enough deliveries have been recorded." />;
   if (match.status === 'COMPLETED') {
     const teamATotal = matchTotal(match, match.teamA.id);
@@ -590,23 +485,13 @@ function Insights({ match, insights, context }: { match: CloudLiveMatch; insight
         <View style={{ flex: 1 }}><Text variant="overline" style={{ color: colors.gold }}>{performer ? 'PLAYER OF THE MATCH' : 'STANDOUT BATTER'}</Text><Text variant="h2" style={{ marginTop: spacing.xs }}>{performer?.name ?? (best ? playerName(match, best.id, 'Top performer') : 'Top performer')}</Text><Text variant="caption" tone="muted">{performer?.reason ?? (best ? `${best.runs} runs set the match's batting benchmark.` : 'Decisive contribution across the match.')}</Text></View>
       </Card>
       <Card><Text variant="overline" tone="muted">RUN-RATE COMPARISON</Text><RateComparison label={match.teamA.shortName} value={runRate(teamATotal)} max={Math.max(runRate(teamATotal), runRate(teamBTotal), 1)} /><RateComparison label={match.teamB.shortName} value={runRate(teamBTotal)} max={Math.max(runRate(teamATotal), runRate(teamBTotal), 1)} /></Card>
-      <Card accentColor={colors.gold}><Text variant="overline" style={{ color: colors.gold }}>TURNING POINT</Text><Text variant="h3" style={{ marginTop: spacing.sm }}>{turningPoint ? `${ballLabel(turningPoint)} · ${commentaryHeadline(match, turningPoint)}` : 'No single delivery separated the teams.'}</Text></Card>
+      <Card accentColor={colors.gold}><Text variant="overline" style={{ color: colors.gold }}>RECORDED HIGHLIGHT</Text><Text variant="h3" style={{ marginTop: spacing.sm }}>{turningPoint ? `${ballLabel(turningPoint)} · ${commentaryHeadline(match, turningPoint)}` : 'No boundary or wicket is available.'}</Text></Card>
     </View>;
   }
   const partnership = currentPartnership(match);
   const phases = phaseRates(match);
   return <View style={styles.section}>
-    <Card>
-      <Text variant="overline" tone="muted">WIN PROBABILITY</Text>
-      <View style={styles.probabilityBar}>
-        <View style={[styles.probabilityFill, { width: `${insights.battingWinProbability}%` }]} />
-      </View>
-      <View style={styles.probabilityLabels}>
-        <Text variant="bodyStrong">{batting.shortName} {insights.battingWinProbability}%</Text>
-        <Text variant="bodyStrong">{bowling.shortName} {100 - insights.battingWinProbability}%</Text>
-      </View>
-    </Card>
-    <View style={styles.insightGrid}><InsightCard label="PARTNERSHIP" value={`${partnership.runs} (${partnership.balls})`} /><InsightCard label="PROJECTED" value={String(insights.projectedScore)} /></View>
+    <View style={styles.insightGrid}><InsightCard label="PARTNERSHIP" value={`${partnership.runs} (${partnership.balls})`} /></View>
     <Card><Text variant="overline" tone="muted">PHASE RUN RATE</Text>{phases.map(phase => <RateComparison key={phase.label} label={phase.label} value={phase.rate} max={Math.max(...phases.map(item => item.rate), 1)} />)}</Card>
   </View>;
 }
@@ -690,7 +575,7 @@ function commentaryHeadline(match: CloudLiveMatch, event: CloudMatchEvent): stri
   if (event.kind === 'BALL_CORRECTED') return 'Previous delivery corrected.';
   if (event.kind === 'SCORE_ADJUSTED') return `Score adjusted by ${Number(p.runs ?? 0)} runs.`;
   if (event.kind === 'BATTER_RETIRED') return 'Batter retired.';
-  if (event.kind === 'INNINGS_ENDED') return 'End of innings.';
+  if (event.kind === 'INNINGS_ENDED' || event.kind === 'INNINGS_CLOSED') return 'End of innings.';
   if (event.kind === 'MATCH_COMPLETED') return 'Match completed.';
   return event.kind.replaceAll('_', ' ').toLowerCase();
 }
@@ -855,66 +740,9 @@ function ballLabel(event: CloudMatchEvent) {
   if (event.kind !== 'BALL_RECORDED') return `#${event.sequence}`;
   return `${Number(event.payload.over_no ?? 0)}.${Number(event.payload.legal_ball_in_over ?? 0)}`;
 }
-function currentTestSituation(match: CloudLiveMatch, currentRuns = match.score.runs) {
-  if (!match.innings) return {};
-  const fallback = DEFAULT_RULES[match.format as MatchFormat] ?? DEFAULT_RULES.TURF;
-  return testMatchSituation({
-    format: match.format,
-    followOnEnabled: Boolean(match.rules.followOnEnabled ?? fallback.followOnEnabled),
-    oversPerInnings: Number(match.rules.oversPerInnings ?? fallback.oversPerInnings),
-    currentInnings: match.innings,
-    currentRuns,
-    innings: match.allInnings,
-    teamName: teamId => teamId === match.teamA.id ? match.teamA.name : match.teamB.name,
-  });
-}
 
-function sameOverComparison(match: CloudLiveMatch): string | undefined {
-  if (match.format !== 'TURF_TEST' || !match.innings || match.score.legalBalls === 0) return undefined;
-  const reference = [...match.allInnings]
-    .filter(item => item.sequence < match.innings!.sequence && item.battingTeamId !== match.innings!.battingTeamId)
-    .sort((a, b) => b.sequence - a.sequence)[0];
-  if (!reference || reference.totalBalls < match.score.legalBalls) return undefined;
-  const referenceScore = scoreAtLegalBalls(match.commentary, reference.id, match.score.legalBalls);
-  const referenceTeam = reference.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
-  const battingTeam = match.innings.battingTeamId === match.teamA.id ? match.teamA : match.teamB;
-  const difference = match.score.runs - referenceScore;
-  const comparison = difference === 0
-    ? 'level'
-    : `${Math.abs(difference)} run${Math.abs(difference) === 1 ? '' : 's'} ${difference > 0 ? 'ahead' : 'behind'}`;
-  return `At ${formatOver(match.score.legalBalls)} ov: ${battingTeam.shortName} ${match.score.runs}, ${referenceTeam.shortName} were ${referenceScore} · ${comparison}`;
-}
 
-function situationText(match: CloudLiveMatch, insights: MatchInsights) {
-  if (match.status === 'COMPLETED') return matchResultText(match);
-  if (match.innings?.target != null) {
-    return `${Math.max(0, match.innings.target - match.score.runs)} runs needed from ${insights.ballsRemaining} balls`;
-  }
-  const testSituation = currentTestSituation(match);
-  if (testSituation.positionText) return testSituation.positionText;
-  return `Projected score ${insights.projectedScore} at the current rate`;
-}
 
-function matchResultText(match: CloudLiveMatch): string {
-  const kind = String(match.result?.kind ?? match.result?.resultKind ?? match.result?.result_kind ?? '');
-  if (kind === 'TIE') return 'Match tied';
-  if (kind === 'NO_RESULT') return 'No result';
-  if (kind === 'CANCELLED') return 'Match cancelled';
-  const winnerId = stringValue(match.result?.winnerTeamId) ?? stringValue(match.result?.winner_team_id);
-  const winner = winnerId === match.teamA.id ? match.teamA.name : winnerId === match.teamB.id ? match.teamB.name : undefined;
-  const marginValue = match.result?.margin;
-  const margin = typeof marginValue === 'number' ? marginValue : Number(marginValue);
-  const unitValue = match.result?.marginUnit ?? match.result?.margin_unit;
-  if (kind === 'WALKOVER' && winner) return `${winner} won by walkover`;
-  if (winner && Number.isFinite(margin) && typeof unitValue === 'string') {
-    const normalized = unitValue.toLowerCase();
-    const unit = margin === 1 ? normalized.replace(/s$/, '') : normalized;
-    return kind === 'WIN_BY_INNINGS'
-      ? `${winner} won by an innings and ${margin} ${unit}`
-      : `${winner} won by ${margin} ${unit}`;
-  }
-  return winner ? `${winner} won the match` : inferCompletedResult(match);
-}
 
 function matchTotal(match: CloudLiveMatch, teamId: string) {
   return match.allInnings.filter(innings => innings.battingTeamId === teamId).reduce((total, innings) => ({
@@ -924,27 +752,10 @@ function matchTotal(match: CloudLiveMatch, teamId: string) {
   }), { runs: 0, wickets: 0, balls: 0 });
 }
 
-function inferCompletedResult(match: CloudLiveMatch): string {
-  const a = matchTotal(match, match.teamA.id);
-  const b = matchTotal(match, match.teamB.id);
-  if (a.runs === b.runs) return 'Match tied';
-  const winner = a.runs > b.runs ? match.teamA.name : match.teamB.name;
-  return `${winner} won the match`;
-}
-function resultWinner(match: CloudLiveMatch): string | undefined {
-  return stringValue(match.result?.winnerTeamId) ?? stringValue(match.result?.winner_team_id);
-}
 function liveStoryline(match: CloudLiveMatch, insights: MatchInsights): string {
-  if (match.innings?.target != null) {
-    const needed = Math.max(0, match.innings.target - match.score.runs);
-    if (insights.ballsRemaining <= 12) return `${needed} needed from the final ${insights.ballsRemaining} balls. Every delivery matters.`;
-    return insights.rrr != null && insights.rrr > insights.crr
-      ? `The chase needs an acceleration before the required rate climbs further.`
-      : `The batting side is keeping pace with the chase.`;
-  }
-  return match.score.wickets >= 3
-    ? 'The next partnership will decide whether this innings can rebuild.'
-    : `A wicket now would disrupt a projected ${insights.projectedScore}.`;
+  return match.innings?.target != null
+    ? `${Math.max(0, match.innings.target - match.score.runs)} runs needed from ${insights.ballsRemaining} balls.`
+    : `${match.score.runs} runs from ${formatOver(match.score.legalBalls)} overs; ${match.score.wickets} wickets recorded.`;
 }
 function outcomeColor(event: CloudMatchEvent): string {
   if (event.payload.is_wicket) return colors.wicket;
@@ -964,8 +775,10 @@ function currentPartnership(match: CloudLiveMatch): { runs: number; balls: numbe
   let runs = 0;
   let balls = 0;
   for (const event of match.commentary) {
+    if (event.payload.innings_id !== match.innings?.id) continue;
+    if (event.kind === 'BATTER_RETIRED') break;
     if (event.kind !== 'BALL_RECORDED') continue;
-    if (event.payload.is_wicket && (runs > 0 || balls > 0)) break;
+    if (event.payload.is_wicket) break;
     runs += Number(event.payload.runs_bat ?? 0) + Number(event.payload.runs_extra ?? 0);
     balls += event.payload.is_legal ? 1 : 0;
   }
@@ -999,9 +812,6 @@ function playerMatchStatus(match: CloudLiveMatch, cards: CompleteScorecardData, 
   if (match.status !== 'COMPLETED' && match.innings?.battingTeamId === player.teamId) return 'YET TO BAT';
   return undefined;
 }
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return <View style={{ flex: 1, alignItems: 'center' }}><Text variant="caption" tone="dim">{label}</Text><Text variant="h3">{value}</Text></View>;
-}
 function InsightCard({ label, value }: { label: string; value: string }) {
   return <Card style={{ width: '48%' }}><Text variant="caption" tone="dim">{label}</Text><Text variant="h2">{value}</Text></Card>;
 }
@@ -1012,25 +822,21 @@ function StatRow({ name, subtitle, values }: { name: string; subtitle?: string; 
   return <View style={styles.statRow}><View style={styles.statName}><Text variant="bodyStrong">{name}</Text>{subtitle ? <Text variant="caption" tone="muted">{subtitle}</Text> : null}</View>{values.map((value, i) => <Text key={i} variant="body" style={styles.statValue}>{value}</Text>)}</View>;
 }
 function PerformerCard({ icon, label, name, stat }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; name: string; stat: string }) {
-  return <Card style={styles.performerCard}><MaterialCommunityIcons name={icon} size={20} color={colors.accent} /><Text variant="overline" tone="muted" style={{ marginTop: spacing.md }}>{label}</Text><Text variant="bodyStrong" numberOfLines={1}>{name}</Text><Text variant="caption" tone="accent">{stat}</Text></Card>;
-}
-function OutcomeDot({ event }: { event: CloudMatchEvent }) {
-  const label = event.payload.is_wicket ? 'W' : Number(event.payload.runs_extra) > 0 ? 'EX' : String(Number(event.payload.runs_bat ?? 0));
-  return <View style={[styles.outcomeDot, { borderColor: outcomeColor(event) }]}><Text variant="caption" style={{ color: outcomeColor(event) }}>{label}</Text></View>;
+  return <Card style={styles.performerCard}><MaterialCommunityIcons name={icon} size={20} color={colors.accent} /><Text variant="overline" tone="muted" style={{ marginTop: spacing.md }}>{label}</Text><Text variant="bodyStrong">{name}</Text><Text variant="caption" tone="accent">{stat}</Text></Card>;
 }
 const tableNumberStyle = { width: 31, textAlign: 'right' as const };
 function BattingHeader() {
   return <View style={[styles.tableLine, styles.tableHeader]}><Text variant="caption" tone="dim" style={{ flex: 1 }}>BATTER</Text>{['R', 'B', '4S', '6S', 'SR'].map(label => <Text key={label} variant="caption" tone="dim" style={tableNumberStyle}>{label}</Text>)}</View>;
 }
 function BattingRow({ name, row, live }: { name: string; row: CompleteInningsScorecardData['batters'][number]; live: boolean }) {
-  return <View style={styles.tableLine}><View style={{ flex: 1, paddingRight: spacing.xs }}><Text variant="bodyStrong" numberOfLines={1}>{name}{live ? ' *' : ''}</Text>{row.dismissal && <Text variant="caption" tone="muted" numberOfLines={1}>{row.dismissal}</Text>}</View>{[row.runs, row.balls, row.fours, row.sixes, row.balls ? (row.runs * 100 / row.balls).toFixed(0) : '0'].map((value, index) => <Text key={index} variant="caption" style={tableNumberStyle}>{value}</Text>)}</View>;
+  return <View style={styles.tableLine}><View style={{ flex: 1, paddingRight: spacing.xs }}><Text variant="bodyStrong">{name}{live ? ' *' : ''}</Text>{row.dismissal && <Text variant="caption" tone="muted">{row.dismissal}</Text>}</View>{[row.runs, row.balls, row.fours, row.sixes, row.balls ? (row.runs * 100 / row.balls).toFixed(0) : '0'].map((value, index) => <Text key={index} variant="caption" style={tableNumberStyle}>{value}</Text>)}</View>;
 }
 function BowlingHeader() {
   return <View style={[styles.tableLine, styles.tableHeader]}><Text variant="caption" tone="dim" style={{ flex: 1 }}>BOWLER</Text>{['O', 'R', 'W', 'ECON'].map(label => <Text key={label} variant="caption" tone="dim" style={[tableNumberStyle, label === 'ECON' && { width: 42 }]}>{label}</Text>)}</View>;
 }
 function BowlingRow({ name, row }: { name: string; row: CompleteInningsScorecardData['bowlers'][number] }) {
   const economy = row.balls ? row.runs * 6 / row.balls : 0;
-  return <View style={styles.tableLine}><Text variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>{name}</Text>{[formatOver(row.balls), row.runs, row.wickets, economy.toFixed(1)].map((value, index) => <Text key={index} variant="caption" style={[tableNumberStyle, index === 3 && { width: 42 }]}>{value}</Text>)}</View>;
+  return <View style={styles.tableLine}><Text variant="bodyStrong" style={{ flex: 1 }}>{name}</Text>{[formatOver(row.balls), row.runs, row.wickets, economy.toFixed(1)].map((value, index) => <Text key={index} variant="caption" style={[tableNumberStyle, index === 3 && { width: 42 }]}>{value}</Text>)}</View>;
 }
 function RateComparison({ label, value, max }: { label: string; value: number; max: number }) {
   return <View style={styles.rateComparison}><View style={styles.rateLabel}><Text variant="caption" tone="muted">{label}</Text><Text variant="caption">{value.toFixed(2)}</Text></View><View style={styles.rateTrack}><View style={[styles.rateFill, { width: `${Math.min(100, value / max * 100)}%` }]} /></View></View>;
@@ -1044,8 +850,8 @@ function SkeletonRows() {
 
 const styles = StyleSheet.create({
   stickyHeader: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: 0,
+    paddingTop: 0,
     gap: spacing.md,
     backgroundColor: colors.bg,
     borderBottomWidth: 1,
@@ -1053,8 +859,8 @@ const styles = StyleSheet.create({
   },
   feedScroll: { flex: 1 },
   feedContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: 18,
+    paddingTop: 18,
     paddingBottom: spacing.xxxl,
   },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
@@ -1082,13 +888,13 @@ const styles = StyleSheet.create({
   rateRow: { flexDirection: 'row', marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   ballStrip: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
   outcomeDot: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated },
-  storyline: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.xs, paddingVertical: spacing.sm },
+  storyline: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, backgroundColor: '#20331f', borderWidth: 1, borderColor: '#3e5e34', borderRadius: 10 },
   resultCard: { alignItems: 'center', gap: spacing.sm, borderColor: colors.gold, backgroundColor: colors.goldMuted },
   commentaryRow: { flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   systemEvent: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.md },
   systemIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   commentaryDetail: { marginTop: spacing.xs, lineHeight: 18 },
-  ballBadge: { minWidth: 45, height: 34, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
+  ballBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
   wicketBadge: { borderWidth: 1, borderColor: colors.danger },
   insightGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   potmCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderColor: colors.gold },
@@ -1099,8 +905,8 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
   statName: { flex: 1 },
   statValue: { width: 48, textAlign: 'right' },
-  inningsSwitcher: { flexDirection: 'row', padding: spacing.xs, gap: spacing.xs, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  inningsPill: { flex: 1, minHeight: 36, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
+  inningsSwitcher: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  inningsPill: { minHeight: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 20, borderWidth: 1, borderColor: colors.border },
   inningsPillActive: { backgroundColor: colors.accentMuted, borderWidth: 1, borderColor: colors.accent },
   scorecardHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tableCard: { paddingHorizontal: spacing.md },

@@ -1,0 +1,15 @@
+appId: com.vcreativestudio.sportstage.e2e
+---
+- launchApp:
+    clearState: true
+- openLink: sportstage-e2e://auth
+- assertVisible: Welcome back
+- tapOn: Sign in with password
+- tapOn: Email
+- inputText: invalid-email
+- tapOn: Password
+- inputText: invalid-password
+- hideKeyboard
+- tapOn: Sign in
+- assertVisible: Enter a valid email address.
+- takeScreenshot: auth-validation

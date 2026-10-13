@@ -4,6 +4,19 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "e2e": {
+      "environment": "development",
+      "distribution": "internal",
+      "env": {
+        "APP_ENV": "test",
+        "EXPO_NO_DOTENV": "1",
+        "EXPO_PUBLIC_WRICKET_E2E": "true",
+        "EXPO_PUBLIC_SUPABASE_URL": "http://127.0.0.1:54321",
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_e2e_offline_smoke"
+      },
+      "android": { "buildType": "apk" },
+      "ios": { "simulator": true }
+    },
     "development": {
       "environment": "development",
       "distribution": "internal",
@@ -30,6 +43,12 @@
         "buildType": "apk"
       }
     },
+    "production-recovery": {
+      "extends": "production",
+      "env": {
+        "EXPO_PUBLIC_WRICKET_SCORING_UI": "recovery-v1"
+      }
+    },
     "production": {
       "environment": "production",
       "autoIncrement": true,
@@ -48,4 +67,3 @@
     }
   }
 }
-

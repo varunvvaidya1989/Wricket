@@ -1,16 +1,18 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
+import React, { useEffect, useState } from 'react';
+
+
+import { StageSportPreferences } from '@/components/sports/platform/StageSportPreferences';
+import { StageButton, StageField, StageIntro, StageNotice, StagePage } from '@/components/sports/platform/StageUI';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Button } from '@/components/ui/Button';
-import { Text } from '@/components/ui/Text';
+
+
 import { isSportReleased } from '@/lib/sports/platform/sportRelease';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
+
+
 import { SportOption, sportstageAccountApi } from '@/lib/supabase/sportstageAccountApi';
-import { SportMultiSelect } from '@/components/sports/SportMultiSelect';
-import { SportStageSignOutActions } from '@/components/auth/SportStageSignOutActions';
+
+
 
 export default function OnboardingScreen() {
   const auth = useAuth();
@@ -26,36 +28,30 @@ export default function OnboardingScreen() {
   const [sports, setSports] = useState<SportOption[]>([]);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { void sportstageAccountApi.listSports().then(setSports).catch(cause => Alert.alert('Could not load sports', cause instanceof Error ? cause.message : 'Please try again.')); }, []);
+  const [error, setError] = useState<string>();
+  const load = () => { setError(undefined); void sportstageAccountApi.listSports().then(setSports).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not load sports.')); };
+  useEffect(load, []);
 
   const complete = async () => {
-    setSaving(true);
+    if (!selectedSportCodes.length || !selectedSportCodes.includes(primarySportCode) || displayName.trim().length < 2) return;
+    setSaving(true); setError(undefined);
     try {
       await sportstageAccountApi.saveSports(displayName, selectedSportCodes, primarySportCode);
       await auth.refreshProfile();
     } catch (cause) {
-      Alert.alert('Could not finish setup', cause instanceof Error ? cause.message : 'Please try again.');
+      setError(cause instanceof Error ? cause.message : 'Could not finish setup.');
     } finally { setSaving(false); }
   };
 
-  return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-    <View style={styles.brand}><MaterialCommunityIcons name="account-check-outline" size={30} color={colors.accentInk} /></View>
-    <Text variant="overline" tone="accent">ONE LAST STEP</Text>
-    <Text variant="h1">Set up SportStage</Text>
-    <Text variant="body" tone="muted">Choose every sport you follow or play, then mark one as primary. Roles are assigned later within each tournament or team.</Text>
-    <TextInput value={displayName} onChangeText={setDisplayName} placeholder="Display name" placeholderTextColor={colors.textDim} style={styles.input} />
-    <SportMultiSelect sports={sports} selectedCodes={selectedSportCodes} primaryCode={primarySportCode} onToggle={code => toggleSport(code, selectedSportCodes, primarySportCode, setSelectedSportCodes, setPrimarySportCode)} onPrimary={setPrimarySportCode} />
-    <Text variant="caption" tone="dim">{selectedSportCodes.length} selected · {sports.find(sport => sport.code === primarySportCode)?.name ?? primarySportCode} is primary</Text>
-    <Button title="Continue" onPress={() => void complete()} loading={saving} disabled={!selectedSportCodes.length || !selectedSportCodes.includes(primarySportCode) || displayName.trim().length < 2} fullWidth />
-    <SportStageSignOutActions />
-  </ScrollView>;
+  return <StagePage focused title="Your sports" footer={<StageButton primary title="Save & continue" onPress={() => void complete()} loading={saving} disabled={!sports.length || !selectedSportCodes.length || !selectedSportCodes.includes(primarySportCode) || displayName.trim().length < 2} />}>
+    <StageIntro eyebrow="MAKE IT YOURS" title="What do you play?" description="Choose your sports. You can change these from your profile anytime." />
+    <StageField label="Display name" placeholder="Display name" value={displayName} onChangeText={setDisplayName} />
+    {error ? <StageNotice retry={load}>{error}</StageNotice> : !sports.length ? <StageNotice>Loading your sports…</StageNotice> : null}
+    <StageSportPreferences sports={sports} selectedCodes={selectedSportCodes} primaryCode={primarySportCode} onToggle={code => toggleSport(code, selectedSportCodes, primarySportCode, setSelectedSportCodes, setPrimarySportCode)} onPrimary={setPrimarySportCode} />
+    <StageNotice>{selectedSportCodes.length} selected · {sports.find(sport => sport.code === primarySportCode)?.name ?? primarySportCode} is primary</StageNotice>
+    <StageButton title="Sign out" loading={saving} onPress={() => { setSaving(true); void auth.signOutCurrentDevice().catch(cause => setError(cause instanceof Error ? cause.message : 'Could not sign out.')).finally(() => setSaving(false)); }} />
+  </StagePage>;
 }
-
-const styles = StyleSheet.create({
-  content: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.md, backgroundColor: colors.bg },
-  brand: { width: 58, height: 58, borderRadius: radius.lg, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
-  input: { minHeight: 50, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: spacing.md, fontSize: 16 },
-});
 
 function toggleSport(code: string, selected: string[], primary: string, setSelected: (codes: string[]) => void, setPrimary: (code: string) => void) {
   if (selected.includes(code)) {

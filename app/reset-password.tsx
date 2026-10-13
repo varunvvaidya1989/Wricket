@@ -1,47 +1,44 @@
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Alert, StyleSheet, TextInput, View } from 'react-native';
-
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Button } from '@/components/ui/Button';
-import { Text } from '@/components/ui/Text';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
+import { StageButton, StageField, StageIntro, StageNotice, StagePage } from '@/components/sports/platform/StageUI';
+import { safeAuthReturnTo } from '@/lib/auth/returnTo';
 import { authErrorMessage } from '@/lib/supabase/authErrors';
 
 export default function ResetPasswordScreen() {
   const auth = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams<{ returnTo?: string }>();
+  const [callbackReturnTo, setCallbackReturnTo] = useState<string>();
+  const returnTo = safeAuthReturnTo(params.returnTo) ?? callbackReturnTo;
+  useEffect(() => {
+    let active = true;
+    // The authentication token fragment can replace the router's initial
+    // query state during session restoration. Keep the validated callback task.
+    void Linking.getInitialURL().then(url => {
+      if (active && url) setCallbackReturnTo(safeAuthReturnTo(Linking.parse(url).queryParams?.returnTo));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [saving, setSaving] = useState(false);
-
+  const [error, setError] = useState<string>();
   const update = async () => {
-    if (!auth.session) return Alert.alert('Reset link required', 'Open this screen from the link in your password reset email.');
-    if (password.length < 8) return Alert.alert('Password too short', 'Use at least 8 characters.');
-    if (password !== confirmation) return Alert.alert('Passwords do not match', 'Enter the same password twice.');
-    setSaving(true);
-    try {
-      await auth.updatePassword(password);
-      Alert.alert('Password updated', 'You can now use your new password.');
-      router.replace('/');
-    } catch (cause) {
-      Alert.alert('Could not update password', authErrorMessage(cause, 'Please request a new reset link and try again.'));
-    } finally { setSaving(false); }
+    if (!auth.session) { setError('Open the newest link from your password reset email.'); return; }
+    if (password.length < 8) { setError('Use at least 8 characters.'); return; }
+    if (password !== confirmation) { setError('Enter the same password twice.'); return; }
+    setSaving(true); setError(undefined);
+    try { await auth.updatePassword(password); router.replace((returnTo ?? '/live') as Href); }
+    catch (cause) { setError(authErrorMessage(cause, 'Please request a new reset link and try again.')); }
+    finally { setSaving(false); }
   };
-
-  return <View style={styles.page}>
-    <Text variant="overline" tone="accent">SPORTSTAGE SECURITY</Text>
-    <Text variant="h1">Choose a new password</Text>
-    <Text variant="body" tone="muted">Use at least eight characters and avoid reusing an old password.</Text>
-    <TextInput value={password} onChangeText={setPassword} placeholder="New password" placeholderTextColor={colors.textDim} secureTextEntry style={styles.input} />
-    <TextInput value={confirmation} onChangeText={setConfirmation} placeholder="Confirm new password" placeholderTextColor={colors.textDim} secureTextEntry style={styles.input} />
-    <Button title="Update password" onPress={() => void update()} loading={saving} fullWidth />
-    {!auth.session ? <Button title="Request another link" variant="ghost" onPress={() => router.replace('/forgot-password')} fullWidth /> : null}
-  </View>;
+  return <StagePage focused title="New password" footer={<StageButton primary title="Save password" loading={saving} disabled={!auth.session || auth.loading} onPress={() => void update()} />}>
+    <StageIntro eyebrow="SECURE YOUR ACCOUNT" title="Choose a new password." description="Use at least eight characters and avoid reusing an old password." />
+    <StageField label="New password" placeholder="New password" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoComplete="new-password" />
+    <StageField label="Confirm new password" placeholder="Confirm new password" value={confirmation} onChangeText={setConfirmation} secureTextEntry autoCapitalize="none" autoComplete="new-password" />
+    {error ? <StageNotice>{error}</StageNotice> : null}
+    {!auth.session && !auth.loading ? <><StageNotice>Open this screen using your password reset email.</StageNotice><StageButton title="Request another link" onPress={() => router.replace({ pathname: '/forgot-password', params: returnTo ? { returnTo } : {} })} /></> : null}
+  </StagePage>;
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.md, backgroundColor: colors.bg },
-  input: { minHeight: 50, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: spacing.md, fontSize: 16 },
-});

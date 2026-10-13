@@ -1,0 +1,19 @@
+{
+  "origin": "https://sportstageapp.expo.app",
+  "label": "production",
+  "widths": [
+    320,
+    390,
+    1280
+  ],
+  "checks": [
+    "Actual production configuration, isolation headers, guest roots at three widths, hosted JavaScript exactly matches export",
+    "Real password sign-in returns to competition; authorised workspace and six task links refresh on hosted backend",
+    "Actual browser offline lifecycle submission keeps the review and draft state; reconnect/retry persists the intended change",
+    "Independent hosted guest receives an explicit sign-in destination and cannot open organiser tools; existing authenticated detail policy is retained"
+  ],
+  "pageErrors": [],
+  "bundleSHA256": "8aafa843bb48097eb2b78ae7d0f3461d9807ff897c6a653ef868b91e69d657ab",
+  "status": "PASS",
+  "fixtureRemoved": true
+}

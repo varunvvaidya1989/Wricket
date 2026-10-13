@@ -1,9 +1,11 @@
 import { getSupabaseClient } from './client';
 import type { Team, Tournament, User } from '@/lib/wricket/domain/types';
+import type { TournamentEntryMode } from './tournamentRegistrationApi';
 
 export interface CloudTournamentCreateInput {
   name: string;
   format: Tournament['format'];
+  entryMode?: TournamentEntryMode;
   startDate: number;
   endDate?: number;
   organizerPhone?: string;
@@ -59,7 +61,7 @@ export async function createCloudTournament(
       points_tie: 1,
       points_loss: 0,
       points_no_result: 1,
-      settings: { status: 'ACTIVE' },
+      settings: { status: 'ACTIVE', entryMode: input.entryMode ?? 'EXISTING_TEAMS' },
     })
     .select('id, created_at')
     .single();
@@ -137,7 +139,7 @@ export async function upsertCloudTournament(
       source_local_id: tournament.id,
       name: tournament.name,
       format: tournament.format,
-      visibility: 'PRIVATE',
+      // Inserts use the database's PRIVATE default; updates preserve publication.
       start_date: dateOnly(tournament.startDate),
       start_at: new Date(tournament.startDate).toISOString(),
       end_date: tournament.endDate ? dateOnly(tournament.endDate) : null,
@@ -225,13 +227,18 @@ export async function upsertCloudTeamPlayer(input: {
   if (error) throw error;
 }
 
-export async function listCloudTournaments() {
+export async function listCloudTournaments(ownerId: string) {
   const { data, error } = await getSupabaseClient()
     .from('tournaments')
-    .select('id, created_by, source_local_id, name, format, start_date, start_at, end_date, planned_team_count, players_per_team, overs_per_match, description, social_media_url, organizer_phone, location, latitude, longitude, google_place_id, google_maps_url, banner_url, logo_url, points_win, points_tie, points_loss, points_no_result, created_at')
+    .select('id, created_by, source_local_id, name, format, start_date, start_at, end_date, planned_team_count, players_per_team, overs_per_match, description, social_media_url, location, latitude, longitude, google_place_id, google_maps_url, banner_url, logo_url, points_win, points_tie, points_loss, points_no_result, created_at')
     .order('created_at', { ascending: true });
   if (error) throw error;
-  return data;
+  return Promise.all(data.map(async tournament => {
+    if (tournament.created_by !== ownerId) return { ...tournament, organizer_phone: null as string | null };
+    const contact = await getSupabaseClient().rpc('get_tournament_organizer_contact', { p_tournament_id: tournament.id });
+    if (contact.error) throw contact.error;
+    return { ...tournament, organizer_phone: (contact.data?.[0]?.phone ?? null) as string | null };
+  }));
 }
 
 export async function listCloudTeams() {

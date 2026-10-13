@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-12",
+  "target": "http://127.0.0.1:54321",
+  "checks": [
+    "Guest roots, focused switcher and launcher at 320/390/1280; search/filter direct refresh and Back; fonts and title size",
+    "Cricket setup survives guest sign-in; existing scoring access gate remains in place",
+    "Unconnected sport carries chosen setup through account save and profile refresh",
+    "Authorised team search opens the real team; Back restores query and category",
+    "Controlled live-card visual review: wrapping participants and score; no persisted match created",
+    "Failed live request is displayed as failure, with retry, rather than empty matches"
+  ],
+  "visuals": [
+    {
+      "width": 320,
+      "font": "SpaceGrotesk_600SemiBold",
+      "size": "29px",
+      "color": "rgb(240, 244, 239)",
+      "noOverflow": true,
+      "topNavigation": true
+    },
+    {
+      "width": 390,
+      "font": "SpaceGrotesk_600SemiBold",
+      "size": "29px",
+      "color": "rgb(240, 244, 239)",
+      "noOverflow": true,
+      "topNavigation": true
+    },
+    {
+      "width": 1280,
+      "font": "SpaceGrotesk_600SemiBold",
+      "size": "29px",
+      "color": "rgb(240, 244, 239)",
+      "noOverflow": true,
+      "topNavigation": true
+    }
+  ],
+  "pageErrors": [],
+  "result": "PASS"
+}

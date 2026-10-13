@@ -73,7 +73,7 @@ export function SportAvatarButton({
       ]}
     >
       {auth.profile?.avatarUrl && !initialsOnly
-        ? <Image source={{ uri: auth.profile.avatarUrl }} style={styles.avatarImage} />
+        ? <Image accessible={false} source={{ uri: auth.profile.avatarUrl }} style={styles.avatarImage} />
         : <Text variant="bodyStrong" style={{ color: accent }}>{initials(name)}</Text>}
     </Pressable>
   );
@@ -125,7 +125,7 @@ function SportProfileDrawer({
               <Pressable onPress={() => navigate('/profile')} style={({ pressed }) => [styles.profileCard, pressed && styles.pressed]}>
                 <View style={[styles.largeAvatar, { backgroundColor: `${accent}18` }]}>
                   {auth.profile?.avatarUrl
-                    ? <Image source={{ uri: auth.profile.avatarUrl }} style={styles.avatarImage} />
+                    ? <Image accessible={false} source={{ uri: auth.profile.avatarUrl }} style={styles.avatarImage} />
                     : <Text variant="h2" style={{ color: accent }}>{initials(name)}</Text>}
                 </View>
                 <View style={styles.profileCopy}>

@@ -3,6 +3,7 @@ import {
   Pressable,
   StyleSheet,
   ViewStyle,
+  TextStyle,
   ActivityIndicator,
   GestureResponderEvent,
 } from 'react-native';
@@ -23,6 +24,7 @@ interface ButtonProps {
   loading?: boolean;
   fullWidth?: boolean;
   style?: ViewStyle;
+  textStyle?: TextStyle;
 }
 
 export function Button({
@@ -34,6 +36,7 @@ export function Button({
   loading,
   fullWidth,
   style,
+  textStyle,
 }: ButtonProps) {
   const handlePress = (e: GestureResponderEvent) => {
     if (disabled || loading) return;
@@ -64,7 +67,7 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={v.text.color} />
       ) : (
-        <Text style={[s.text, v.text]}>{title}</Text>
+        <Text style={[s.text, v.text, textStyle]}>{title}</Text>
       )}
     </Pressable>
   );

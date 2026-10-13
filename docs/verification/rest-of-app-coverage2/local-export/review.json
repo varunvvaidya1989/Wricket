@@ -1,0 +1,20 @@
+{
+  "origin": "http://127.0.0.1:4180",
+  "label": "local-export",
+  "widths": [
+    320,
+    390,
+    1280
+  ],
+  "checks": [
+    "Task-based help and scoring guide at three widths; 29px Space Grotesk headings; direct guide refresh, real match-launch destination, empty search",
+    "Standalone record-link screen retains identity boundary and recoverable lookup errors without claiming a record",
+    "Competition creation dialog uses 13px Inter Regular and closes without saving",
+    "Controlled deletion failure remains visible and rapid-repeat confirm sends one request; real deletion is reserved for compatibility acceptance",
+    "Device clearing and deletion have explicit cancellable review; typed DELETE gate, reset after cancel, no deletion RPC on review/cancel and account survives"
+  ],
+  "pageErrors": [],
+  "bundleSHA256": "d2ae00ede7510573d68261072f838f13c4891ec246916feae78165b7f9a1fa3b",
+  "status": "PASS",
+  "fixtureRemoved": true
+}

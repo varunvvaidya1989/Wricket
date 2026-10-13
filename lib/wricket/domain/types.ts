@@ -196,6 +196,7 @@ export interface BatterRetirement {
 export type PendingScoringPrompt = 'NEXT_BATTER' | 'NEXT_BOWLER' | 'INNINGS_BREAK' | null;
 
 export interface ScoringSession {
+  uiVersion?: 'revamp-v1' | 'recovery-v1';
   matchId: string;
   inningsId: string;
   strikerId?: string;

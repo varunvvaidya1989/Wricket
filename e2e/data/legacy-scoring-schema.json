@@ -1,0 +1,76 @@
+{
+  "sourceRevision": "3ebd23c4e749335bc97335a844b492d85820bebe",
+  "schemaVersion": 14,
+  "migrations": [
+    {
+      "version": 1,
+      "name": "initial_local_schema",
+      "sql": "\nCREATE TABLE IF NOT EXISTS meta (\n  key TEXT PRIMARY KEY,\n  value TEXT NOT NULL\n);\n\nCREATE TABLE IF NOT EXISTS schema_migrations (\n  version INTEGER PRIMARY KEY,\n  name TEXT NOT NULL,\n  applied_at INTEGER NOT NULL\n);\n\nCREATE TABLE IF NOT EXISTS users (\n  id TEXT PRIMARY KEY,\n  name TEXT NOT NULL,\n  role TEXT NOT NULL,\n  batting_hand TEXT,\n  bowling_style TEXT,\n  created_at INTEGER NOT NULL\n);\n\nCREATE TABLE IF NOT EXISTS tournaments (\n  id TEXT PRIMARY KEY,\n  name TEXT NOT NULL,\n  format TEXT NOT NULL,\n  start_date INTEGER NOT NULL,\n  end_date INTEGER,\n  points_win INTEGER NOT NULL DEFAULT 2,\n  points_tie INTEGER NOT NULL DEFAULT 1,\n  points_loss INTEGER NOT NULL DEFAULT 0,\n  points_no_result INTEGER NOT NULL DEFAULT 1,\n  status TEXT NOT NULL DEFAULT 'ACTIVE',\n  created_at INTEGER NOT NULL\n);\n\nCREATE TABLE IF NOT EXISTS teams (\n  id TEXT PRIMARY KEY,\n  tournament_id TEXT,\n  name TEXT NOT NULL,\n  short_name TEXT NOT NULL,\n  color_hex TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE SET NULL\n);\n\nCREATE TABLE IF NOT EXISTS team_players (\n  team_id TEXT NOT NULL,\n  user_id TEXT NOT NULL,\n  jersey_no INTEGER,\n  is_captain INTEGER NOT NULL DEFAULT 0,\n  is_keeper INTEGER NOT NULL DEFAULT 0,\n  PRIMARY KEY (team_id, user_id),\n  FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,\n  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE\n);\n\nCREATE TABLE IF NOT EXISTS matches (\n  id TEXT PRIMARY KEY,\n  tournament_id TEXT,\n  format TEXT NOT NULL,\n  rules_json TEXT NOT NULL,\n  team_a_id TEXT NOT NULL,\n  team_b_id TEXT NOT NULL,\n  venue TEXT,\n  scheduled_at INTEGER,\n  toss_winner_team_id TEXT,\n  toss_choice TEXT,\n  status TEXT NOT NULL DEFAULT 'SETUP',\n  result_json TEXT,\n  created_at INTEGER NOT NULL,\n  FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE SET NULL,\n  FOREIGN KEY (team_a_id) REFERENCES teams(id) ON DELETE RESTRICT,\n  FOREIGN KEY (team_b_id) REFERENCES teams(id) ON DELETE RESTRICT\n);\n\nCREATE TABLE IF NOT EXISTS match_xis (\n  match_id TEXT NOT NULL,\n  team_id TEXT NOT NULL,\n  user_id TEXT NOT NULL,\n  batting_order INTEGER NOT NULL,\n  is_captain INTEGER NOT NULL DEFAULT 0,\n  is_keeper INTEGER NOT NULL DEFAULT 0,\n  PRIMARY KEY (match_id, team_id, user_id),\n  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE\n);\n\nCREATE TABLE IF NOT EXISTS innings (\n  id TEXT PRIMARY KEY,\n  match_id TEXT NOT NULL,\n  sequence INTEGER NOT NULL,\n  batting_team_id TEXT NOT NULL,\n  bowling_team_id TEXT NOT NULL,\n  total_runs INTEGER NOT NULL DEFAULT 0,\n  total_wickets INTEGER NOT NULL DEFAULT 0,\n  total_balls INTEGER NOT NULL DEFAULT 0,\n  is_closed INTEGER NOT NULL DEFAULT 0,\n  is_follow_on INTEGER NOT NULL DEFAULT 0,\n  target INTEGER,\n  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE\n);\n\nCREATE TABLE IF NOT EXISTS balls (\n  id TEXT PRIMARY KEY,\n  innings_id TEXT NOT NULL,\n  over_no INTEGER NOT NULL,\n  ball_in_over INTEGER NOT NULL,\n  legal_ball_in_over INTEGER NOT NULL,\n  striker_id TEXT NOT NULL,\n  non_striker_id TEXT NOT NULL,\n  bowler_id TEXT NOT NULL,\n  runs_bat INTEGER NOT NULL DEFAULT 0,\n  runs_extra INTEGER NOT NULL DEFAULT 0,\n  extra_kind TEXT,\n  is_legal INTEGER NOT NULL DEFAULT 1,\n  is_wicket INTEGER NOT NULL DEFAULT 0,\n  dismissal_kind TEXT,\n  out_player_id TEXT,\n  fielder_id TEXT,\n  created_at INTEGER NOT NULL,\n  FOREIGN KEY (innings_id) REFERENCES innings(id) ON DELETE CASCADE\n);\n\nCREATE TABLE IF NOT EXISTS score_adjustments (\n  id TEXT PRIMARY KEY,\n  innings_id TEXT NOT NULL,\n  kind TEXT NOT NULL,\n  runs INTEGER NOT NULL,\n  note TEXT,\n  created_at INTEGER NOT NULL,\n  FOREIGN KEY (innings_id) REFERENCES innings(id) ON DELETE CASCADE\n);\n\nCREATE TABLE IF NOT EXISTS batter_retirements (\n  id TEXT PRIMARY KEY,\n  innings_id TEXT NOT NULL,\n  player_id TEXT NOT NULL,\n  kind TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  FOREIGN KEY (innings_id) REFERENCES innings(id) ON DELETE CASCADE,\n  FOREIGN KEY (player_id) REFERENCES users(id) ON DELETE CASCADE\n);\n\nCREATE INDEX IF NOT EXISTS idx_balls_innings ON balls(innings_id);\nCREATE INDEX IF NOT EXISTS idx_score_adjustments_innings ON score_adjustments(innings_id);\nCREATE INDEX IF NOT EXISTS idx_batter_retirements_innings ON batter_retirements(innings_id);\nCREATE INDEX IF NOT EXISTS idx_innings_match ON innings(match_id);\nCREATE INDEX IF NOT EXISTS idx_matches_tournament ON matches(tournament_id);\nCREATE INDEX IF NOT EXISTS idx_teams_tournament ON teams(tournament_id);\n"
+    },
+    {
+      "version": 2,
+      "name": "scoring_sessions",
+      "sql": "\nCREATE TABLE IF NOT EXISTS scoring_sessions (\n  match_id TEXT PRIMARY KEY,\n  innings_id TEXT NOT NULL,\n  striker_id TEXT,\n  non_striker_id TEXT,\n  bowler_id TEXT,\n  pending_prompt TEXT,\n  pending_player_id TEXT,\n  completed_over INTEGER,\n  last_committed_event_sequence INTEGER NOT NULL DEFAULT 0,\n  updated_at INTEGER NOT NULL,\n  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,\n  FOREIGN KEY (innings_id) REFERENCES innings(id) ON DELETE CASCADE\n);\n\nCREATE INDEX IF NOT EXISTS idx_scoring_sessions_innings ON scoring_sessions(innings_id);\n"
+    },
+    {
+      "version": 3,
+      "name": "cloud_sync_foundation",
+      "sql": "\nALTER TABLE tournaments ADD COLUMN cloud_id TEXT;\nALTER TABLE tournaments ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL';\nALTER TABLE tournaments ADD COLUMN sync_error TEXT;\nALTER TABLE tournaments ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;\n\nALTER TABLE teams ADD COLUMN cloud_id TEXT;\nALTER TABLE teams ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL';\nALTER TABLE teams ADD COLUMN sync_error TEXT;\nALTER TABLE teams ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;\nALTER TABLE teams ADD COLUMN logo_url TEXT;\n\nCREATE UNIQUE INDEX IF NOT EXISTS idx_tournaments_cloud_id ON tournaments(cloud_id);\nCREATE UNIQUE INDEX IF NOT EXISTS idx_teams_cloud_id ON teams(cloud_id);\n\nCREATE TABLE IF NOT EXISTS sync_outbox (\n  id TEXT PRIMARY KEY,\n  entity_type TEXT NOT NULL,\n  entity_id TEXT NOT NULL,\n  operation TEXT NOT NULL,\n  attempts INTEGER NOT NULL DEFAULT 0,\n  last_error TEXT,\n  created_at INTEGER NOT NULL,\n  next_attempt_at INTEGER NOT NULL DEFAULT 0,\n  UNIQUE(entity_type, entity_id, operation)\n);\n\nCREATE INDEX IF NOT EXISTS idx_sync_outbox_pending\nON sync_outbox(next_attempt_at, created_at);\n"
+    },
+    {
+      "version": 4,
+      "name": "player_membership_sync",
+      "sql": "\nALTER TABLE users ADD COLUMN cloud_id TEXT;\nALTER TABLE users ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL';\nALTER TABLE users ADD COLUMN sync_error TEXT;\nALTER TABLE users ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;\n\nALTER TABLE team_players ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'LOCAL';\nALTER TABLE team_players ADD COLUMN sync_error TEXT;\nALTER TABLE team_players ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;\n\nCREATE UNIQUE INDEX IF NOT EXISTS idx_users_cloud_id ON users(cloud_id);\n"
+    },
+    {
+      "version": 5,
+      "name": "tournament_organiser_setup",
+      "sql": "\nALTER TABLE tournaments ADD COLUMN organizer_profile_id TEXT;\nALTER TABLE tournaments ADD COLUMN organizer_phone TEXT;\nALTER TABLE tournaments ADD COLUMN planned_team_count INTEGER NOT NULL DEFAULT 2;\nALTER TABLE tournaments ADD COLUMN players_per_team INTEGER NOT NULL DEFAULT 11;\nALTER TABLE tournaments ADD COLUMN description TEXT;\nALTER TABLE tournaments ADD COLUMN social_media_url TEXT;\nALTER TABLE tournaments ADD COLUMN banner_local_uri TEXT;\nALTER TABLE tournaments ADD COLUMN logo_local_uri TEXT;\nALTER TABLE tournaments ADD COLUMN banner_url TEXT;\nALTER TABLE tournaments ADD COLUMN logo_url TEXT;\n"
+    },
+    {
+      "version": 6,
+      "name": "tournament_location",
+      "sql": "\nALTER TABLE tournaments ADD COLUMN location TEXT;\n"
+    },
+    {
+      "version": 7,
+      "name": "scoring_event_outbox",
+      "sql": "\nCREATE TABLE IF NOT EXISTS scoring_event_outbox (\n  client_event_id TEXT PRIMARY KEY,\n  match_id TEXT NOT NULL,\n  innings_id TEXT NOT NULL,\n  kind TEXT NOT NULL,\n  payload_json TEXT NOT NULL,\n  attempts INTEGER NOT NULL DEFAULT 0,\n  last_error TEXT,\n  created_at INTEGER NOT NULL,\n  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,\n  FOREIGN KEY (innings_id) REFERENCES innings(id) ON DELETE CASCADE\n);\n\nCREATE INDEX IF NOT EXISTS idx_scoring_event_outbox_match_created\nON scoring_event_outbox(match_id, created_at);\n"
+    },
+    {
+      "version": 8,
+      "name": "wicket_fielding_details",
+      "sql": "\nALTER TABLE balls ADD COLUMN assistant_fielder_id TEXT;\n"
+    },
+    {
+      "version": 9,
+      "name": "tournament_geotag",
+      "sql": "\nALTER TABLE tournaments ADD COLUMN latitude REAL;\nALTER TABLE tournaments ADD COLUMN longitude REAL;\nALTER TABLE tournaments ADD COLUMN google_place_id TEXT;\nALTER TABLE tournaments ADD COLUMN google_maps_url TEXT;\n"
+    },
+    {
+      "version": 10,
+      "name": "mvp_results",
+      "sql": "\nCREATE TABLE IF NOT EXISTS match_mvp_results (\n  match_id TEXT NOT NULL,\n  player_id TEXT NOT NULL,\n  team_id TEXT NOT NULL,\n  algorithm_version TEXT NOT NULL,\n  batting_points REAL NOT NULL,\n  bowling_points REAL NOT NULL,\n  fielding_points REAL NOT NULL,\n  total_points REAL NOT NULL,\n  rank INTEGER,\n  deterministic_order INTEGER NOT NULL,\n  is_player_of_match INTEGER NOT NULL DEFAULT 0,\n  is_fighter_of_match INTEGER NOT NULL DEFAULT 0,\n  batting_breakdown_json TEXT NOT NULL,\n  bowling_breakdown_json TEXT NOT NULL,\n  fielding_breakdown_json TEXT NOT NULL,\n  explanations_json TEXT NOT NULL,\n  calculated_at TEXT NOT NULL,\n  PRIMARY KEY (match_id, player_id, algorithm_version),\n  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE\n);\nCREATE INDEX IF NOT EXISTS idx_match_mvp_rank\nON match_mvp_results(match_id, algorithm_version, deterministic_order);\nCREATE INDEX IF NOT EXISTS idx_match_mvp_player\nON match_mvp_results(player_id, algorithm_version);\n\nCREATE TABLE IF NOT EXISTS match_mvp_calculations (\n  match_id TEXT PRIMARY KEY,\n  algorithm_version TEXT NOT NULL,\n  status TEXT NOT NULL,\n  calculated_at TEXT,\n  error TEXT,\n  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE\n);\n"
+    },
+    {
+      "version": 11,
+      "name": "repair_team_logo_url",
+      "sql": "\nALTER TABLE teams ADD COLUMN logo_url TEXT;\n"
+    },
+    {
+      "version": 12,
+      "name": "tournament_rewards",
+      "sql": "\nALTER TABLE tournaments ADD COLUMN rewards TEXT;\n"
+    },
+    {
+      "version": 13,
+      "name": "tournament_overs_per_match",
+      "sql": "\nALTER TABLE tournaments ADD COLUMN overs_per_match INTEGER NOT NULL DEFAULT 20;\n"
+    },
+    {
+      "version": 14,
+      "name": "ball_strike_rotation",
+      "sql": "\nALTER TABLE balls ADD COLUMN rotate_strike INTEGER;\n"
+    }
+  ]
+}

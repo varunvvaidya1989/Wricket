@@ -1,19 +1,24 @@
 import { getDb } from '@/lib/wricket/db/client';
+import { mergeCloudTeam } from '@/lib/wricket/db/syncRepo';
 import { DEFAULT_RULES, type MatchFormat } from '@/lib/wricket/domain/types';
 import { getSupabaseClient } from './client';
+import { effectiveScoringEvents } from './scoringHydrationEvents';
 
 /**
  * Rebuilds the offline scoring cache from the authoritative cloud match/event
  * log. Historical events are inserted directly into SQLite and never enter the
  * cloud outbox, so hydration cannot replay or duplicate remote scoring.
  */
-export async function hydrateScoringMatch(matchId: string): Promise<void> {
+export async function hydrateScoringMatch(matchId: string): Promise<'HYDRATED' | 'TERMINAL'> {
   const client = getSupabaseClient();
   const { data: match, error: matchError } = await client.from('matches')
     .select('id, tournament_id, team_a_id, team_b_id, format, status, venue, scheduled_at, toss_winner_team_id, toss_choice, rules, result')
     .eq('id', matchId)
     .single();
   if (matchError) throw matchError;
+  // A cold scoring link can have no local shell. Return the authoritative
+  // terminal state before requesting private scoring history or writing cache.
+  if (match.status === 'COMPLETED' || match.status === 'ABANDONED') return 'TERMINAL';
   if (!['IN_PROGRESS', 'INNINGS_BREAK', 'FOLLOW_ON_DECISION'].includes(match.status)) {
     throw new Error('This match is no longer open for scoring.');
   }
@@ -32,7 +37,7 @@ export async function hydrateScoringMatch(matchId: string): Promise<void> {
       .eq('match_id', matchId)
       .order('batting_order'),
     client.from('match_events')
-      .select('id, sequence, kind, payload, created_at')
+      .select('id, client_event_id, sequence, kind, payload, created_at')
       .eq('match_id', matchId)
       .order('sequence'),
   ]);
@@ -54,6 +59,27 @@ export async function hydrateScoringMatch(matchId: string): Promise<void> {
     match.team_a_id,
     match.team_b_id,
   );
+  const missingTeamIds = [match.team_a_id, match.team_b_id]
+    .filter(id => !teamRows.some(team => team.cloud_id === id));
+  if (missingTeamIds.length) {
+    // Direct scoring links and web reloads may have no prior team cache.
+    // Fetch only this match's missing teams through the signed-in client's RLS.
+    const { data: teams, error: teamsError } = await client.from('teams')
+      .select('id, source_local_id, tournament_id, name, short_name, color_hex, logo_url, created_at')
+      .in('id', missingTeamIds);
+    if (teamsError) throw teamsError;
+    if (missingTeamIds.some(id => !teams?.some(team => team.id === id))) {
+      throw new Error('A team in this match is unavailable to your account.');
+    }
+    for (const team of teams ?? []) {
+      await mergeCloudTeam({ cloudId: team.id, sourceLocalId: team.source_local_id,
+        tournamentCloudId: team.tournament_id, name: team.name, shortName: team.short_name,
+        colorHex: team.color_hex, logoUrl: team.logo_url ?? undefined, createdAt: Date.parse(team.created_at) });
+    }
+    teamRows.splice(0, teamRows.length, ...await db.getAllAsync<{ id: string; cloud_id: string }>(
+      'SELECT id, cloud_id FROM teams WHERE cloud_id IN (?, ?)', match.team_a_id, match.team_b_id,
+    ));
+  }
   const teamId = new Map(teamRows.map(row => [row.cloud_id, row.id]));
   const localTeamA = teamId.get(match.team_a_id);
   const localTeamB = teamId.get(match.team_b_id);
@@ -149,7 +175,7 @@ export async function hydrateScoringMatch(matchId: string): Promise<void> {
       );
     }
 
-    for (const event of events ?? []) {
+    for (const event of effectiveScoringEvents(events ?? [])) {
       const payload = event.payload ?? {};
       const inningsId = String(payload.innings_id ?? '');
       if (!inningsId) continue;
@@ -162,7 +188,7 @@ export async function hydrateScoringMatch(matchId: string): Promise<void> {
             is_wicket, dismissal_kind, out_player_id, fielder_id,
             assistant_fielder_id, rotate_strike, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          event.id, inningsId, Number(payload.over_no ?? 0),
+          event.client_event_id, inningsId, Number(payload.over_no ?? 0),
           Number(payload.ball_in_over ?? 0), Number(payload.legal_ball_in_over ?? 0),
           requirePlayer(payload.striker_id as string), requirePlayer(payload.non_striker_id as string),
           requirePlayer(payload.bowler_id as string), Number(payload.runs_bat ?? 0),
@@ -178,16 +204,17 @@ export async function hydrateScoringMatch(matchId: string): Promise<void> {
         await db.runAsync(
           `INSERT OR IGNORE INTO score_adjustments(id, innings_id, kind, runs, note, created_at)
            VALUES (?, ?, ?, ?, ?, ?)`,
-          event.id, inningsId, payload.kind, Number(payload.runs ?? 0),
+          event.client_event_id, inningsId, payload.adjustment_kind ?? payload.kind, Number(payload.runs ?? 0),
           payload.note ?? null, createdAt,
         );
       } else if (event.kind === 'BATTER_RETIRED') {
         await db.runAsync(
           `INSERT OR IGNORE INTO batter_retirements(id, innings_id, player_id, kind, created_at)
            VALUES (?, ?, ?, ?, ?)`,
-          event.id, inningsId, requirePlayer(payload.player_id as string), payload.kind, createdAt,
+          event.client_event_id, inningsId, requirePlayer(payload.player_id as string), payload.retirement_kind ?? payload.kind, createdAt,
         );
       }
     }
   });
+  return 'HYDRATED';
 }

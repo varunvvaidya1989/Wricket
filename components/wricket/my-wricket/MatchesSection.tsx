@@ -5,14 +5,15 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-n
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
+import { StatusBadge } from '@/components/wricket/ui/StatusBadge';
+import { Text } from '@/components/wricket/ui/Text';
 import {
   PlayerMatchFilter,
   PlayerMatchItem,
   playerMatchCategory,
   playerMatchesApi,
 } from '@/lib/supabase/playerMatchesApi';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 
 const FILTERS: { id: PlayerMatchFilter; label: string }[] = [
@@ -65,7 +66,7 @@ export function MatchesSection() {
     <View style={styles.root}>
       <View style={styles.filters}>
         {FILTERS.map(item => (
-          <Pressable key={item.id} onPress={() => setFilter(item.id)} style={[styles.filter, filter === item.id && styles.filterActive]}>
+          <Pressable accessibilityRole="button" accessibilityState={{ selected: filter === item.id }} key={item.id} onPress={() => setFilter(item.id)} style={[styles.filter, filter === item.id && styles.filterActive]}>
             <Text variant="caption" tone={filter === item.id ? 'accent' : 'muted'} style={styles.filterLabel}>{item.label}</Text>
           </Pressable>
         ))}
@@ -97,22 +98,19 @@ export function MatchesSection() {
   );
 }
 
-function MatchCard({ match, onPress }: { match: PlayerMatchItem; onPress: () => void }) {
+export function MatchCard({ match, onPress }: { match: PlayerMatchItem; onPress: () => void }) {
   const category = playerMatchCategory(match.status);
   const contribution = match.runs !== undefined || match.wickets !== undefined
     ? `${match.runs ?? 0} runs · ${match.wickets ?? 0} wickets`
     : undefined;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.matchCard, category === 'LIVE' && styles.liveCard, pressed && styles.pressed]}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.matchCard, category === 'LIVE' && styles.liveCard, pressed && styles.pressed]}>
       <View style={styles.matchMeta}>
-        <View style={[styles.statusChip, category === 'LIVE' && styles.liveChip]}>
-          {category === 'LIVE' ? <View style={styles.liveDot} /> : null}
-          <Text variant="overline" tone={category === 'LIVE' ? 'accent' : 'muted'}>{category}</Text>
-        </View>
+        <StatusBadge status={match.status} />
         <Text variant="caption" tone="dim">{formatDate(match.scheduledAt)}</Text>
         <Text variant="caption" tone="dim">· {match.format}</Text>
       </View>
-      <Text variant="caption" tone="muted" numberOfLines={1}>{match.tournamentName}</Text>
+      <Text variant="caption" tone="muted">{match.tournamentName}</Text>
       <View style={styles.teams}>
         <TeamScore name={match.ownTeamName} score={match.ownScore} align="left" />
         <View style={styles.versus}><Text variant="overline" tone="dim">VS</Text></View>
@@ -130,7 +128,7 @@ function MatchCard({ match, onPress }: { match: PlayerMatchItem; onPress: () => 
 
 function TeamScore({ name, score, align }: { name: string; score?: string; align: 'left' | 'right' }) {
   return <View style={[styles.team, align === 'right' && styles.teamRight]}>
-    <Text variant="bodyStrong" numberOfLines={1}>{name}</Text>
+    <Text variant="bodyStrong">{name}</Text>
     <Text variant="h3" tone={score ? 'default' : 'muted'}>{score ?? '—'}</Text>
   </View>;
 }

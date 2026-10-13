@@ -1,0 +1,13 @@
+{
+  "target": "isolated local Supabase",
+  "checks": [
+    "Actual registration reviewed before submission, single entry after rapid repeat, approval reviewed and persisted, grouped statuses, direct refresh",
+    "Non-organiser direct links show access message, public page has no organiser action, backend denies mutation",
+    "Actual one-fixture scheduling between approved entrants, explicit timezone converted correctly, repeat guarded, no fabricated live score",
+    "Lifecycle action requires review; dismissing causes no mutation; resources, officials and advanced tasks directly refresh",
+    "Actual club and reusable-team owner/viewer roles, narrow rosters and organiser-only invitation controls",
+    "Controlled unavailable response hides stale manager state and retries; list separates public pages and authorised workspaces"
+  ],
+  "pageErrors": [],
+  "status": "PASS"
+}

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  clearScoringSession: vi.fn(),
   closeInnings: vi.fn(),
   createInnings: vi.fn(),
   getMatch: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../db/repo', () => ({
+  clearScoringSession: mocks.clearScoringSession,
   closeInnings: mocks.closeInnings,
   createInnings: mocks.createInnings,
   getMatch: mocks.getMatch,
@@ -23,6 +25,10 @@ vi.mock('../db/repo', () => ({
 
 vi.mock('@/lib/supabase/cloudScoringApi', () => ({
   queueCloudScoringEvent: mocks.queueCloudScoringEvent,
+}));
+
+vi.mock('../db/scoringTransaction', () => ({
+  withScoringTransaction: (task: (tx: unknown) => Promise<unknown>) => task({ db: {}, afterCommit: vi.fn() }),
 }));
 
 vi.mock('../db/client', () => ({
@@ -79,10 +85,11 @@ describe('startNextInnings', () => {
         batting_team_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
         bowling_team_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       }),
-    }));
+    }), expect.objectContaining({ db: expect.any(Object) }));
     expect(mocks.setMatchStatus).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
       'IN_PROGRESS',
+      expect.any(Object),
     );
   });
 });
@@ -95,15 +102,15 @@ describe('resolveAbandonedMatchLifecycle', () => {
   it('records cancellation without a winner and keeps the match abandoned', async () => {
     await resolveAbandonedMatchLifecycle('local-match', 'local-innings', 'CANCELLED');
 
-    expect(mocks.setMatchResult).toHaveBeenCalledWith('local-match', { kind: 'CANCELLED' });
-    expect(mocks.setMatchStatus).toHaveBeenCalledWith('local-match', 'ABANDONED');
+    expect(mocks.setMatchResult).toHaveBeenCalledWith('local-match', { kind: 'CANCELLED' }, expect.any(Object));
+    expect(mocks.setMatchStatus).toHaveBeenCalledWith('local-match', 'ABANDONED', expect.any(Object));
     expect(mocks.queueCloudScoringEvent).not.toHaveBeenCalled();
   });
 
   it('records a walkover winner and leaves the completed status set by the result', async () => {
     await resolveAbandonedMatchLifecycle('local-match', 'local-innings', 'WALKOVER', 'team-a');
 
-    expect(mocks.setMatchResult).toHaveBeenCalledWith('local-match', { kind: 'WALKOVER', winnerTeamId: 'team-a' });
+    expect(mocks.setMatchResult).toHaveBeenCalledWith('local-match', { kind: 'WALKOVER', winnerTeamId: 'team-a' }, expect.any(Object));
     expect(mocks.setMatchStatus).not.toHaveBeenCalled();
   });
 
@@ -121,6 +128,6 @@ describe('resolveAbandonedMatchLifecycle', () => {
       payload: expect.objectContaining({
         result: { kind: 'WALKOVER', winnerTeamId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
       }),
-    }));
+    }), expect.objectContaining({ db: expect.any(Object) }));
   });
 });

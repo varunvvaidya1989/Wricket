@@ -2,8 +2,8 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Text } from '@/components/ui/Text';
-import { colors } from '@/lib/theme/colors';
+import { Text } from '@/components/wricket/ui/Text';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 
 interface PerformanceTeaserStats {

@@ -211,6 +211,12 @@ export const sportCompetitionApi = {
     }));
   },
 
+  async canManage(competitionId: string): Promise<boolean> {
+    const { data, error } = await getSupabaseClient().rpc('can_manage_sport_competition', { p_competition_id: competitionId });
+    if (error) throw error;
+    return Boolean(data);
+  },
+
   async list(sportCode: string): Promise<CloudCompetition[]> {
     const { data, error } = await getSupabaseClient().rpc('list_sport_competitions', {
       p_sport_code: sportCode,

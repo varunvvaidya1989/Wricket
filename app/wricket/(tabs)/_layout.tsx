@@ -1,10 +1,14 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
+import { View } from 'react-native';
+import { WricketRootHeader } from '@/components/wricket/navigation/WricketRootHeader';
 
 export default function TabLayout() {
   return (
+    <View style={{ flex: 1 }}>
+    <WricketRootHeader />
     <Tabs
       tabBar={() => null}
       screenOptions={{
@@ -76,5 +80,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </View>
   );
 }

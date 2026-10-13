@@ -18,6 +18,7 @@ export interface StartedMatchSetup {
 
 export const matchSetupApi = {
   async createMatch(input: {
+    requestId: string;
     tournamentId: string | null;
     teamAId: string;
     teamBId: string;
@@ -26,7 +27,8 @@ export const matchSetupApi = {
     scheduledAt?: string;
     venue?: string;
   }): Promise<string> {
-    const { data, error } = await getSupabaseClient().rpc('create_owned_match', {
+    const { data, error } = await getSupabaseClient().rpc('create_owned_match_idempotent', {
+      p_request_id: input.requestId,
       p_tournament_id: input.tournamentId,
       p_team_a_id: input.teamAId,
       p_team_b_id: input.teamBId,

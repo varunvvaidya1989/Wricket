@@ -1,0 +1,8 @@
+{
+  "lib/wricket/domain/mvp/calculator.ts": "f58758075201afe580e81618e47c4154e036eae2fc73e13b00b9335dbc0372bd",
+  "lib/wricket/domain/mvp/config.ts": "22578391721992f322a5efaf10074d867cbdf5715c3a2b6dc3fb0222850b0fbc",
+  "lib/wricket/domain/mvp/cloud-input.ts": "8eb2b2769dfd19d7ba431075d252c1d9543bb61a2b01169816af4a524149bfc5",
+  "lib/wricket/domain/statistics.ts": "42fd571c4be21242b206c2f377ddca766c3354c6508337b8e21d6b2a58a55b7d",
+  "scripts/cricket-mvp-batch.mjs": "0377bedb919cea6bd7e9b152994bef5ea984be47e9f215cea142c590ed5e5837",
+  "scripts/cricket-mvp-queue-health.mjs": "b7375969a9bc60550aa1623d66f0c14d130a055b6664fb7b18b935c159543b53"
+}

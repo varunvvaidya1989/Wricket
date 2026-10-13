@@ -3,12 +3,12 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import React, { useCallback, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
+import { Card } from '@/components/wricket/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
+import { Text } from '@/components/wricket/ui/Text';
 import { getSupabaseClient } from '@/lib/supabase/client';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { spacing } from '@/lib/theme/spacing';
 import { getUser } from '@/lib/wricket/db/repo';
 import { User } from '@/lib/wricket/domain/types';

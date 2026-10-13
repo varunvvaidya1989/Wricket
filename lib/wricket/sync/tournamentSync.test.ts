@@ -61,10 +61,33 @@ import { syncTournamentData } from './tournamentSync';
 describe('tournament cloud sync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.listPendingSyncItems.mockResolvedValue([]);
     mocks.listCloudTournaments.mockResolvedValue([]);
     mocks.listCloudTeams.mockResolvedValue([]);
     mocks.listCloudPlayers.mockResolvedValue([]);
     mocks.listCloudTeamPlayers.mockResolvedValue([]);
+  });
+
+  it('shares concurrent hydration and queues a forced retry after its transaction', async () => {
+    let release!: () => void;
+    mocks.seedSyncOutbox.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    const first = syncTournamentData('user-1');
+    const duplicate = syncTournamentData('user-1');
+    const retry = syncTournamentData('user-1', { forceRetry: true });
+    expect(duplicate).toBe(first);
+    await Promise.resolve();
+    expect(mocks.seedSyncOutbox).toHaveBeenCalledOnce();
+    expect(mocks.retryFailedSyncItems).not.toHaveBeenCalled();
+    release();
+    await Promise.all([first, duplicate, retry]);
+    expect(mocks.seedSyncOutbox).toHaveBeenCalledTimes(2);
+    expect(mocks.retryFailedSyncItems).toHaveBeenCalledOnce();
+  });
+
+  it('allows another hydration after an initial failure', async () => {
+    mocks.seedSyncOutbox.mockRejectedValueOnce(new Error('cache unavailable'));
+    await expect(syncTournamentData('user-1')).rejects.toThrow('cache unavailable');
+    await expect(syncTournamentData('user-1')).resolves.toEqual({ uploaded: 0, downloaded: 0, failed: 0 });
   });
 
   it('uploads a tournament before its dependent team', async () => {

@@ -16,6 +16,7 @@ describe('matchSetupApi', () => {
     client.rpc.mockResolvedValue({ data: 'match-id', error: null });
 
     await expect(matchSetupApi.createMatch({
+      requestId: 'request-1',
       tournamentId: null,
       teamAId: 'team-a',
       teamBId: 'team-b',
@@ -24,7 +25,8 @@ describe('matchSetupApi', () => {
       venue: 'Main ground',
     })).resolves.toBe('match-id');
 
-    expect(client.rpc).toHaveBeenCalledWith('create_owned_match', {
+    expect(client.rpc).toHaveBeenCalledWith('create_owned_match_idempotent', {
+      p_request_id: 'request-1',
       p_tournament_id: null,
       p_team_a_id: 'team-a',
       p_team_b_id: 'team-b',

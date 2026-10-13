@@ -3,11 +3,11 @@ import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Image, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { Text } from '@/components/ui/Text';
+import { Button } from '@/components/wricket/ui/Button';
+import { Card } from '@/components/wricket/ui/Card';
+import { Text } from '@/components/wricket/ui/Text';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { colors, palette } from '@/lib/theme/colors';
+import { colors, palette } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { MyTeamSummary, teamManagementApi } from '@/lib/supabase/teamManagementApi';
 

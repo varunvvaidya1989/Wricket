@@ -4,9 +4,9 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Text } from '@/components/ui/Text';
+import { Text } from '@/components/wricket/ui/Text';
 import { MyTeamsCard } from '@/components/wricket/teams/MyTeamsCard';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 
 export function MyTeamsSection() {

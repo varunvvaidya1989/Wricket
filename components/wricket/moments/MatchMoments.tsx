@@ -1,10 +1,10 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,9 +14,9 @@ import {
 
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { Text } from '@/components/ui/Text';
+import { Button } from '@/components/wricket/ui/Button';
+import { Card } from '@/components/wricket/ui/Card';
+import { Text } from '@/components/wricket/ui/Text';
 import {
   MatchMoment,
   matchMomentsApi,
@@ -24,17 +24,19 @@ import {
   MomentMatchOption,
   MomentReactionType,
 } from '@/lib/supabase/matchMomentsApi';
-import { colors, palette } from '@/lib/theme/colors';
+import { colors, fonts, palette } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 
 export function MatchMoments({
   cloudTournamentId,
   profileId,
   canModerate,
+  refreshKey,
 }: {
   cloudTournamentId?: string;
   profileId?: string;
   canModerate: boolean;
+  refreshKey?: number;
 }) {
   const [moments, setMoments] = useState<MatchMoment[]>([]);
   const [matches, setMatches] = useState<MomentMatchOption[]>([]);
@@ -47,6 +49,10 @@ export function MatchMoments({
   const [loading, setLoading] = useState(Boolean(cloudTournamentId));
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
+  const [confirmation, setConfirmation] = useState<{ kind: 'remove' | 'report'; moment: MatchMoment }>();
+  const [acting, setActing] = useState(false);
+  const postingGuard = useRef(false);
 
   const load = useCallback(async () => {
     if (!cloudTournamentId) return;
@@ -65,7 +71,7 @@ export function MatchMoments({
     }
   }, [cloudTournamentId, profileId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); }, [load, refreshKey]);
   useEffect(() => cloudTournamentId
     ? matchMomentsApi.subscribe(cloudTournamentId, () => { void load(); })
     : undefined, [cloudTournamentId, load]);
@@ -75,11 +81,27 @@ export function MatchMoments({
     [matches, selectedMatchId],
   );
 
+  useEffect(() => () => {
+    if (Platform.OS === 'web' && image?.uri.startsWith('blob:')) URL.revokeObjectURL(image.uri);
+  }, [image?.uri]);
+
+  const selectWebPhoto = (file?: File) => {
+    if (!file) return;
+    setNotice(undefined);
+    if (file.size > 8 * 1024 * 1024) return setNotice('Photo too large. Choose a photo smaller than 8 MB.');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return setNotice('Choose a JPEG, PNG or WebP photo.');
+    setImage({ uri: URL.createObjectURL(file), mimeType: file.type, fileSize: file.size });
+  };
+
   const pickPhoto = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Photos permission needed', 'Allow photo access to capture a match moment.');
-      return;
+    setNotice(undefined);
+    try {
+    if (Platform.OS !== 'web') {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setNotice('Photos permission needed. Allow photo access to capture a match moment.');
+        return;
+      }
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -89,7 +111,7 @@ export function MatchMoments({
     if (result.canceled) return;
     const asset = result.assets[0];
     if (asset.fileSize && asset.fileSize > 8 * 1024 * 1024) {
-      Alert.alert('Photo too large', 'Choose a photo smaller than 8 MB.');
+      setNotice('Photo too large. Choose a photo smaller than 8 MB.');
       return;
     }
     setImage({
@@ -99,14 +121,17 @@ export function MatchMoments({
       height: asset.height,
       fileSize: asset.fileSize,
     });
+    } catch (cause) { setNotice(`Could not open photos. ${messageOf(cause)}`); }
   };
 
   const publish = async () => {
     if (!cloudTournamentId || !profileId) {
-      Alert.alert('Sign in required', 'Sign in to share a Match Moment.');
+      setNotice('Sign in to share a Match Moment.');
       return;
     }
-    setPosting(true);
+    if (postingGuard.current) return;
+    postingGuard.current = true;
+    setPosting(true); setNotice(undefined);
     try {
       await matchMomentsApi.create({
         tournamentId: cloudTournamentId,
@@ -120,14 +145,14 @@ export function MatchMoments({
       setSelectedMatchId(undefined);
       await load();
     } catch (cause) {
-      Alert.alert('Could not publish moment', messageOf(cause));
+      setNotice(`Could not publish moment. ${messageOf(cause)}`);
     } finally {
-      setPosting(false);
+      setPosting(false); postingGuard.current = false;
     }
   };
 
   const react = async (moment: MatchMoment, reaction: MomentReactionType) => {
-    if (!profileId) return Alert.alert('Sign in required', 'Sign in to react to a moment.');
+    if (!profileId) return setNotice('Sign in to react to a moment.');
     const active = moment.myReactions.includes(reaction);
     setMoments(current => current.map(item => item.id !== moment.id ? item : ({
       ...item,
@@ -146,12 +171,12 @@ export function MatchMoments({
       });
     } catch (cause) {
       await load();
-      Alert.alert('Could not update reaction', messageOf(cause));
+      setNotice(`Could not update reaction. ${messageOf(cause)}`);
     }
   };
 
   const addComment = async (moment: MatchMoment) => {
-    if (!profileId) return Alert.alert('Sign in required', 'Sign in to join the discussion.');
+    if (!profileId) return setNotice('Sign in to join the discussion.');
     const body = commentDrafts[moment.id]?.trim();
     if (!body) return;
     try {
@@ -164,34 +189,24 @@ export function MatchMoments({
       setCommentDrafts(current => ({ ...current, [moment.id]: '' }));
       await load();
     } catch (cause) {
-      Alert.alert('Could not add comment', messageOf(cause));
+      setNotice(`Could not add comment. ${messageOf(cause)}`);
     }
   };
 
-  const remove = (moment: MatchMoment) => {
-    Alert.alert('Remove this moment?', 'Its discussion will no longer be visible.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => matchMomentsApi.remove(moment.id).then(load)
-          .catch(cause => Alert.alert('Could not remove moment', messageOf(cause))),
-      },
-    ]);
-  };
-
+  const remove = (moment: MatchMoment) => { setNotice(undefined); setConfirmation({ kind: 'remove', moment }); };
   const report = (moment: MatchMoment) => {
-    if (!profileId) return Alert.alert('Sign in required', 'Sign in to report content.');
-    Alert.alert('Report this moment?', 'Tournament moderators will be able to review it.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Report',
-        style: 'destructive',
-        onPress: () => matchMomentsApi.report(moment.id, profileId, 'Reported from tournament timeline')
-          .then(() => Alert.alert('Report received', 'Thank you.'))
-          .catch(cause => Alert.alert('Could not report moment', messageOf(cause))),
-      },
-    ]);
+    if (!profileId) return setNotice('Sign in to report content.');
+    setNotice(undefined); setConfirmation({ kind: 'report', moment });
+  };
+  const confirmAction = async () => {
+    if (!confirmation || acting) return;
+    setActing(true);
+    try {
+      if (confirmation.kind === 'remove') await matchMomentsApi.remove(confirmation.moment.id);
+      else if (profileId) await matchMomentsApi.report(confirmation.moment.id, profileId, 'Reported from tournament timeline');
+      setNotice(confirmation.kind === 'report' ? 'Report received. Tournament moderators can review it.' : 'Moment removed.');
+      setConfirmation(undefined); await load();
+    } catch (cause) { setNotice(messageOf(cause)); } finally { setActing(false); }
   };
 
   if (!cloudTournamentId) return null;
@@ -208,12 +223,15 @@ export function MatchMoments({
         <MaterialCommunityIcons name="image-multiple-outline" size={26} color={colors.accent} />
       </View>
 
+      {notice && !confirmation ? <Text accessibilityRole="alert" tone="muted">{notice}</Text> : null}
+      <MomentHighlights moments={moments} />
       {profileId ? (
         <Card style={styles.composer}>
           <TextInput
+            accessibilityLabel="Moment caption"
             value={caption}
             onChangeText={setCaption}
-            placeholder="What happened? Capture the moment…"
+            placeholder="What happened? Capture the moment..."
             placeholderTextColor={colors.textDim}
             multiline
             maxLength={1000}
@@ -222,17 +240,23 @@ export function MatchMoments({
           {image && (
             <View>
               <Image source={{ uri: image.uri }} style={styles.previewImage} />
-              <Pressable style={styles.removePhoto} onPress={() => setImage(undefined)}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Remove attached photo" style={styles.removePhoto} onPress={() => setImage(undefined)}>
                 <MaterialCommunityIcons name="close-circle" size={28} color={palette.white} />
               </Pressable>
             </View>
           )}
           <View style={styles.composerActions}>
-            <Pressable style={styles.iconAction} onPress={() => void pickPhoto()}>
+            {Platform.OS === 'web' ? <View style={[styles.iconAction, { position: 'relative' }]}>
               <MaterialCommunityIcons name="camera-plus-outline" size={20} color={colors.accent} />
               <Text variant="caption" tone="accent">{image ? 'Change photo' : 'Add photo'}</Text>
-            </Pressable>
-            <Pressable style={styles.iconAction} onPress={() => setMatchPickerOpen(true)}>
+              <input type="file" accept="image/jpeg,image/png,image/webp" aria-label={image ? 'Change photo' : 'Add photo'} disabled={posting}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+                onChange={event => { selectWebPhoto(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} />
+            </View> : <Pressable accessibilityRole="button" style={styles.iconAction} onPress={() => void pickPhoto()}>
+              <MaterialCommunityIcons name="camera-plus-outline" size={20} color={colors.accent} />
+              <Text variant="caption" tone="accent">{image ? 'Change photo' : 'Add photo'}</Text>
+            </Pressable>}
+            <Pressable accessibilityRole="button" style={styles.iconAction} onPress={() => setMatchPickerOpen(true)}>
               <MaterialCommunityIcons name="cricket" size={20} color={colors.accent} />
               <Text variant="caption" tone="accent">{selectedMatch?.label ?? 'Link match'}</Text>
             </Pressable>
@@ -283,7 +307,7 @@ export function MatchMoments({
                 </Text>
               </View>
               {moment.pinned && <MaterialCommunityIcons name="pin" size={18} color={colors.accent} />}
-              <Pressable onPress={() => canRemove ? remove(moment) : report(moment)}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`${canRemove ? 'Remove' : 'Report'} moment by ${moment.authorName}`} style={styles.iconTarget} onPress={() => canRemove ? remove(moment) : report(moment)}>
                 <MaterialCommunityIcons
                   name={canRemove ? 'trash-can-outline' : 'flag-outline'}
                   size={20}
@@ -292,9 +316,7 @@ export function MatchMoments({
               </Pressable>
             </View>
             {!moment.systemType && <Text variant="body" style={{ marginTop: spacing.md }}>{moment.caption}</Text>}
-            {moment.imageUrl && (isPlaceholderImage(moment.imageUrl)
-              ? <MomentPhotoPlaceholder author={moment.authorName} />
-              : <Image source={{ uri: moment.imageUrl }} style={styles.momentImage} />)}
+            {moment.imageUrl ? <MomentImage url={moment.imageUrl} author={moment.authorName} /> : null}
             <View style={styles.reactions}>
               <ReactionButton icon="heart-outline" label="Like" count={moment.reactions.LIKE}
                 active={moment.myReactions.includes('LIKE')} onPress={() => void react(moment, 'LIKE')} />
@@ -302,7 +324,7 @@ export function MatchMoments({
                 active={moment.myReactions.includes('FIRE')} onPress={() => void react(moment, 'FIRE')} />
               <ReactionButton icon="hand-clap" label="Clap" count={moment.reactions.CLAP}
                 active={moment.myReactions.includes('CLAP')} onPress={() => void react(moment, 'CLAP')} />
-              <Pressable
+              <Pressable accessibilityRole="button" accessibilityLabel={`View comments on moment by ${moment.authorName}`}
                 style={styles.reactionButton}
                 onPress={() => setCommentsOpen(current => toggleSet(current, moment.id))}
               >
@@ -320,7 +342,7 @@ export function MatchMoments({
                   </View>
                 ))}
                 {moment.comments.length > 2 && (
-                  <Pressable onPress={() => setCommentsOpen(current => toggleSet(current, moment.id))}>
+                  <Pressable accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center' }} onPress={() => setCommentsOpen(current => toggleSet(current, moment.id))}>
                     <Text variant="caption" tone="accent">
                       {expanded ? 'Show fewer comments' : `View all ${moment.comments.length} comments`}
                     </Text>
@@ -331,13 +353,14 @@ export function MatchMoments({
                     <TextInput
                       value={commentDrafts[moment.id] ?? ''}
                       onChangeText={value => setCommentDrafts(current => ({ ...current, [moment.id]: value }))}
+                      accessibilityLabel={`Comment on moment by ${moment.authorName}`}
                       placeholder="Add a comment…"
                       placeholderTextColor={colors.textDim}
                       maxLength={500}
                       style={styles.commentInput}
                       onSubmitEditing={() => void addComment(moment)}
                     />
-                    <Pressable onPress={() => void addComment(moment)}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Send comment on moment by ${moment.authorName}`} style={styles.iconTarget} onPress={() => void addComment(moment)}>
                       <MaterialCommunityIcons name="send" size={22} color={colors.accent} />
                     </Pressable>
                   </View>
@@ -348,6 +371,15 @@ export function MatchMoments({
         );
       })}
 
+      <Modal visible={Boolean(confirmation)} transparent animationType="fade" onRequestClose={() => !acting && setConfirmation(undefined)}>
+        <View style={styles.modalBackdrop}><View style={styles.pickerCard}>
+          <Text variant="h3">{confirmation?.kind === 'remove' ? 'Remove this moment?' : 'Report this moment?'}</Text>
+          <Text tone="muted">{confirmation?.kind === 'remove' ? 'Its discussion will no longer be visible.' : 'Tournament moderators will be able to review it.'}</Text>
+          {notice && confirmation ? <Text accessibilityRole="alert">{notice}</Text> : null}
+          <Button title={confirmation?.kind === 'remove' ? 'Remove moment' : 'Report moment'} variant="danger" loading={acting} onPress={() => void confirmAction()} />
+          <Button title="Cancel" variant="secondary" disabled={acting} onPress={() => setConfirmation(undefined)} />
+        </View></View>
+      </Modal>
       <Modal visible={matchPickerOpen} transparent animationType="fade" onRequestClose={() => setMatchPickerOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setMatchPickerOpen(false)}>
           <View style={styles.pickerCard}>
@@ -380,7 +412,7 @@ function ReactionButton({
   onPress: () => void;
 }) {
   return (
-    <Pressable style={[styles.reactionButton, active && styles.reactionActive]} onPress={onPress}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${label} moment`} accessibilityState={{ selected: active }} style={[styles.reactionButton, active && styles.reactionActive]} onPress={onPress}>
       <MaterialCommunityIcons name={icon} size={17} color={active ? colors.accent : colors.textMuted} />
       <Text variant="caption" tone={active ? 'accent' : 'muted'}>{count || label}</Text>
     </Pressable>
@@ -408,9 +440,33 @@ function TournamentResultBanner({ moment }: { moment: MatchMoment }) {
   );
 }
 
+function MomentImage({ url, author }: { url: string; author: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [url]);
+  return failed || isPlaceholderImage(url) ? <MomentPhotoPlaceholder author={author} /> : <Image accessibilityLabel={`Match photo shared by ${author}`} source={{ uri: url }} style={styles.momentImage} onError={() => setFailed(true)} />;
+}
+
+function MomentHighlights({ moments }: { moments: MatchMoment[] }) {
+  const highlights = moments.filter(moment => moment.pinned || moment.systemType || moment.imageUrl).slice(0, 12);
+  const [index, setIndex] = useState(0);
+  const [width, setWidth] = useState(0);
+  const scroll = useRef<ScrollView>(null);
+  const selected = Math.min(index, Math.max(0, highlights.length - 1));
+  useEffect(() => { setIndex(0); scroll.current?.scrollTo({ x: 0, animated: false }); }, [highlights.length]);
+  if (!highlights.length) return null;
+  const move = (next: number) => { setIndex(next); scroll.current?.scrollTo({ x: next * width, animated: true }); };
+  return <View style={{ gap: 10 }} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text variant="overline" tone="muted">TOURNAMENT HIGHLIGHTS</Text><Text variant="caption" tone="muted">{selected + 1} / {highlights.length}</Text></View>
+    <ScrollView ref={scroll} horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={event => { if (width) setIndex(Math.round(event.nativeEvent.contentOffset.x / width)); }}>
+      {highlights.map(moment => <View key={moment.id} style={{ width, paddingHorizontal: 1 }}><Card><Text variant="bodyStrong">{moment.authorName}</Text>{moment.systemType ? <TournamentResultBanner moment={moment} /> : moment.imageUrl ? <MomentImage url={moment.imageUrl} author={moment.authorName} /> : null}{!moment.systemType ? <Text>{moment.caption}</Text> : null}</Card></View>)}
+    </ScrollView>
+    <View style={{ flexDirection: 'row', gap: 10 }}><Button title="Previous highlight" variant="secondary" disabled={selected === 0} onPress={() => move(selected - 1)} style={{ flex: 1 }} /><Button title="Next highlight" variant="secondary" disabled={selected === highlights.length - 1} onPress={() => move(selected + 1)} style={{ flex: 1 }} /></View>
+  </View>;
+}
+
 function PickerOption({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
   return (
-    <Pressable style={styles.pickerOption} onPress={onPress}>
+    <Pressable accessibilityRole="button" style={styles.pickerOption} onPress={onPress}>
       <Text variant="bodyStrong" style={{ flex: 1 }}>{label}</Text>
       {selected && <MaterialCommunityIcons name="check" size={20} color={colors.accent} />}
     </Pressable>
@@ -434,7 +490,7 @@ function relativeTime(value: string) {
 }
 
 function messageOf(cause: unknown) {
-  return cause instanceof Error ? cause.message : 'Please try again.';
+  return cause instanceof Error ? cause.message : typeof cause === 'object' && cause !== null && 'message' in cause ? String(cause.message) : 'Please try again.';
 }
 
 function isPlaceholderImage(url: string): boolean {
@@ -446,7 +502,8 @@ function MomentPhotoPlaceholder({ author }: { author: string }) {
   return <View style={styles.photoPlaceholder}>
     <View style={styles.photoPitchLine} />
     <View style={styles.photoSeam} />
-    <Text variant="caption" tone="muted" style={styles.photoCaption}>Photo attached by {author}</Text>
+    <Text variant="bodyStrong" tone="muted" style={styles.photoCaption}>Photo unavailable</Text>
+    <Text variant="caption" tone="muted">Shared by {author}</Text>
   </View>;
 }
 
@@ -457,11 +514,14 @@ const styles = StyleSheet.create({
   captionInput: {
     minHeight: 72,
     color: colors.text,
-    fontSize: 15,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    lineHeight: 20,
     textAlignVertical: 'top',
   },
   composerActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   iconAction: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
@@ -471,7 +531,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceElevated,
   },
   previewImage: { width: '100%', height: 180, borderRadius: radius.md },
-  removePhoto: { position: 'absolute', right: spacing.sm, top: spacing.sm },
+  iconTarget: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  removePhoto: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', position: 'absolute', right: spacing.sm, top: spacing.sm },
   momentCard: { gap: spacing.xs },
   resultBanner: {
     minHeight: 220,
@@ -527,7 +588,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   reactionButton: {
-    minHeight: 34,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -547,7 +608,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
   },
-  commentInput: { flex: 1, minHeight: 42, color: colors.text },
+  commentInput: { flex: 1, minHeight: 44, color: colors.text, fontFamily: fonts.body, fontSize: 13 },
   emptyCard: { alignItems: 'center', gap: spacing.sm },
   errorCard: { gap: spacing.sm, borderColor: colors.danger },
   modalBackdrop: {

@@ -8,7 +8,7 @@
       "file": "posts/01-brand-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "SportStage: Every sport. One stage. Cricket and racquet-sport equipment on a dark green court."
+      "alt": "SportStage: Every sport. One stage. Cricket and racquet-sport equipment on a dark court."
     },
     {
       "id": "02-cricket",
@@ -16,7 +16,7 @@
       "file": "posts/02-cricket-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "A cricket bat and red ball on an evening pitch. Every ball. A new story. Cricket scoring with SportStage."
+      "alt": "A cricket bat and red ball on an evening pitch. Every ball. A new story. Cricket scoring and match sharing on SportStage."
     },
     {
       "id": "03-badminton",
@@ -24,7 +24,7 @@
       "file": "posts/03-badminton-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "A badminton shuttlecock and racket on a green court. Own the rally. Keep the score."
+      "alt": "A badminton shuttlecock and racket on a court. Own the rally. Keep the score."
     },
     {
       "id": "04-setup",
@@ -32,7 +32,7 @@
       "file": "posts/04-setup-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "SportStage badminton match setup screen with fictional players. Choose players, review rules, then start scoring."
+      "alt": "The SportStage Start a match screen, asking Which sport today?, with photo tiles for six sports."
     },
     {
       "id": "05-organizers",
@@ -40,7 +40,7 @@
       "file": "posts/05-organizers-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "Tournament organization with SportStage: fixtures, results and sponsors in one tournament workflow."
+      "alt": "SportStage organiser workspace: registrations, fixture plan, winning bracket and sponsors in one tournament workflow."
     },
     {
       "id": "06-sponsors",
@@ -48,7 +48,7 @@
       "file": "posts/06-sponsors-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "SportStage tournament sponsors: add names, logos and partner labels. An illustrative title-sponsor card appears below."
+      "alt": "SportStage tournament sponsors: add a name, logo and sponsor label. An illustrative title-sponsor card is shown."
     },
     {
       "id": "07-live",
@@ -56,7 +56,7 @@
       "file": "posts/07-live-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "Illustrative badminton live-score graphic showing Side A at 18 and Side B at 17. Keep your crew in the game."
+      "alt": "Illustrative racket-sport score board: Side A serving at 18, Side B receiving at 17. Keep your crew in the game."
     },
     {
       "id": "08-sports",
@@ -64,7 +64,7 @@
       "file": "posts/08-sports-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "SportStage supports cricket, badminton, tennis, padel, table tennis and pickleball."
+      "alt": "The SportStage home screen, Back to your game, with photo tiles for cricket, badminton, tennis, padel, table tennis and pickleball."
     },
     {
       "id": "09-community",
@@ -72,7 +72,7 @@
       "file": "posts/09-community-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "Sports equipment on a court. Same crew. New matchday. Tag the teammate who always keeps score."
+      "alt": "An illustrative SportStage Performance Lab chart: where you finish, with bars for winners, net kills, drops and errors forced."
     },
     {
       "id": "10-clubs",
@@ -80,7 +80,7 @@
       "file": "posts/10-clubs-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "Badminton equipment on a green court. Your club. Your stage. SportStage for your next club match."
+      "alt": "An illustrative SportStage knockout bracket, with two semi-finals leading to a champion slot. The road to the title."
     },
     {
       "id": "11-scorers",
@@ -88,7 +88,7 @@
       "file": "posts/11-scorers-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "A cricket bat and ball on a pitch. They play. You keep count. A SportStage appreciation post for scorekeepers."
+      "alt": "A cricket bat and ball on a pitch. They play. You keep count. A SportStage post for scorekeepers."
     },
     {
       "id": "12-intro",
@@ -96,7 +96,7 @@
       "file": "posts/12-intro-feed.png",
       "width": 1440,
       "height": 1800,
-      "alt": "SportStage green S logo with the headline Make your next match count. Follow for launch updates."
+      "alt": "SportStage S logo with the headline Make your next match count."
     },
     {
       "id": "01-brand",
@@ -104,7 +104,7 @@
       "file": "posts/01-brand-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "SportStage: Every sport. One stage. Cricket and racquet-sport equipment on a dark green court."
+      "alt": "SportStage: Every sport. One stage. Cricket and racquet-sport equipment on a dark court."
     },
     {
       "id": "02-cricket",
@@ -112,7 +112,7 @@
       "file": "posts/02-cricket-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "A cricket bat and red ball on an evening pitch. Every ball. A new story. Cricket scoring with SportStage."
+      "alt": "A cricket bat and red ball on an evening pitch. Every ball. A new story. Cricket scoring and match sharing on SportStage."
     },
     {
       "id": "03-badminton",
@@ -120,7 +120,7 @@
       "file": "posts/03-badminton-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "A badminton shuttlecock and racket on a green court. Own the rally. Keep the score."
+      "alt": "A badminton shuttlecock and racket on a court. Own the rally. Keep the score."
     },
     {
       "id": "04-setup",
@@ -128,7 +128,7 @@
       "file": "posts/04-setup-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "SportStage badminton match setup screen with fictional players. Choose players, review rules, then start scoring."
+      "alt": "The SportStage Start a match screen, asking Which sport today?, with photo tiles for six sports."
     },
     {
       "id": "05-organizers",
@@ -136,7 +136,7 @@
       "file": "posts/05-organizers-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "Tournament organization with SportStage: fixtures, results and sponsors in one tournament workflow."
+      "alt": "SportStage organiser workspace: registrations, fixture plan, winning bracket and sponsors in one tournament workflow."
     },
     {
       "id": "06-sponsors",
@@ -144,7 +144,7 @@
       "file": "posts/06-sponsors-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "SportStage tournament sponsors: add names, logos and partner labels. An illustrative title-sponsor card appears below."
+      "alt": "SportStage tournament sponsors: add a name, logo and sponsor label. An illustrative title-sponsor card is shown."
     },
     {
       "id": "07-live",
@@ -152,7 +152,7 @@
       "file": "posts/07-live-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "Illustrative badminton live-score graphic showing Side A at 18 and Side B at 17. Keep your crew in the game."
+      "alt": "Illustrative racket-sport score board: Side A serving at 18, Side B receiving at 17. Keep your crew in the game."
     },
     {
       "id": "08-sports",
@@ -160,7 +160,7 @@
       "file": "posts/08-sports-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "SportStage supports cricket, badminton, tennis, padel, table tennis and pickleball."
+      "alt": "The SportStage home screen, Back to your game, with photo tiles for cricket, badminton, tennis, padel, table tennis and pickleball."
     },
     {
       "id": "09-community",
@@ -168,7 +168,7 @@
       "file": "posts/09-community-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "Sports equipment on a court. Same crew. New matchday. Tag the teammate who always keeps score."
+      "alt": "An illustrative SportStage Performance Lab chart: where you finish, with bars for winners, net kills, drops and errors forced."
     },
     {
       "id": "10-clubs",
@@ -176,7 +176,7 @@
       "file": "posts/10-clubs-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "Badminton equipment on a green court. Your club. Your stage. SportStage for your next club match."
+      "alt": "An illustrative SportStage knockout bracket, with two semi-finals leading to a champion slot. The road to the title."
     },
     {
       "id": "11-scorers",
@@ -184,7 +184,7 @@
       "file": "posts/11-scorers-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "A cricket bat and ball on a pitch. They play. You keep count. A SportStage appreciation post for scorekeepers."
+      "alt": "A cricket bat and ball on a pitch. They play. You keep count. A SportStage post for scorekeepers."
     },
     {
       "id": "12-intro",
@@ -192,7 +192,7 @@
       "file": "posts/12-intro-square.png",
       "width": 1080,
       "height": 1080,
-      "alt": "SportStage green S logo with the headline Make your next match count. Follow for launch updates."
+      "alt": "SportStage S logo with the headline Make your next match count."
     },
     {
       "id": "carousel-01",
@@ -200,7 +200,7 @@
       "file": "posts/carousel-01.png",
       "width": 1080,
       "height": 1080,
-      "alt": "Less matchday  guesswork.  A simple guide to your first badminton match on SportStage."
+      "alt": "Less matchday  guesswork.  Your first racket match on SportStage, step by step."
     },
     {
       "id": "carousel-02",
@@ -208,7 +208,7 @@
       "file": "posts/carousel-02.png",
       "width": 1080,
       "height": 1080,
-      "alt": "First, choose  your players.  Pick the players for each side before you start."
+      "alt": "Which sport  today?  Tap Start a match and choose your sport."
     },
     {
       "id": "carousel-03",
@@ -216,7 +216,7 @@
       "file": "posts/carousel-03.png",
       "width": 1080,
       "height": 1080,
-      "alt": "Make it  your match.  Review the format and scoring rules before the first serve."
+      "alt": "Who’s playing?  Know the format.  Pick the players and first server, then review the match rules."
     },
     {
       "id": "carousel-04",
@@ -224,7 +224,7 @@
       "file": "posts/carousel-04.png",
       "width": 1080,
       "height": 1080,
-      "alt": "Ready to play?  Start scoring.  Review the match, then tap the rally winner to score."
+      "alt": "Ready when  you are.  Tap Start match, then tap a score card to record each rally."
     },
     {
       "id": "carousel-05",
@@ -232,7 +232,7 @@
       "file": "posts/carousel-05.png",
       "width": 1080,
       "height": 1080,
-      "alt": "Wrong tap?  Undo the rally.  Use “Undo last rally” to correct the latest scoring entry."
+      "alt": "Wrong tap?  Undo it.  Tap Undo to remove the latest rally from the score."
     },
     {
       "id": "carousel-06",
@@ -248,7 +248,7 @@
       "file": "posts/01-brand-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "SportStage: Every sport. One stage. Cricket and racquet-sport equipment on a dark green court."
+      "alt": "SportStage: Every sport. One stage. Cricket and racquet-sport equipment on a dark court."
     },
     {
       "id": "02-cricket",
@@ -256,7 +256,7 @@
       "file": "posts/02-cricket-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "A cricket bat and red ball on an evening pitch. Every ball. A new story. Cricket scoring with SportStage."
+      "alt": "A cricket bat and red ball on an evening pitch. Every ball. A new story. Cricket scoring and match sharing on SportStage."
     },
     {
       "id": "03-badminton",
@@ -264,7 +264,7 @@
       "file": "posts/03-badminton-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "A badminton shuttlecock and racket on a green court. Own the rally. Keep the score."
+      "alt": "A badminton shuttlecock and racket on a court. Own the rally. Keep the score."
     },
     {
       "id": "04-setup",
@@ -272,7 +272,7 @@
       "file": "posts/04-setup-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "SportStage badminton match setup screen with fictional players. Choose players, review rules, then start scoring."
+      "alt": "The SportStage Start a match screen, asking Which sport today?, with photo tiles for six sports."
     },
     {
       "id": "05-organizers",
@@ -280,7 +280,7 @@
       "file": "posts/05-organizers-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "Tournament organization with SportStage: fixtures, results and sponsors in one tournament workflow."
+      "alt": "SportStage organiser workspace: registrations, fixture plan, winning bracket and sponsors in one tournament workflow."
     },
     {
       "id": "06-sponsors",
@@ -288,7 +288,7 @@
       "file": "posts/06-sponsors-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "SportStage tournament sponsors: add names, logos and partner labels. An illustrative title-sponsor card appears below."
+      "alt": "SportStage tournament sponsors: add a name, logo and sponsor label. An illustrative title-sponsor card is shown."
     },
     {
       "id": "07-live",
@@ -296,7 +296,7 @@
       "file": "posts/07-live-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "Illustrative badminton live-score graphic showing Side A at 18 and Side B at 17. Keep your crew in the game."
+      "alt": "Illustrative racket-sport score board: Side A serving at 18, Side B receiving at 17. Keep your crew in the game."
     },
     {
       "id": "08-sports",
@@ -304,7 +304,7 @@
       "file": "posts/08-sports-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "SportStage supports cricket, badminton, tennis, padel, table tennis and pickleball."
+      "alt": "The SportStage home screen, Back to your game, with photo tiles for cricket, badminton, tennis, padel, table tennis and pickleball."
     },
     {
       "id": "09-community",
@@ -312,7 +312,7 @@
       "file": "posts/09-community-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "Sports equipment on a court. Same crew. New matchday. Tag the teammate who always keeps score."
+      "alt": "An illustrative SportStage Performance Lab chart: where you finish, with bars for winners, net kills, drops and errors forced."
     },
     {
       "id": "10-clubs",
@@ -320,7 +320,7 @@
       "file": "posts/10-clubs-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "Badminton equipment on a green court. Your club. Your stage. SportStage for your next club match."
+      "alt": "An illustrative SportStage knockout bracket, with two semi-finals leading to a champion slot. The road to the title."
     },
     {
       "id": "11-scorers",
@@ -328,7 +328,7 @@
       "file": "posts/11-scorers-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "A cricket bat and ball on a pitch. They play. You keep count. A SportStage appreciation post for scorekeepers."
+      "alt": "A cricket bat and ball on a pitch. They play. You keep count. A SportStage post for scorekeepers."
     },
     {
       "id": "12-intro",
@@ -336,7 +336,7 @@
       "file": "posts/12-intro-story.png",
       "width": 1440,
       "height": 2560,
-      "alt": "SportStage green S logo with the headline Make your next match count. Follow for launch updates."
+      "alt": "SportStage S logo with the headline Make your next match count."
     },
     {
       "id": "01-brand",
@@ -344,7 +344,7 @@
       "file": "posts/01-brand-landscape.png",
       "width": 1600,
       "height": 900,
-      "alt": "SportStage: Every sport. One stage. Cricket and racquet-sport equipment on a dark green court."
+      "alt": "SportStage: Every sport. One stage. Cricket and racquet-sport equipment on a dark court."
     },
     {
       "id": "05-organizers",
@@ -352,7 +352,7 @@
       "file": "posts/05-organizers-landscape.png",
       "width": 1600,
       "height": 900,
-      "alt": "Tournament organization with SportStage: fixtures, results and sponsors in one tournament workflow."
+      "alt": "SportStage organiser workspace: registrations, fixture plan, winning bracket and sponsors in one tournament workflow."
     },
     {
       "id": "12-intro",
@@ -360,7 +360,7 @@
       "file": "posts/12-intro-landscape.png",
       "width": 1600,
       "height": 900,
-      "alt": "SportStage green S logo with the headline Make your next match count. Follow for launch updates."
+      "alt": "SportStage S logo with the headline Make your next match count."
     }
   ],
   "videos": [
@@ -374,7 +374,7 @@
       ],
       "subtitles": [
         "Every sport. One stage.",
-        "Cricket, badminton, tennis, padel, table tennis and pickleball.",
+        "Back to your game. Six sports, all in one place.",
         "Meet SportStage. Follow for launch updates."
       ]
     },
@@ -388,22 +388,22 @@
       ],
       "subtitles": [
         "Every ball. A new story.",
-        "For the people behind every score.",
+        "Wrong tap? Undo it, and keep the match moving.",
         "Make your next match count. Follow SportStage."
       ]
     },
     {
       "id": "03-badminton-matchday",
-      "title": "Own the rally. Keep the score. Badminton on SportStage.",
+      "title": "Own the rally. Keep the score. Racket sports on SportStage.",
       "scenes": [
-        "03-badminton",
         "04-setup",
-        "12-intro"
+        "07-live",
+        "09-community"
       ],
       "subtitles": [
-        "Own the rally. Keep the score.",
-        "Choose players. Review your rules. Start scoring.",
-        "Meet SportStage. Follow for launch updates."
+        "Which sport today? Choose, then review players and rules.",
+        "Tap a score card to record the rally.",
+        "See the patterns. Shape your game."
       ]
     },
     {
@@ -411,13 +411,13 @@
       "title": "Your tournament. Your partners. Your stage.",
       "scenes": [
         "05-organizers",
-        "06-sponsors",
-        "12-intro"
+        "10-clubs",
+        "06-sponsors"
       ],
       "subtitles": [
-        "Fixtures, results and tournament sponsors.",
-        "Add one sponsor or many to your tournament.",
-        "Make your next match count. Follow SportStage."
+        "Registrations, fixture plan, bracket and sponsors.",
+        "Seed qualifiers. Watch the bracket advance.",
+        "Add your sponsors to the tournament."
       ]
     }
   ]

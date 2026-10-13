@@ -4,9 +4,9 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 
 import { Screen } from '@/components/ui/Screen';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
-import { Card } from '@/components/ui/Card';
-import { colors } from '@/lib/theme/colors';
+import { Text } from '@/components/wricket/ui/Text';
+import { Card } from '@/components/wricket/ui/Card';
+import { colors } from '@/lib/wricket/presentation/design';
 import { spacing, radius } from '@/lib/theme/spacing';
 import {
   getMatch,
@@ -22,6 +22,8 @@ import { Ball, BatterRetirement, Innings, Match, ScoreAdjustment, Team } from '@
 import { batsmanLineFor, bowlerLineFor } from '@/lib/wricket/domain/stats';
 import { formatOver } from '@/lib/wricket/domain/scoring';
 import { MatchMvpSection } from '@/components/wricket/mvp/MatchMvpSection';
+import { WricketHeader } from '@/components/wricket/ui/WricketHeader';
+import { DesignIcon } from '@/components/wricket/ui/DesignIcon';
 
 interface InningsView {
   innings: Innings;
@@ -103,7 +105,8 @@ export default function ScorecardScreen() {
 
   return (
     <Screen padded={false}>
-      <Stack.Screen options={{ title: 'Scorecard' }} />
+      <Stack.Screen options={{ headerShown: false }} />
+      <WricketHeader title="Scorecard" backTo="/wricket/live"><Pressable accessibilityRole="button" accessibilityLabel="Open match sharing" onPress={() => router.push({ pathname: '/wricket/match/[id]/live', params: { id: match.id, share: '1' } })} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><DesignIcon name="share" /></Pressable></WricketHeader>
       <ScrollView>
         <View style={styles.header}>
           <Text variant="overline" tone="muted">RESULT</Text>

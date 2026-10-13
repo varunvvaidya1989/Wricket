@@ -1,14 +1,14 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { Button } from '@/components/ui/Button';
+import { StagePage, StageNotice, StageButton } from '@/components/sports/platform/StageUI';
+import { OrganiserButton as Button } from '@/components/sports/platform/OrganiserButton';
 import { Screen } from '@/components/ui/Screen';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
+import { OrganiserText as Text } from '@/components/sports/platform/OrganiserText';
 import { SPORT_CONFIGS, SPORT_PRESENTATION, type ScoringSportId } from '@/lib/sports/scoring';
 import {
   sportRosterApi,
@@ -17,17 +17,21 @@ import {
   type SportTeamMembership,
   type SportTeamSummary,
 } from '@/lib/supabase/sportRosterApi';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 
 export function SportTeamDetailScreen({ sportId }: { sportId: ScoringSportId }) {
   const { id } = useLocalSearchParams<{ id: string }>();
   const auth = useAuth();
   const config = SPORT_CONFIGS[sportId];
-  const presentation = SPORT_PRESENTATION[sportId];
+  const presentation = { ...SPORT_PRESENTATION[sportId], accent: colors.accent };
   const [team, setTeam] = useState<SportTeamSummary>();
   const [members, setMembers] = useState<SportTeamMembership[]>([]);
   const [clubMembers, setClubMembers] = useState<SportClubMembership[]>([]);
+  const [loadError, setLoadError] = useState<string>();
+  const generation = useRef(0);
+  const owner = `${auth.session?.user.id ?? 'guest'}:${id}`;
+  const [loadedOwner, setLoadedOwner] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [canManage, setCanManage] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -38,20 +42,24 @@ export function SportTeamDetailScreen({ sportId }: { sportId: ScoringSportId }) 
 
   const reload = useCallback(() => {
     if (!id) return;
-    setLoading(true);
+    const request = ++generation.current;
+    setLoading(true); setLoadError(undefined);
     void sportRosterApi.getTeam(id).then(async (nextTeam) => {
       const [nextMembers, nextClubMembers, nextCanManage] = await Promise.all([
         sportRosterApi.listTeamMemberships(id),
         sportRosterApi.listClubMemberships(nextTeam.clubId),
         sportRosterApi.canManageTeam(id),
       ]);
+      if (request !== generation.current) return;
+      setLoadedOwner(owner);
       setTeam(nextTeam);
       setMembers(nextMembers);
       setClubMembers(nextClubMembers.filter((member) => member.status === 'ACTIVE'));
       setCanManage(nextCanManage);
-    }).catch((cause) => Alert.alert('Could not load team', message(cause)))
-      .finally(() => setLoading(false));
-  }, [id]);
+    }).catch((cause) => { if (request === generation.current) { setTeam(undefined); setLoadError(message(cause)); } })
+      .finally(() => { if (request === generation.current) setLoading(false); });
+    return () => { generation.current++; };
+  }, [id, owner]);
   useFocusEffect(reload);
 
   const invite = async () => {
@@ -129,29 +137,28 @@ export function SportTeamDetailScreen({ sportId }: { sportId: ScoringSportId }) 
     ]);
   };
 
-  if (loading) return <Screen padded={false}><SportStageLoader message={`Opening ${config.name} team`} detail="Loading roster, roles, and eligibility" accent={presentation.accent} /></Screen>;
-  if (!team) return <Screen padded={false}><AppHeader title="Team" back /><View style={styles.center}><Text variant="h3">Team unavailable</Text></View></Screen>;
+  if (loading || (team && loadedOwner !== owner)) return <Screen padded={false}><SportStageLoader message={`Opening ${config.name} team`} detail="Loading roster, roles, and eligibility" accent={presentation.accent} /></Screen>;
+  if (!team) return <StagePage focused title="Team" eyebrow={config.name.toUpperCase()}><StageNotice>{loadError ?? "This team could not be opened."}</StageNotice><StageButton title="Try again" onPress={reload} /></StagePage>;
 
   const eligibleClubMembers = clubMembers.filter((clubMember) => !members.some((member) => (
     member.sportProfileId === clubMember.sportProfileId && ['ACTIVE', 'INVITED'].includes(member.status)
   )));
 
   return (
-    <Screen scroll padded={false}>
-      <AppHeader title={team.name} eyebrow={`${config.name.toUpperCase()} TEAM`} back />
+    <StagePage focused title={team.name} eyebrow={`${config.name.toUpperCase()} TEAM`}>
       <View style={styles.content}>
-        <View style={[styles.hero, { borderColor: team.colorHex ?? presentation.accent }]}><View style={[styles.heroIcon, { backgroundColor: `${team.colorHex ?? presentation.accent}22` }]}><MaterialCommunityIcons name="account-multiple-outline" size={30} color={team.colorHex ?? presentation.accent} /></View><View style={styles.flex}><Text variant="h1">{team.name}</Text><Text variant="caption" tone="muted">{team.shortName || 'REUSABLE CLUB TEAM'} · {canManage ? 'OWNED BY YOU' : 'MEMBER'}</Text></View></View>
+        <View style={[styles.hero, { borderColor: team.colorHex ?? presentation.accent }]}><View style={[styles.heroIcon, { backgroundColor: `${team.colorHex ?? presentation.accent}22` }]}><MaterialCommunityIcons name="account-multiple-outline" size={30} color={team.colorHex ?? presentation.accent} /></View><View style={styles.flex}><Text variant="h1">{team.name}</Text><Text variant="caption" tone="muted">{team.shortName || 'REUSABLE CLUB TEAM'} · {team.ownerAccountId === auth.session?.user.id ? 'OWNER' : canManage ? 'MANAGER' : members.some(member => member.accountId === auth.session?.user.id && member.status === 'ACTIVE') ? 'MEMBER' : 'VIEWER'}</Text></View></View>
 
         <View style={styles.rules}><MaterialCommunityIcons name="account-check-outline" size={21} color={presentation.accent} /><View style={styles.flex}><Text variant="bodyStrong">Verified roster</Text><Text variant="caption" tone="muted">Players must first accept membership in this club. Eligibility is recorded for singles, doubles, or both.</Text></View></View>
 
-        <View style={styles.headingRow}><Text variant="overline" tone="dim">ROSTER · {members.filter((item) => item.status === 'ACTIVE').length}</Text>{canManage ? <Pressable disabled={!eligibleClubMembers.length} onPress={() => setInviteOpen(true)} style={[styles.smallAction, { borderColor: presentation.accent }, !eligibleClubMembers.length && styles.disabled]}><MaterialCommunityIcons name="account-plus-outline" size={17} color={presentation.accent} /><Text variant="caption" style={{ color: presentation.accent }}>INVITE</Text></Pressable> : null}</View>
-        {members.map((member) => <View key={member.id} style={styles.member}><View style={[styles.avatar, { backgroundColor: `${presentation.accent}16` }]}><Text variant="bodyStrong" style={{ color: presentation.accent }}>{initials(member.displayName)}</Text></View><View style={styles.flex}><Text variant="bodyStrong">{member.displayName}</Text><Text variant="caption" tone="muted">{member.status} · {member.eligibility.join(' + ')}{member.isCaptain ? ' · CAPTAIN' : ''}</Text></View>{member.status === 'ACTIVE' && member.accountId ? <View style={styles.rowActions}>{canManage || member.accountId === auth.session?.user.id ? <Pressable disabled={saving} onPress={() => openEligibility(member)}><MaterialCommunityIcons name="tune-variant" size={19} color={presentation.accent} /></Pressable> : null}{canManage && member.accountId !== team.ownerAccountId ? <Pressable disabled={saving} onPress={() => void toggleCaptain(member)}><Text variant="overline" style={{ color: member.isCaptain ? colors.danger : presentation.accent }}>{member.isCaptain ? 'REVOKE ROLE' : 'CAPTAIN'}</Text></Pressable> : null}{member.accountId !== team.ownerAccountId && (canManage || member.accountId === auth.session?.user.id) ? <Pressable disabled={saving} onPress={() => endMembership(member)}><MaterialCommunityIcons name={member.accountId === auth.session?.user.id ? 'exit-to-app' : 'account-remove-outline'} size={19} color={colors.danger} /></Pressable> : null}</View> : member.status === 'ACTIVE' ? <MaterialCommunityIcons name="check-decagram" size={19} color={presentation.accent} /> : <Text variant="overline" tone="dim">PENDING</Text>}</View>)}
+        <View style={styles.headingRow}><Text variant="overline" tone="dim">ROSTER · {members.filter((item) => item.status === 'ACTIVE').length}</Text>{canManage ? <Pressable accessibilityRole="button" accessibilityLabel="Invite club member" disabled={!eligibleClubMembers.length} onPress={() => setInviteOpen(true)} style={[styles.smallAction, { borderColor: presentation.accent }, !eligibleClubMembers.length && styles.disabled]}><MaterialCommunityIcons name="account-plus-outline" size={17} color={presentation.accent} /><Text variant="caption" style={{ color: presentation.accent }}>INVITE</Text></Pressable> : null}</View>
+        {members.map((member) => <View key={member.id} style={styles.member}><View style={[styles.avatar, { backgroundColor: `${presentation.accent}16` }]}><Text variant="bodyStrong" style={{ color: presentation.accent }}>{initials(member.displayName)}</Text></View><View style={styles.flex}><Text variant="bodyStrong">{member.displayName}</Text><Text variant="caption" tone="muted">{member.status} · {member.eligibility.join(' + ')}{member.isCaptain ? ' · CAPTAIN' : ''}</Text></View>{member.status === 'ACTIVE' && member.accountId ? <View style={styles.rowActions}>{canManage || member.accountId === auth.session?.user.id ? <Pressable accessibilityRole="button" accessibilityLabel={`Edit eligibility for ${member.displayName}`} style={styles.close} disabled={saving} onPress={() => openEligibility(member)}><MaterialCommunityIcons name="tune-variant" size={19} color={presentation.accent} /></Pressable> : null}{canManage && member.accountId !== team.ownerAccountId ? <Pressable accessibilityRole="button" accessibilityLabel={`${member.isCaptain ? 'Revoke captain role for' : 'Assign captain role to'} ${member.displayName}`} style={styles.close} disabled={saving} onPress={() => void toggleCaptain(member)}><Text variant="overline" style={{ color: member.isCaptain ? colors.danger : presentation.accent }}>{member.isCaptain ? 'REVOKE ROLE' : 'CAPTAIN'}</Text></Pressable> : null}{member.accountId !== team.ownerAccountId && (canManage || member.accountId === auth.session?.user.id) ? <Pressable accessibilityRole="button" accessibilityLabel={member.accountId === auth.session?.user.id ? 'Leave membership' : `Remove ${member.displayName}`} style={styles.close} disabled={saving} onPress={() => endMembership(member)}><MaterialCommunityIcons name={member.accountId === auth.session?.user.id ? 'exit-to-app' : 'account-remove-outline'} size={19} color={colors.danger} /></Pressable> : null}</View> : member.status === 'ACTIVE' ? <MaterialCommunityIcons name="check-decagram" size={19} color={presentation.accent} /> : <Text variant="overline" tone="dim">PENDING</Text>}</View>)}
       </View>
 
-      <Modal visible={inviteOpen} transparent animationType="fade" onRequestClose={() => setInviteOpen(false)}><View style={styles.overlay}><View style={styles.modalCard}><View style={styles.headingRow}><Text variant="h2">Invite club member</Text><Pressable onPress={() => setInviteOpen(false)}><MaterialCommunityIcons name="close" size={24} color={colors.textMuted} /></Pressable></View><Text variant="caption" tone="muted">Only accepted members of this club can join the reusable team.</Text><View style={styles.choiceRow}>{(['SINGLES', 'DOUBLES'] as const).map((format) => <Pressable key={format} onPress={() => toggleEligibility(format)} style={[styles.choice, eligibility.includes(format) && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}14` }]}><MaterialCommunityIcons name={format === 'SINGLES' ? 'account-outline' : 'account-multiple-outline'} size={20} color={eligibility.includes(format) ? presentation.accent : colors.textMuted} /><Text variant="caption" style={eligibility.includes(format) ? { color: presentation.accent } : undefined}>{format}</Text></Pressable>)}</View><View style={styles.memberList}>{eligibleClubMembers.map((member) => <Pressable key={member.id} onPress={() => setSelectedClubMembershipId(member.id)} style={[styles.member, selectedClubMembershipId === member.id && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}10` }]}><View style={styles.flex}><Text variant="bodyStrong">{member.displayName}</Text><Text variant="caption" tone="muted">Accepted club member</Text></View>{selectedClubMembershipId === member.id ? <MaterialCommunityIcons name="check-circle" size={20} color={presentation.accent} /> : null}</Pressable>)}</View><Button title="Send team invitation" disabled={!selectedClubMembershipId || !eligibility.length} loading={saving} onPress={() => void invite()} fullWidth style={{ backgroundColor: presentation.accent }} /></View></View></Modal>
+      <Modal accessibilityLabel="Invite club member" visible={inviteOpen} transparent animationType="fade" onRequestClose={() => setInviteOpen(false)}><View style={styles.overlay}><View style={styles.modalCard}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.dialogContent}><View style={styles.headingRow}><Text variant="h2">Invite club member</Text><Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.close} onPress={() => setInviteOpen(false)}><MaterialCommunityIcons name="close" size={24} color={colors.textMuted} /></Pressable></View><Text variant="caption" tone="muted">Only accepted members of this club can join the reusable team.</Text><View style={styles.choiceRow}>{(['SINGLES', 'DOUBLES'] as const).map((format) => <Pressable key={format} accessibilityRole="button" accessibilityLabel={format} accessibilityState={{ selected: eligibility.includes(format) }} aria-pressed={eligibility.includes(format)} onPress={() => toggleEligibility(format)} style={[styles.choice, eligibility.includes(format) && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}14` }]}><MaterialCommunityIcons name={format === 'SINGLES' ? 'account-outline' : 'account-multiple-outline'} size={20} color={eligibility.includes(format) ? presentation.accent : colors.textMuted} /><Text variant="caption" style={eligibility.includes(format) ? { color: presentation.accent } : undefined}>{format}</Text></Pressable>)}</View><View style={styles.memberList}>{eligibleClubMembers.map((member) => <Pressable accessibilityRole="button" accessibilityLabel={`Choose ${member.displayName}`} aria-pressed={selectedClubMembershipId === member.id} key={member.id} onPress={() => setSelectedClubMembershipId(member.id)} style={[styles.member, selectedClubMembershipId === member.id && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}10` }]}><View style={styles.flex}><Text variant="bodyStrong">{member.displayName}</Text><Text variant="caption" tone="muted">Accepted club member</Text></View>{selectedClubMembershipId === member.id ? <MaterialCommunityIcons name="check-circle" size={20} color={presentation.accent} /> : null}</Pressable>)}</View><Button title="Send team invitation" disabled={!selectedClubMembershipId || !eligibility.length} loading={saving} onPress={() => void invite()} fullWidth style={{ backgroundColor: presentation.accent }} /></ScrollView></View></View></Modal>
 
-      <Modal visible={Boolean(editingMember)} transparent animationType="fade" onRequestClose={() => setEditingMember(undefined)}><View style={styles.overlay}><View style={styles.modalCard}><View style={styles.headingRow}><Text variant="h2">Format eligibility</Text><Pressable onPress={() => setEditingMember(undefined)}><MaterialCommunityIcons name="close" size={24} color={colors.textMuted} /></Pressable></View><Text variant="caption" tone="muted">Choose where {editingMember?.displayName ?? 'this player'} can be selected.</Text><View style={styles.choiceRow}>{(['SINGLES', 'DOUBLES'] as const).map((format) => <Pressable key={format} onPress={() => toggleEligibility(format)} style={[styles.choice, eligibility.includes(format) && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}14` }]}><MaterialCommunityIcons name={format === 'SINGLES' ? 'account-outline' : 'account-multiple-outline'} size={20} color={eligibility.includes(format) ? presentation.accent : colors.textMuted} /><Text variant="caption" style={eligibility.includes(format) ? { color: presentation.accent } : undefined}>{format}</Text></Pressable>)}</View><Button title="Save eligibility" disabled={!eligibility.length} loading={saving} onPress={() => void saveEligibility()} fullWidth style={{ backgroundColor: presentation.accent }} /></View></View></Modal>
-    </Screen>
+      <Modal accessibilityLabel="Format eligibility" visible={Boolean(editingMember)} transparent animationType="fade" onRequestClose={() => setEditingMember(undefined)}><View style={styles.overlay}><View style={styles.modalCard}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.dialogContent}><View style={styles.headingRow}><Text variant="h2">Format eligibility</Text><Pressable accessibilityRole="button" accessibilityLabel="Close" style={styles.close} onPress={() => setEditingMember(undefined)}><MaterialCommunityIcons name="close" size={24} color={colors.textMuted} /></Pressable></View><Text variant="caption" tone="muted">Choose where {editingMember?.displayName ?? 'this player'} can be selected.</Text><View style={styles.choiceRow}>{(['SINGLES', 'DOUBLES'] as const).map((format) => <Pressable key={format} accessibilityRole="button" accessibilityLabel={format} accessibilityState={{ selected: eligibility.includes(format) }} aria-pressed={eligibility.includes(format)} onPress={() => toggleEligibility(format)} style={[styles.choice, eligibility.includes(format) && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}14` }]}><MaterialCommunityIcons name={format === 'SINGLES' ? 'account-outline' : 'account-multiple-outline'} size={20} color={eligibility.includes(format) ? presentation.accent : colors.textMuted} /><Text variant="caption" style={eligibility.includes(format) ? { color: presentation.accent } : undefined}>{format}</Text></Pressable>)}</View><Button title="Save eligibility" disabled={!eligibility.length} loading={saving} onPress={() => void saveEligibility()} fullWidth style={{ backgroundColor: presentation.accent }} /></ScrollView></View></View></Modal>
+    </StagePage>
   );
 }
 
@@ -159,15 +166,17 @@ function initials(value: string): string { return value.split(/\s+/).slice(0, 2)
 function message(cause: unknown): string { return cause instanceof Error ? cause.message : 'Please try again.'; }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
+  close: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  dialogContent: { gap: 14 },
+  content: { gap: 18 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   hero: { padding: spacing.md, borderWidth: 1, borderRadius: radius.lg, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   heroIcon: { width: 52, height: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   rules: { padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', gap: spacing.sm },
   headingRow: { marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-  smallAction: { minHeight: 36, paddingHorizontal: spacing.sm, borderWidth: 1, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  smallAction: { minHeight: 44, minWidth: 44, paddingHorizontal: spacing.sm, borderWidth: 1, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', gap: 4 },
   member: { minHeight: 66, padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  rowActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  rowActions: { flexWrap: 'wrap', maxWidth: '45%', flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   overlay: { flex: 1, padding: spacing.lg, backgroundColor: 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center' },
   modalCard: { width: '100%', maxWidth: 520, maxHeight: '82%', padding: spacing.lg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.xl, backgroundColor: colors.surface, gap: spacing.md },

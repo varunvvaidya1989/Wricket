@@ -5,6 +5,7 @@ import { Animated, Easing, StyleSheet, View, type ViewStyle } from 'react-native
 import { Text } from '@/components/ui/Text';
 import { colors } from '@/lib/theme/colors';
 import { radius, spacing } from '@/lib/theme/spacing';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 const logo = require('@/assets/sportstage/logo/sportstage-mark-rounded-512.png');
 
@@ -27,8 +28,13 @@ export function SportStageLoader({
   const counterSpin = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   const travel = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reducedMotion) {
+      spin.setValue(0); counterSpin.setValue(0); pulse.setValue(0); travel.setValue(0);
+      return;
+    }
     const animations = [
       Animated.loop(Animated.timing(spin, {
         toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: true,
@@ -50,7 +56,7 @@ export function SportStageLoader({
     ];
     animations.forEach(animation => animation.start());
     return () => animations.forEach(animation => animation.stop());
-  }, [counterSpin, pulse, spin, travel]);
+  }, [counterSpin, pulse, reducedMotion, spin, travel]);
 
   const compact = variant === 'compact';
   const section = variant === 'section';
@@ -129,7 +135,7 @@ export function SportStageLoader({
             transform: [{ scale: pulseScale }],
           },
         ]}>
-          <Image source={logo} style={{ width: logoSize, height: logoSize, borderRadius: compact ? 8 : 14 }} contentFit="cover" />
+          <Image source={logo} alt="" accessible={false} style={{ width: logoSize, height: logoSize, borderRadius: compact ? 8 : 14 }} contentFit="cover" />
         </Animated.View>
       </View>
 

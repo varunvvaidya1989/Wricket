@@ -21,12 +21,16 @@ describe('cloud competition rollout correction', () => {
     'SportCompetitionsScreen.tsx',
     'SportCloudCompetitionDetailScreen.tsx',
     'SportSearchScreen.tsx',
-    'SportShell.tsx',
   ])('gates cloud API entry path %s', fileName => {
     const source = readFileSync(resolve(componentRoot, fileName), 'utf8');
     expect(source).toContain("useSportFeatureFlag(");
     expect(source).toContain("'cloud_competitions'");
-    expect(source).toContain('cloudCompetitions.enabled');
+    expect(source).toMatch(/(?:cloudCompetitions|competitionsFlag)\.enabled/);
+  });
+
+  it('keeps sport home navigation separate from gated competition API calls', () => {
+    const source = readFileSync(resolve(componentRoot, 'SportShell.tsx'), 'utf8');
+    expect(source).not.toContain('sportCompetitionApi');
   });
 
   it('renders a non-error unavailable state for disabled direct routes', () => {

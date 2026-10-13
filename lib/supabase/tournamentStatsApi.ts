@@ -1,4 +1,6 @@
+import { readIdChunks, readPages } from './readPages';
 import { getSupabaseClient } from './client';
+import { activeStatisticsBalls, eligibleCompletedMatch, type StatisticsMatch, type StatisticsEvent } from '@/lib/wricket/presentation/completedStatistics';
 
 export interface TournamentPlayerStat {
   id: string;
@@ -29,44 +31,44 @@ export interface TournamentCloudStats {
 export const tournamentStatsApi = {
   async get(tournamentId: string): Promise<TournamentCloudStats> {
     const client = getSupabaseClient();
-    const { data: matches, error: matchError } = await client.from('matches')
-      .select('id, status')
-      .eq('tournament_id', tournamentId);
-    if (matchError) throw matchError;
+    const matches = await readPages((start, end) => client.from('matches')
+      .select('id, status, result, scheduled_at, created_at')
+      .eq('tournament_id', tournamentId).order('id').range(start, end));
     if (!matches.length) return emptyStats();
 
-    const matchIds = matches.map(match => match.id);
-    const events: Array<{ match_id: string; kind: string; payload: Record<string, unknown> | null }> = [];
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await client.from('match_events')
-        .select('match_id, kind, payload')
-        .in('match_id', matchIds)
-        .order('sequence')
-        .range(from, from + 999);
-      if (error) throw error;
-      events.push(...data);
-      if (data.length < 1000) break;
-    }
+    const completed = matches.filter(eligibleCompletedMatch);
+    const matchIds = completed.map(match => match.id);
+    if (!matchIds.length) return { ...emptyStats(), matches: matches.length };
+    const events: StatisticsEvent[] = await readIdChunks(matchIds, chunk => readPages((start, end) => client.from('match_events')
+      .select('id, client_event_id, match_id, sequence, kind, payload')
+      .in('match_id', chunk).order('match_id').order('sequence').order('id').range(start, end)));
 
     const playerIds = new Set<string>();
-    for (const event of events) {
+    for (const event of activeStatisticsBalls(events)) {
       if (event.kind !== 'BALL_RECORDED') continue;
       const payload = event.payload ?? {};
-      for (const key of ['striker_id', 'bowler_id']) {
+      for (const key of ['striker_id', 'bowler_id', 'out_player_id', 'fielder_id']) {
         const id = payload[key];
         if (typeof id === 'string') playerIds.add(id);
       }
     }
     const names = new Map<string, string>();
     const ids = [...playerIds];
-    for (let from = 0; from < ids.length; from += 500) {
+    for (let from = 0; from < ids.length; from += 100) {
       const { data, error } = await client.from('players')
         .select('id, display_name')
-        .in('id', ids.slice(from, from + 500));
+        .in('id', ids.slice(from, from + 100));
       if (error) throw error;
       data.forEach(player => names.set(player.id, player.display_name));
     }
 
+    return aggregateTournamentStatistics(matches, events, names);
+  },
+};
+
+export function aggregateTournamentStatistics(matches: readonly StatisticsMatch[], events: readonly StatisticsEvent[], names: ReadonlyMap<string, string>): TournamentCloudStats {
+    const completed = matches.filter(eligibleCompletedMatch);
+    const eligibleIds = new Set(completed.map(match => match.id));
     const players = new Map<string, TournamentPlayerStat>();
     const player = (id: string) => {
       const existing = players.get(id);
@@ -82,8 +84,9 @@ export const tournamentStatsApi = {
     let balls = 0;
     let runs = 0;
     let wickets = 0;
+    const battingInnings = new Map<string, Set<string>>();
     const perMatch = new Map<string, Map<string, { runs: number; wickets: number; batted: boolean; bowled: boolean }>>();
-    for (const event of events) {
+    for (const event of activeStatisticsBalls(events).filter(event => eligibleIds.has(event.match_id))) {
       if (event.kind !== 'BALL_RECORDED') continue;
       const payload = event.payload ?? {};
       balls += 1;
@@ -99,6 +102,9 @@ export const tournamentStatsApi = {
       };
       if (typeof strikerId === 'string') {
         const current = player(strikerId);
+        const innings = battingInnings.get(strikerId) ?? new Set<string>();
+        innings.add(`${event.match_id}:${String(payload.innings_id ?? '')}`);
+        battingInnings.set(strikerId, innings);
         const batRuns = Number(payload.runs_bat ?? 0);
         current.runs += batRuns;
         if (payload.extra_kind !== 'WIDE') current.ballsFaced += 1;
@@ -131,23 +137,25 @@ export const tournamentStatsApi = {
     }
 
     for (const [playerId, current] of players) {
-      const form = [...perMatch.values()].flatMap(byPlayer => byPlayer.get(playerId) ? [byPlayer.get(playerId)!] : []);
+      const form = [...perMatch.entries()].sort(([a], [b]) => {
+        const date = (id: string) => { const match = completed.find(item => item.id === id); return Date.parse(match?.scheduled_at ?? match?.created_at ?? ''); };
+        return date(a) - date(b) || a.localeCompare(b);
+      }).map(([, byPlayer]) => byPlayer).flatMap(byPlayer => byPlayer.get(playerId) ? [byPlayer.get(playerId)!] : []);
       current.matches = form.length;
-      current.innings = form.filter(row => row.batted).length;
+      current.innings = battingInnings.get(playerId)?.size ?? 0;
       current.recentScores = form.filter(row => row.batted).map(row => row.runs).slice(-5).reverse();
       current.recentWickets = form.filter(row => row.bowled).map(row => row.wickets).slice(-5).reverse();
     }
 
     return {
       matches: matches.length,
-      completedMatches: matches.filter(match => match.status === 'COMPLETED').length,
+      completedMatches: completed.length,
       balls,
       runs,
       wickets,
       players: [...players.values()],
     };
-  },
-};
+}
 
 function emptyStats(): TournamentCloudStats {
   return {

@@ -56,6 +56,8 @@ describe('scoring session repository', () => {
       null,
       8,
       123,
+      null,
+      'match-1',
     ]);
     expect(session.updatedAt).toBe(123);
   });
@@ -86,6 +88,8 @@ describe('scoring session repository', () => {
       4,
       18,
       456,
+      null,
+      'match-1',
     ]);
   });
 

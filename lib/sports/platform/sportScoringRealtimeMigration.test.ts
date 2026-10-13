@@ -23,7 +23,8 @@ describe('sport scoring realtime delivery', () => {
     expect(scoringApi).toContain('subscribe(\n    scoringMatchId: string');
     expect(scoringApi).toContain("table: 'sport_scoring_events'");
     expect(scoringApi).toContain("table: 'sport_scoring_matches'");
-    expect(feedScreen).toContain('return sportScoringApi.subscribe(');
+    expect(feedScreen).toContain('const unsubscribe = sportScoringApi.subscribe(');
+    expect(feedScreen).toContain('generation.current++; unsubscribe();');
     expect(feedScreen).toContain('() => void load(true)');
     expect(feedScreen).toContain('setRealtimeConnected');
     expect(feedScreen).not.toContain('setInterval');

@@ -79,6 +79,17 @@ const teamFields = 'id, club_id, name, short_name, logo_url, color_hex, owner_ac
 const teamMembershipFields = 'id, team_id, sport_profile_id, club_membership_id, display_name_snapshot, avatar_url_snapshot, status, eligibility, accepted_at, ended_at';
 
 export const sportRosterApi = {
+  async discoverClubs(sportCode: string, query = ''): Promise<SportClubSummary[]> {
+    let request = getSupabaseClient().from('sport_clubs')
+      .select(`${clubFields}, sports!inner(code)`)
+      .eq('visibility', 'PUBLIC').eq('sports.code', sportCode);
+    const name = query.trim().slice(0, 120).replace(/[\\%_]/g, '\\$&');
+    if (name) request = request.ilike('name', `%${name}%`);
+    const { data, error } = await request.order('name').limit(50);
+    if (error) throw error;
+    return (data ?? []).map(row => mapClub(row as Record<string, unknown>));
+  },
+
   async getMySportProfile(accountId: string, sportCode: string): Promise<{ id: string; sportId: string } | undefined> {
     return getMySportProfile(accountId, sportCode);
   },

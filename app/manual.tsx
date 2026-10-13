@@ -1,12 +1,9 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { AppHeader } from '@/components/ui/AppHeader';
-import { Screen } from '@/components/ui/Screen';
-import { Text } from '@/components/ui/Text';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
+import { StageButton, StageField, StageIntro, StageList, StageNotice, StagePage, StageRow, StageText, stageColors as colors } from '@/components/sports/platform/StageUI';
 
 type ManualSection = {
   id: string;
@@ -66,9 +63,9 @@ const sections: ManualSection[] = [
   },
   {
     id: 'schedule', icon: 'calendar-clock-outline', title: 'Schedule and prepare fixtures',
-    summary: 'Choose opponents, time, court, match order, officials, and lineups.', path: 'Competition → Schedule',
+    summary: 'Choose opponents, time, court, match order, officials, and lineups.', path: 'Competition → Manage competition → Schedule & courts',
     steps: [
-      'Tap Add fixture and choose two approved entrants from the same division.',
+      'Lock registration, then choose two approved entrants from the same division in Schedule & courts.',
       'Select the stage, venue, court, and local start time.',
       'For a tournament team tie, add its singles or doubles matches in playing order.',
       'Open Manage fixture to record attendance, change time or court, reorder, edit matches, or cancel.',
@@ -83,7 +80,7 @@ const sections: ManualSection[] = [
     steps: [
       'Confirm the players and server, then start the match.',
       'Award the point to the player or side that won it.',
-      'Classify the point in the dialog—for example ace, service winner, forced error, unforced error, or double fault.',
+      'Tap the winning side to record a rally. Use Point details when you want to classify how the point was won.',
       'SportStage applies the selected sport’s game, set, advantage, deuce, and tie-break rules automatically.',
       'Use Undo only for the most recent incorrect action. The live score and timeline update for viewers.',
       'Complete the match after the winning condition is reached and verify the result.',
@@ -92,9 +89,9 @@ const sections: ManualSection[] = [
   },
   {
     id: 'watch', icon: 'access-point', title: 'Watch live and upcoming sport',
-    summary: 'Find public matches, open the live timeline, and follow competitions.', path: 'SportStage → Live network, or a sport → Live',
+    summary: 'Find public matches, open the live timeline, and follow competitions.', path: 'SportStage → Now / Explore, or a sport → Now',
     steps: [
-      'Open Live network to see public live matches across every sport.',
+      'Open Now or Explore to find public live matches across sports.',
       'Open an individual sport’s home or Live screen to filter the feed to that sport.',
       'Select a match to see player names, the current score, and point-by-point descriptions.',
       'Follow a public competition to include it in your following feed and upcoming schedule.',
@@ -114,7 +111,7 @@ const sections: ManualSection[] = [
   },
   {
     id: 'help', icon: 'lifebuoy', title: 'Fix common problems safely',
-    summary: 'What to check when a player, competition, or live score is missing.', path: 'Competition → Manage, or Account settings',
+    summary: 'What to check when a player, competition, or live score is missing.', path: 'Competition → Manage competition, or Account & privacy',
     steps: [
       'Missing player: confirm both accounts selected the same sport and have active profiles.',
       'Missing competition: confirm you are signed in, viewing the correct sport, and the competition is published for public discovery.',
@@ -126,89 +123,31 @@ const sections: ManualSection[] = [
   },
 ];
 
-const quickStarts = [
-  { label: 'PLAY A MATCH', id: 'match', icon: 'racquetball' as const },
-  { label: 'RUN A COMPETITION', id: 'competition', icon: 'trophy-outline' as const },
-  { label: 'SCORE LIVE', id: 'scoring', icon: 'scoreboard-outline' as const },
-  { label: 'WATCH SPORT', id: 'watch', icon: 'access-point' as const },
-];
+const recovery: ManualSection = { id: 'recovery', icon: 'lock-reset', title: 'Recover my account', summary: 'Request a fresh recovery link.', path: 'Sign in > Forgot password', steps: ['Open Forgot password and enter your account email.', 'Use the newest recovery email and keep it private.', 'Choose a new password. If the link expired, request another one.'] };
+const invitation: ManualSection = { id: 'join-team', icon: 'account-group-outline', title: 'Join my team', summary: 'Review an invitation before joining.', path: 'Captain or organiser invitation link', steps: ['Open the invitation link shared by your captain or organiser.', 'Sign in and check the team name and invited role.', 'Review and accept the invitation. If it expired or was revoked, ask the sender for a fresh link.'] };
+const guides = [...sections, invitation, recovery];
 
 export default function SportStageManualScreen() {
+  const router = useRouter();
+  const { task } = useLocalSearchParams<{ task?: string }>();
   const [query, setQuery] = useState('');
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['account']));
-  const visibleSections = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return sections;
-    return sections.filter((section) => [section.title, section.summary, section.path, section.note, ...section.steps].some((value) => value?.toLowerCase().includes(needle)));
-  }, [query]);
-
-  const open = (id: string) => {
-    const section = sections.find((item) => item.id === id);
-    setQuery(section?.title ?? '');
-    setExpanded((current) => new Set(current).add(id));
-  };
-  const toggle = (id: string) => setExpanded((current) => {
-    const next = new Set(current);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
-
-  return <Screen scroll padded={false}>
-    <AppHeader title="How to use SportStage" eyebrow="PLAYER & ORGANIZER MANUAL" back />
-    <View style={styles.content}>
-      <View style={styles.hero}>
-        <MaterialCommunityIcons name="book-open-page-variant-outline" size={34} color={colors.accent} />
-        <Text variant="h2" style={styles.heroTitle}>What would you like to do?</Text>
-        <Text variant="body" tone="muted" style={styles.bodyCopy}>Follow a task from start to finish. The same workflow applies to cricket, tennis, badminton, padel, table tennis, and pickleball; scoring rules adapt to the selected sport.</Text>
-        <View style={styles.quickGrid}>{quickStarts.map((item) => <Pressable key={item.id} onPress={() => open(item.id)} style={styles.quickAction}><MaterialCommunityIcons name={item.icon} size={20} color={colors.accent} /><Text variant="overline" style={styles.quickLabel}>{item.label}</Text></Pressable>)}</View>
-      </View>
-
-      <View style={styles.searchBox}><MaterialCommunityIcons name="magnify" size={21} color={colors.textMuted} /><TextInput value={query} onChangeText={setQuery} placeholder="Search the manual" placeholderTextColor={colors.textDim} style={styles.searchInput} /></View>
-      <Text variant="overline" tone="dim">GUIDES · {visibleSections.length}</Text>
-      {visibleSections.map((section) => {
-        const isOpen = expanded.has(section.id) || Boolean(query.trim());
-        return <View key={section.id} style={styles.guideCard}>
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: isOpen }} onPress={() => toggle(section.id)} style={styles.guideHeader}>
-            <View style={styles.iconBubble}><MaterialCommunityIcons name={section.icon} size={22} color={colors.accent} /></View>
-            <View style={styles.flex}><Text variant="h3" style={styles.guideTitle}>{section.title}</Text><Text variant="caption" tone="muted" style={styles.smallCopy}>{section.summary}</Text></View>
-            <MaterialCommunityIcons name={isOpen ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textMuted} />
-          </Pressable>
-          {isOpen ? <View style={styles.guideBody}>
-            <View style={styles.path}><MaterialCommunityIcons name="map-marker-path" size={18} color={colors.accent} /><View style={styles.flex}><Text variant="overline" tone="dim">WHERE TO FIND IT</Text><Text variant="caption">{section.path}</Text></View></View>
-            {section.steps.map((step, index) => <View key={step} style={styles.step}><View style={styles.stepNumber}><Text variant="overline" style={styles.stepNumberText}>{index + 1}</Text></View><Text variant="body" style={[styles.flex, styles.bodyCopy]}>{step}</Text></View>)}
-            {section.note ? <View style={styles.note}><MaterialCommunityIcons name="lightbulb-outline" size={18} color={colors.gold} /><Text variant="caption" style={styles.flex}>{section.note}</Text></View> : null}
-          </View> : null}
-        </View>;
-      })}
-      {!visibleSections.length ? <View style={styles.empty}><MaterialCommunityIcons name="text-search" size={30} color={colors.textDim} /><Text variant="h3">No guide found</Text><Text variant="caption" tone="muted">Try a task such as scoring, teams, check-in, live, or tournament.</Text></View> : null}
-      <View style={styles.glossary}><Text variant="h3" style={styles.guideTitle}>Competition status guide</Text><Status label="Draft" copy="Only organizers can work on it." /><Status label="Registration open" copy="Eligible players or teams can enter." /><Status label="Published" copy="Public information and schedule are visible." /><Status label="Live" copy="At least one competition match is in progress." /><Status label="Completed" copy="Results and statistics remain available." /></View>
-    </View>
-  </Screen>;
+  const selected = guides.find(guide => guide.id === task);
+  const visible = useMemo(() => guides.filter(guide => [guide.title, guide.summary, ...guide.steps].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))), [query]);
+  const open = (id: string) => router.push({ pathname: '/manual', params: { task: id } });
+  if (selected) return <StagePage focused title={selected.id === 'scoring' ? 'Score a match' : selected.title} eyebrow="HELP" onBack={() => router.replace('/manual')} footer={['scoring', 'match'].includes(selected.id) ? <StageButton primary title="Start a match" onPress={() => router.push('/start-match')} /> : undefined}>
+    <StageIntro eyebrow={selected.id === 'scoring' ? 'HOW TO SCORE' : 'NEXT STEPS'} title={selected.id === 'scoring' ? 'From setup to the first rally.' : selected.title} description={selected.summary} />
+    <StageText variant="small" muted>{selected.path}</StageText>
+    {selected.steps.map((step, index) => <View key={step} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}><StageText variant="eyebrow" style={{ color: colors.accent, width: 22 }}>{index + 1}</StageText><StageText style={{ flex: 1 }}>{step}</StageText></View>)}
+    {selected.note ? <StageNotice>{selected.note}</StageNotice> : null}
+    {selected.id === 'scoring' ? <StageNotice>Cricket uses its own Numbers / Gestures scoring pad and ball-by-ball rules.</StageNotice> : null}
+    {selected.id === 'recovery' ? <StageButton title="Open account security" onPress={() => router.push('/account')} /> : null}
+    <StageButton title="Browse help topics" onPress={() => router.replace('/manual')} />
+  </StagePage>;
+  return <StagePage focused title="Help">
+    <StageIntro eyebrow="A LITTLE GUIDANCE" title="What are you trying to do?" description="Choose a task to see the next steps." />
+    <StageField label="Search help" value={query} onChangeText={setQuery} placeholder="Scoring, teams, competitions..." />
+    {!query.trim() ? <StageList><StageRow title="Score a match" detail="Choose sport, setup, score" symbol="↗" onPress={() => open('scoring')} /><StageRow title="Join my team" detail="Invitations, rosters and eligibility" symbol="+" onPress={() => open('join-team')} /><StageRow title="Run a competition" detail="Entries, schedule and officials" symbol="◇" onPress={() => open('competition')} /><StageRow title="Recover my account" detail="Get a fresh password reset link" symbol="↻" onPress={() => open('recovery')} /></StageList> : null}
+    <StageText variant="eyebrow" muted>{query.trim() ? 'SEARCH RESULTS' : 'MORE GUIDANCE'}</StageText>
+    {visible.length ? <StageList>{visible.filter(guide => query.trim() || !['scoring','join-team','competition','recovery'].includes(guide.id)).map(guide => <StageRow key={guide.id} title={guide.title} detail={guide.summary} onPress={() => open(guide.id)} />)}</StageList> : <StageNotice>No guide found. Try scoring, teams or competitions.</StageNotice>}
+  </StagePage>;
 }
-
-function Status({ label, copy }: { label: string; copy: string }) {
-  return <View style={styles.statusRow}><Text variant="bodyStrong" style={styles.statusLabel}>{label}</Text><Text variant="caption" tone="muted" style={[styles.flex, styles.smallCopy]}>{copy}</Text></View>;
-}
-
-const styles = StyleSheet.create({
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
-  hero: { padding: spacing.lg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.xl, backgroundColor: colors.surface, gap: spacing.sm },
-  heroTitle: { fontSize: 20, lineHeight: 25 }, guideTitle: { fontSize: 16, lineHeight: 21 }, bodyCopy: { fontSize: 13, lineHeight: 19 }, smallCopy: { fontSize: 11, lineHeight: 16 },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
-  quickAction: { width: '48%', minHeight: 72, padding: spacing.sm, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, justifyContent: 'center', gap: spacing.xs, backgroundColor: colors.bg },
-  quickLabel: { color: colors.text, fontSize: 9 },
-  searchBox: { minHeight: 50, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  searchInput: { flex: 1, minHeight: 48, color: colors.text, fontSize: 14 },
-  guideCard: { overflow: 'hidden', borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surface },
-  guideHeader: { minHeight: 82, padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  guideBody: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, gap: spacing.md },
-  iconBubble: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentMuted },
-  path: { marginTop: spacing.md, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.bg, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  step: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  stepNumber: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent },
-  stepNumberText: { color: colors.accentInk },
-  note: { padding: spacing.sm, borderLeftWidth: 2, borderLeftColor: colors.gold, backgroundColor: colors.bg, flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  glossary: { marginTop: spacing.md, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, gap: spacing.sm },
-  statusRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm }, statusLabel: { width: 104, fontSize: 13 },
-  empty: { padding: spacing.xl, alignItems: 'center', gap: spacing.sm }, flex: { flex: 1, minWidth: 0 },
-});

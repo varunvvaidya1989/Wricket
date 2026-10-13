@@ -1,4 +1,6 @@
+import { readIdChunks, readPages } from './readPages';
 import { getSupabaseClient } from './client';
+import { activeStatisticsBalls, bowlerCreditedWicket, matchesInPeriod, type PerformancePeriod } from '@/lib/wricket/presentation/completedStatistics';
 
 export interface PerformanceFormEntry {
   matchId: string;
@@ -41,65 +43,48 @@ export interface PersonalStats {
 }
 
 export const personalStatsApi = {
-  async get(userId: string): Promise<PersonalStats> {
+  async get(userId: string, period: PerformancePeriod = 'career'): Promise<PersonalStats> {
     const client = getSupabaseClient();
     const { data: links, error: linkError } = await client.from('player_account_links')
       .select('player_id')
       .eq('account_id', userId);
     if (linkError && !['PGRST205', '42P01'].includes(linkError.code ?? '')) throw linkError;
-    if (links?.length) return this.getForPlayerIds(links.map(link => link.player_id));
+    if (links?.length) return this.getForPlayerIds(links.map(link => link.player_id), period);
     const { data: candidates, error: playerError } = await client.from('players').select('id').eq('profile_id', userId);
     if (playerError) throw playerError;
-    return this.getForPlayerIds(candidates.map(player => player.id));
+    return this.getForPlayerIds(candidates.map(player => player.id), period);
   },
 
-  async getForPlayerIds(playerIds: string[]): Promise<PersonalStats> {
+  async getForPlayerIds(playerIds: string[], period: PerformancePeriod = 'career'): Promise<PersonalStats> {
     if (!playerIds.length) return emptyStats();
     const client = getSupabaseClient();
-    const { data: xis, error: xiError } = await client.from('match_xis')
-      .select('match_id, team_id, player_id')
-      .in('player_id', playerIds);
-    if (xiError) throw xiError;
+    const xis = await readIdChunks(playerIds, chunk => readPages((start, end) => client.from('match_xis')
+      .select('match_id, team_id, player_id').in('player_id', chunk)
+      .order('match_id').order('team_id').order('player_id').range(start, end)));
     const allMatchIds = Array.from(new Set(xis.map(row => row.match_id)));
     if (!allMatchIds.length) return { ...emptyStats(), playerIds };
 
-    const { data: matchRows, error: matchError } = await client.from('matches')
+    const matchRows = await readIdChunks(allMatchIds, chunk => readPages((start, end) => client.from('matches')
       .select('id, tournament_id, team_a_id, team_b_id, status, result, scheduled_at, created_at')
-      .in('id', allMatchIds);
-    if (matchError) throw matchError;
-    const playedRows = matchRows.filter(match =>
-      !['SETUP', 'TOSS'].includes(match.status) &&
-      String(match.result?.kind ?? match.result?.result_kind ?? '') !== 'CANCELLED');
+      .in('id', chunk).order('id').range(start, end)));
+    const playedRows = matchesInPeriod(matchRows, period);
     const matchIds = playedRows.map(match => match.id);
     if (!matchIds.length) return { ...emptyStats(), playerIds };
 
     const teamIds = Array.from(new Set(playedRows.flatMap(match => [match.team_a_id, match.team_b_id])));
     const tournamentIds = Array.from(new Set(playedRows.flatMap(match => match.tournament_id ? [match.tournament_id] : [])));
-    const [{ data: teams, error: teamError }, { data: tournaments, error: tournamentError }] = await Promise.all([
-      client.from('teams').select('id, name').in('id', teamIds),
-      tournamentIds.length
-        ? client.from('tournaments').select('id, name').in('id', tournamentIds)
-        : Promise.resolve({ data: [], error: null }),
+    const [teams, tournaments] = await Promise.all([
+      readIdChunks(teamIds, chunk => readPages((start, end) => client.from('teams').select('id, name').in('id', chunk).order('id').range(start, end))),
+      readIdChunks(tournamentIds, chunk => readPages((start, end) => client.from('tournaments').select('id, name').in('id', chunk).order('id').range(start, end))),
     ]);
-    if (teamError) throw teamError;
-    if (tournamentError) throw tournamentError;
-
-    const events: any[] = [];
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await client.from('match_events')
-        .select('id, match_id, kind, payload, sequence, created_at')
-        .in('match_id', matchIds)
-        .order('created_at')
-        .range(from, from + 999);
-      if (error) throw error;
-      events.push(...data);
-      if (data.length < 1000) break;
-    }
-    return aggregate(playerIds, playedRows, xis, events, teams, tournaments ?? []);
+    const events = await readIdChunks(matchIds, chunk => readPages((start, end) => client.from('match_events')
+      .select('id, client_event_id, match_id, kind, payload, sequence, created_at')
+      .in('match_id', chunk).order('created_at').order('id').range(start, end)));
+    return aggregatePersonalStatistics(playerIds, playedRows, xis, events, teams, tournaments ?? []);
   },
 };
 
-function aggregate(
+export function aggregatePersonalStatistics(
   playerIds: string[],
   matches: any[],
   xis: any[],
@@ -122,12 +107,12 @@ function aggregate(
     perMatch.set(matchId, current);
     return current;
   };
-  for (const event of events) {
+  for (const event of activeStatisticsBalls(events)) {
     const p = event.payload ?? {};
     if (event.kind !== 'BALL_RECORDED') continue;
     const contribution = matchContribution(event.match_id);
-    const inningsId = String(p.innings_id ?? '');
-    if (ids.has(p.striker_id)) {
+    const inningsId = `${event.match_id}:${String(p.innings_id ?? '')}`;
+    if (ids.has(String(p.striker_id))) {
       const runs = Number(p.runs_bat ?? 0);
       const legalForBatter = p.extra_kind !== 'WIDE';
       stats.runs += runs;
@@ -140,20 +125,20 @@ function aggregate(
       innings.runs += runs;
       inningsScores.set(inningsId, innings);
     }
-    if (ids.has(p.out_player_id)) stats.dismissals += 1;
-    if (ids.has(p.bowler_id)) {
+    if (p.is_wicket && ids.has(String(p.out_player_id))) stats.dismissals += 1;
+    if (ids.has(String(p.bowler_id))) {
       contribution.bowled = true;
       if (p.is_legal) stats.bowlingBalls += 1;
       const conceded = Number(p.runs_bat ?? 0) +
         (p.extra_kind === 'BYE' || p.extra_kind === 'LEG_BYE' ? 0 : Number(p.runs_extra ?? 0));
       stats.runsConceded += conceded;
       contribution.runsConceded += conceded;
-      if (p.is_wicket && !['RUN_OUT', 'RETIRED_OUT'].includes(String(p.dismissal_kind))) {
+      if (bowlerCreditedWicket(p)) {
         stats.wickets += 1;
         contribution.wickets += 1;
       }
     }
-    if (ids.has(p.fielder_id) && p.dismissal_kind === 'CAUGHT') stats.catches += 1;
+    if (p.is_wicket && ids.has(String(p.fielder_id)) && p.dismissal_kind === 'CAUGHT') stats.catches += 1;
   }
 
   const matchDate = (matchId: string) => {
@@ -183,7 +168,7 @@ function aggregate(
       const contribution = perMatch.get(match.id) ?? { runs: 0, balls: 0, wickets: 0, runsConceded: 0 };
       const result: PerformanceHistoryEntry['result'] = kind === 'TIE' || kind === 'DRAW'
         ? 'T'
-        : kind === 'NO_RESULT' ? 'NR' : winnerId === ownTeamId ? 'W' : 'L';
+        : !winnerId || kind === 'NO_RESULT' ? 'NR' : winnerId === ownTeamId ? 'W' : 'L';
       return {
         matchId: match.id,
         opponentName: teamNames.get(opponentId) ?? 'Opponent',

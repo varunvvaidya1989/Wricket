@@ -44,3 +44,9 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Local E2E credentials, seed manifests and browser evidence
+.e2e/
+test-results/
+playwright-report/
+dist-e2e/

@@ -3,12 +3,12 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import React, { useCallback, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
+import { Card } from '@/components/wricket/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
+import { Text } from '@/components/wricket/ui/Text';
 import { globalSearchApi, SearchProfile } from '@/lib/supabase/globalSearchApi';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 
 export default function SearchProfileScreen() {

@@ -1,6 +1,13 @@
 # Non-Cricket Sports Implementation Roadmap
 
-Last updated: 2026-08-20
+Last updated: 2026-10-12
+
+## Subsequent UX rollout
+
+The completed domain phases below remain complete. The rest-of-app UX revamp
+has started separately: UX 1 through UX 4 are implemented and web-validated in the uncommitted
+working tree. Its roadmap status remains `IN PROGRESS` until committed. Scope, acceptance criteria and
+dated evidence are tracked in [Rest of SportStage UX implementation](rest-of-app-revamp-implementation.md).
 
 This document is the implementation source of truth for Tennis, Badminton,
 Padel, Table Tennis, Pickleball, and future non-cricket sports in SportStage.
@@ -445,6 +452,36 @@ Acceptance criteria:
 - Release work: apply migration in the intended environment, run Supabase advisors,
   verify native image picking/sharing. Racquet image exports and sponsor billing
   are outside this extension. See `TOURNAMENT_SPONSORS.md` for operations details.
+
+## Player analytics extension
+
+Status: `COMPLETE`
+
+Scope: extend Phase 6 with independent Tennis, Badminton, Padel, Table Tennis,
+and Pickleball analysis modules; optional versioned rally observations; animated
+player diagrams; match replay; competition, opponent, format and period filters.
+
+Acceptance: domain regressions cover undo, attribution, pressure, missing data,
+and incomplete results; API checks cover payload preservation and pagination;
+lint, strict types, the full test suite and web export pass. Native interaction
+and motion checks are tracked separately in `racquet-player-analytics.md`.
+
+### 2026-10-13 — Player analytics extension completed
+
+- Status changed from `IN PROGRESS` to `COMPLETE` after automated acceptance passed.
+- Commit: uncommitted workspace changes.
+- Migrations: none; observations use the existing authorized POINT JSON payload.
+- Delivered: animated rate comparisons, court zones, trend bars, serve/return
+  flow, controlled rally playback, sport signatures, and data coverage.
+- Review corrections: missing data remains unknown; doubles pair outcomes and
+  individual finishes are distinct; pressure uses the actual scoring rules;
+  undone and invalid logs cannot inflate metrics; long event logs are paged.
+- Validation: 76 focused analytics, scoring and API tests passed; full
+  `npm run build:check` passed with lint, strict types, 159 test files / 916 tests,
+  environment and architecture checks, and web export of all 119 routes.
+  Final playback lifecycle/filter changes also passed focused lint and types.
+- Deferred: device interaction verification, all-time history beyond the latest
+  100 accessible matches, sensor/video shot tracking and shot-attempt conversion.
 
 ## Phase completion update template
 

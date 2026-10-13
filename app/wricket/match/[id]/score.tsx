@@ -1,3 +1,5 @@
+import { svgDataUri } from '@/lib/wricket/presentation/svg';
+import { withScoringTransaction, type ScoringDatabase } from '@/lib/wricket/db/scoringTransaction';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -11,27 +13,38 @@ import {
   Platform,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Animated, {
   FadeIn,
-  ZoomIn,
   useSharedValue,
   useAnimatedStyle,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Screen } from '@/components/ui/Screen';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { isOfflineError } from '@/lib/auth/offlineScoring';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { GesturePad, PadAction } from '@/components/wricket/scoring/GesturePad';
-import { colors, palette } from '@/lib/theme/colors';
+import { Text } from '@/components/wricket/ui/Text';
+import { Button } from '@/components/wricket/ui/Button';
+import { Card } from '@/components/wricket/ui/Card';
+import { type PadAction } from '@/components/wricket/scoring/GesturePad';
+import { ExtrasSheet, WicketSheet } from '@/components/wricket/scoring/ScoringForms';
+import { MatchControls, type MatchControlCommand } from '@/components/wricket/scoring/MatchControls';
+import { configuredScoringUiVersion, pinnedScoringUiVersion, type ScoringUiVersion } from '@/lib/wricket/presentation/uiRelease';
+import { ScoringInputDeck } from '@/components/wricket/scoring/ScoringInputDeck';
+import { createScoringGate, restoredInputMode, SCORING_INPUT_KEY, type ScoringInputMode } from '@/lib/wricket/presentation/scoringInput';
+import { DesignIcon, TeamCrest } from '@/components/wricket/ui/DesignIcon';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { colors, fonts } from '@/lib/wricket/presentation/design';
 import { spacing, radius } from '@/lib/theme/spacing';
 import {
   getMatch,
+  setMatchStatus,
   getTeam,
   getMatchXI,
   listInningsForMatch,
@@ -76,6 +89,8 @@ import {
   queueCloudBall,
   queueCloudScoringEvent,
   subscribeToCloudScoringSync,
+  ensureCloudScoringAccess,
+  isScoringAccessDenied,
 } from '@/lib/supabase/cloudScoringApi';
 import { hydrateScoringMatch } from '@/lib/supabase/scoringHydration';
 
@@ -117,6 +132,7 @@ function deriveStateFromBalls(
 }
 
 export default function ScoreScreen() {
+  const auth = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
@@ -133,21 +149,45 @@ export default function ScoreScreen() {
   const [live, setLive] = useState<LiveState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [followOnDecisionSaving, setFollowOnDecisionSaving] = useState(false);
+  const [followOnDecisionError, setFollowOnDecisionError] = useState<string>();
+  const followOnDecisionLock = useRef(false);
+  const [uiVersion, setUiVersion] = useState<ScoringUiVersion>(configuredScoringUiVersion);
+  const [inputMode, setInputMode] = useState<ScoringInputMode>('numbers');
+  const [deliverySaving, setDeliverySaving] = useState(false);
+  const [deliveryReceipt, setDeliveryReceipt] = useState<string | null>(null);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [scoringGate] = useState(createScoringGate);
+  const insertedDelivery = useRef(false);
+  const inputModeSelected = useRef(false);
+  const reducedMotion = useReducedMotion();
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(SCORING_INPUT_KEY).then(value => {
+      if (active && !inputModeSelected.current) setInputMode(restoredInputMode(value));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  const selectInputMode = (mode: ScoringInputMode) => {
+    if (scoringGate.busy) return;
+    inputModeSelected.current = true;
+    setInputMode(mode);
+    void AsyncStorage.setItem(SCORING_INPUT_KEY, mode).catch(() => undefined);
+  };
 
   // sheets
   const [openersOpen, setOpenersOpen] = useState(false);
   const [bowlerOpen, setBowlerOpen] = useState(false);
   const [wicketOpen, setWicketOpen] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
-  const [adjustmentOpen, setAdjustmentOpen] = useState(false);
-  const [retirementOpen, setRetirementOpen] = useState(false);
   const [pickBatterOpen, setPickBatterOpen] = useState(false);
   const [pendingNewBatterSlot, setPendingNewBatterSlot] = useState<'striker' | 'nonStriker' | null>(null);
   const [inningsSettingsOpen, setInningsSettingsOpen] = useState(false);
+  const [controlError, setControlError] = useState<string | null>(null);
   const [cloudSync, setCloudSync] = useState<CloudScoringSyncState>({
     status: 'LIVE',
     pending: 0,
   });
+  const scoringAccessBlocked = isScoringAccessDenied(cloudSync.error);
   const lastShownSyncErrorRef = useRef<string | null>(null);
   const lastFollowOnPromptRef = useRef<string | null>(null);
   const confirmLeaveScoring = useCallback(() => {
@@ -171,26 +211,41 @@ export default function ScoreScreen() {
   }));
 
   const triggerFlash = useCallback((color: string) => {
+    if (reducedMotion) return;
     flashColor.current = color;
     scoreFlash.value = withSequence(
       withTiming(0.35, { duration: 80 }),
       withTiming(0, { duration: 500 }),
     );
-  }, [scoreFlash]);
+  }, [reducedMotion, scoreFlash]);
 
   // Full load from DB — only on mount, innings transition, or undo
   const loadFromDb = useCallback(async () => {
+    if (auth.loading) return;
     setLoadError(null);
     try {
     if (!id) throw new Error('The match ID is missing from this route.');
+    const restoreIfScorable = async (matchId: string) => {
+      if (await hydrateScoringMatch(matchId) !== 'TERMINAL') return true;
+      setInnings(null); setLive(null);
+      router.replace({ pathname: '/wricket/match/[id]/scorecard', params: { id: matchId } });
+      return false;
+    };
     let m = await getMatch(id);
     if (!m) {
-      await hydrateScoringMatch(id);
+      if (!await restoreIfScorable(id)) return;
       m = await getMatch(id);
       if (!m) throw new Error('The cloud match could not be restored to the scoring cache.');
     }
     setMatch(m);
+    if (m.status === 'COMPLETED' || m.status === 'ABANDONED') {
+      setInnings(null);
+      setLive(null);
+      router.replace({ pathname: '/wricket/match/[id]/scorecard', params: { id: m.id } });
+      return;
+    }
 
+    if (isUuid(m.id)) await ensureCloudScoringAccess(m.id);
     const [a, b] = await Promise.all([getTeam(m.teamAId), getTeam(m.teamBId)]);
     if (!a || !b) throw new Error('One or both teams are missing from the local scoring cache.');
     setTeamA(a);
@@ -201,7 +256,7 @@ export default function ScoreScreen() {
     // scoring history. Restore the authoritative innings/XI/event log when a
     // scorer opens that shell on another device.
     if (innList.length === 0 && isUuid(m.id) && ['IN_PROGRESS', 'INNINGS_BREAK', 'FOLLOW_ON_DECISION'].includes(m.status)) {
-      await hydrateScoringMatch(m.id);
+      if (!await restoreIfScorable(m.id)) return;
       innList = await listInningsForMatch(m.id);
     }
     let open = innList.find(i => !i.isClosed);
@@ -211,6 +266,17 @@ export default function ScoreScreen() {
         await startNextInnings(m.id, step.next);
         innList = await listInningsForMatch(m.id);
         open = innList.find(i => !i.isClosed);
+      } else if (step.kind === 'FOLLOW_ON_DECISION') {
+        // Cloud INNINGS_CLOSED records an innings break. Recover the pending
+        // decision from the authoritative innings/rules on a fresh device.
+        await setMatchStatus(m.id, 'FOLLOW_ON_DECISION');
+        m = { ...m, status: 'FOLLOW_ON_DECISION' };
+        setMatch(m);
+      } else if (step.kind === 'COMPLETED' && innList.length) {
+        // Replay stable lifecycle IDs if the final acknowledgement was lost.
+        await closeAndAdvance(m.id, innList[innList.length - 1].id);
+        m = await getMatch(m.id) ?? m;
+        setMatch(m);
       }
     }
     setMatchInnings(innList);
@@ -234,6 +300,7 @@ export default function ScoreScreen() {
       listBatterRetirements(open.id),
       getScoringSession(m.id),
     ]);
+    setUiVersion(pinnedScoringUiVersion(session?.uiVersion, configuredScoringUiVersion()));
     setBalls(ballList);
     setAdjustments(adjustmentList);
     setRetirements(retirementList);
@@ -241,7 +308,7 @@ export default function ScoreScreen() {
     let xiBatList = await getMatchXI(m.id, open.battingTeamId);
     let xiBowlList = await getMatchXI(m.id, open.bowlingTeamId);
     if ((xiBatList.length === 0 || xiBowlList.length === 0) && isUuid(m.id)) {
-      await hydrateScoringMatch(m.id);
+      if (!await restoreIfScorable(m.id)) return;
       xiBatList = await getMatchXI(m.id, open.battingTeamId);
       xiBowlList = await getMatchXI(m.id, open.bowlingTeamId);
     }
@@ -284,16 +351,18 @@ export default function ScoreScreen() {
     } catch (cause) {
       setLoadError(cause instanceof Error ? cause.message : 'Could not restore this match.');
     }
-  }, [id, router]);
+  }, [auth.loading, id, router]);
 
   const persistSession = useCallback(async (
     state: LiveState,
     pendingPrompt: 'NEXT_BATTER' | 'NEXT_BOWLER' | null = null,
     pendingPlayerId: string | null = null,
     eventSequence = balls.length + adjustments.length + retirements.length,
+    connection?: ScoringDatabase,
   ) => {
     if (!match || !innings) return;
     await saveScoringSession({
+      uiVersion,
       matchId: match.id,
       inningsId: innings.id,
       strikerId: state.strikerId ?? undefined,
@@ -303,13 +372,13 @@ export default function ScoreScreen() {
       pendingPlayerId: pendingPlayerId ?? undefined,
       completedOver: pendingPrompt === 'NEXT_BOWLER' ? state.overNo - 1 : undefined,
       lastCommittedEventSequence: eventSequence,
-    });
-  }, [adjustments.length, balls.length, innings, match, retirements.length]);
+    }, connection);
+  }, [adjustments.length, balls.length, innings, match, retirements.length, uiVersion]);
 
   useEffect(() => { loadFromDb(); }, [loadFromDb]);
   useEffect(() => {
-    if (id && isUuid(id)) void flushScoringEvents(id);
-  }, [id]);
+    if (!auth.loading && id && isUuid(id)) void flushScoringEvents(id);
+  }, [auth.loading, id]);
   useEffect(() => {
     if (!id || !isUuid(id)) return;
     return subscribeToCloudScoringSync(id, setCloudSync);
@@ -319,6 +388,9 @@ export default function ScoreScreen() {
       if (cloudSync.status === 'LIVE') lastShownSyncErrorRef.current = null;
       return;
     }
+    // Accepted offline deliveries stay usable; the connection banner owns
+    // recovery. A network interruption must not cover the input with a dialog.
+    if (isOfflineError(cloudSync.error)) return;
     if (lastShownSyncErrorRef.current === cloudSync.error) return;
     lastShownSyncErrorRef.current = cloudSync.error;
     Alert.alert(
@@ -374,7 +446,7 @@ export default function ScoreScreen() {
     return balls.filter(b => b.overNo === live.overNo);
   }, [balls, live]);
 
-  const recordBall = useCallback(
+  const persistDelivery = useCallback(
     async (event: {
       runs: number;
       extra: ExtraKind;
@@ -384,7 +456,7 @@ export default function ScoreScreen() {
       fielderId?: string;
       assistantFielderId?: string;
       rotateStrike?: boolean;
-    }) => {
+    }) => { return withScoringTransaction(async transaction => {
       if (!innings || !live || !live.strikerId || !live.nonStrikerId || !live.bowlerId) return;
 
       const result = applyBall(
@@ -419,12 +491,13 @@ export default function ScoreScreen() {
         outPlayerId: event.outPlayerId,
         fielderId: event.fielderId,
         assistantFielderId: event.assistantFielderId,
-      });
+      }, transaction.db);
+      transaction.afterCommit(() => { insertedDelivery.current = true; });
       await updateInningsTotals(innings.id, {
         runs: result.next.totalRuns,
         wickets: result.next.totalWickets,
         balls: result.next.legalBalls,
-      });
+      }, transaction.db);
       const playerCloudId = (localId: string) =>
         [...xiBatting, ...xiBowling].find(player => player.userId === localId)?.cloudId;
       const strikerCloudId = playerCloudId(newBall.strikerId);
@@ -435,6 +508,12 @@ export default function ScoreScreen() {
       const assistantFielderCloudId = event.assistantFielderId
         ? playerCloudId(event.assistantFielderId)
         : undefined;
+      if (match && isUuid(match.id) && isUuid(innings.id)
+        && (!strikerCloudId || !nonStrikerCloudId || !bowlerCloudId
+          || (event.outPlayerId && !outPlayerCloudId) || (event.fielderId && !fielderCloudId)
+          || (event.assistantFielderId && !assistantFielderCloudId))) {
+        throw new Error('A selected player has not finished syncing. Reload the match before recording this delivery.');
+      }
       if (
         match &&
         isUuid(match.id) &&
@@ -466,20 +545,12 @@ export default function ScoreScreen() {
             fielder_id: fielderCloudId,
             assistant_fielder_id: assistantFielderCloudId,
           },
-        });
+        }, transaction);
       }
 
-      // Animate
-      if (event.isWicket) {
-        triggerFlash(colors.wicket);
-      } else if (event.runs === 4 && !event.extra) {
-        triggerFlash(colors.boundary);
-      } else if (event.runs === 6 && !event.extra) {
-        triggerFlash(colors.six);
-      }
 
       // Update state incrementally — NO full refresh
-      setBalls(prev => [...prev, newBall]);
+      transaction.afterCommit(() => { setBalls(prev => [...prev, newBall]); });
       const nextLive: LiveState = {
         totalRuns: result.next.totalRuns,
         totalWickets: result.next.totalWickets,
@@ -499,50 +570,22 @@ export default function ScoreScreen() {
         innings.target,
       );
       if (ended) {
-        await clearScoringSession(match!.id);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        const step = await closeAndAdvance(match!.id, innings.id);
+        await clearScoringSession(match!.id, transaction.db);
+        const step = await closeAndAdvance(match!.id, innings.id, transaction);
         if (step.kind === 'COMPLETED') {
-          router.replace({
+          transaction.afterCommit(() => { router.replace({
             pathname: '/wricket/match/[id]/scorecard',
             params: { id: match!.id },
-          });
+          }); });
           return;
         }
         if (step.kind === 'FOLLOW_ON_DECISION') {
-          Alert.alert('Follow-on', 'Trail exceeds threshold. Enforce follow-on?', [
-            {
-              text: `Decline — ${bowlingTeam?.name ?? 'leading team'} bat`,
-              onPress: async () => {
-                const innList = await listInningsForMatch(match!.id);
-                await startNextInnings(match!.id, {
-                  sequence: 3,
-                  battingTeamId: innList[0].battingTeamId,
-                  bowlingTeamId: innList[1].battingTeamId,
-                });
-                loadFromDb();
-              },
-            },
-            {
-              text: `Enforce on ${battingTeam?.name ?? 'trailing team'}`,
-              style: 'destructive',
-              onPress: async () => {
-                const innList = await listInningsForMatch(match!.id);
-                await startNextInnings(match!.id, {
-                  sequence: 3,
-                  battingTeamId: innList[1].battingTeamId,
-                  bowlingTeamId: innList[0].battingTeamId,
-                  isFollowOn: true,
-                });
-                loadFromDb();
-              },
-            },
-          ], { cancelable: false });
+          transaction.afterCommit(loadFromDb);
           return;
         }
         if (step.kind === 'NEXT_INNINGS' && step.next) {
-          await startNextInnings(match!.id, step.next);
-          loadFromDb();
+          await startNextInnings(match!.id, step.next, transaction);
+          transaction.afterCommit(loadFromDb);
           return;
         }
       }
@@ -555,70 +598,97 @@ export default function ScoreScreen() {
           nextLive.bowlerId = null;
         }
         if (outId === nextLive.strikerId) {
-          setPendingNewBatterSlot('striker');
+          transaction.afterCommit(() => { setPendingNewBatterSlot('striker'); });
           nextLive.strikerId = null;
         } else if (outId === nextLive.nonStrikerId) {
-          setPendingNewBatterSlot('nonStriker');
+          transaction.afterCommit(() => { setPendingNewBatterSlot('nonStriker'); });
           nextLive.nonStrikerId = null;
         } else if (outId === live.strikerId) {
-          setPendingNewBatterSlot('striker');
+          transaction.afterCommit(() => { setPendingNewBatterSlot('striker'); });
           nextLive.strikerId = null;
         } else {
-          setPendingNewBatterSlot('nonStriker');
+          transaction.afterCommit(() => { setPendingNewBatterSlot('nonStriker'); });
           nextLive.nonStrikerId = null;
         }
-        setLive(nextLive);
+        transaction.afterCommit(() => { setLive(nextLive); });
         await persistSession(
           nextLive,
           'NEXT_BATTER',
           outId,
-          balls.length + adjustments.length + retirements.length + 1,
+          balls.length + adjustments.length + retirements.length + 1, transaction.db
         );
-        setPickBatterOpen(true);
+        transaction.afterCommit(() => { setPickBatterOpen(true); });
         return;
       }
 
       // End of over -> prompt new bowler.
       if (overJustEnded) {
         nextLive.bowlerId = null;
-        setLive(nextLive);
+        transaction.afterCommit(() => { setLive(nextLive); });
         await persistSession(
           nextLive,
           'NEXT_BOWLER',
           null,
-          balls.length + adjustments.length + retirements.length + 1,
+          balls.length + adjustments.length + retirements.length + 1, transaction.db
         );
-        setBowlerOpen(true);
+        transaction.afterCommit(() => { setBowlerOpen(true); });
         return;
       }
 
-      setLive(nextLive);
+      transaction.afterCommit(() => { setLive(nextLive); });
       await persistSession(
         nextLive,
         null,
         null,
-        balls.length + adjustments.length + retirements.length + 1,
+        balls.length + adjustments.length + retirements.length + 1, transaction.db
       );
-    },
-    [adjustments.length, balls.length, battingTeam, bowlingTeam, innings, live, loadFromDb, match, persistSession, retirements.length, router, triggerFlash, xiBatting, xiBowling],
+    }); },
+    [adjustments.length, balls.length, innings, live, loadFromDb, match, persistSession, retirements.length, router, xiBatting, xiBowling],
   );
 
+  const recordBall = useCallback(async (event: Parameters<typeof persistDelivery>[0]): Promise<boolean> => {
+    if (deliveryError || scoringAccessBlocked || !live?.strikerId || !live.nonStrikerId || !live.bowlerId) return false;
+    const result = await scoringGate.run(async () => {
+      setDeliverySaving(true);
+      setDeliveryReceipt(null);
+      insertedDelivery.current = false;
+      try {
+        await persistDelivery(event);
+        const label = event.isWicket ? 'Wicket' : event.extra
+          ? `${event.extra.replaceAll('_', ' ').toLowerCase()} · ${event.runs} additional runs`
+          : `${event.runs} ${event.runs === 1 ? 'run' : 'runs'}`;
+        setDeliveryReceipt(`Recorded · ${label}`);
+        if (event.isWicket) triggerFlash(colors.wicket);
+        else if (!event.extra && event.runs >= 4) triggerFlash(colors.accent);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+        return true;
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : 'Could not finish saving this delivery.';
+        setDeliveryError(insertedDelivery.current
+          ? `Delivery is in local history, but setup or sync failed. Review the scorecard before continuing. ${detail}`
+          : `Delivery was not saved. ${detail}`);
+        return false;
+      } finally { setDeliverySaving(false); }
+    });
+    return result.accepted && result.value;
+  }, [deliveryError, scoringAccessBlocked, live, persistDelivery, scoringGate, triggerFlash]);
+
   const recordScoreAdjustment = useCallback(
-    async (kind: ScoreAdjustmentKind, runs: number) => {
+    async (kind: ScoreAdjustmentKind, runs: number) => { return withScoringTransaction(async transaction => {
       if (!innings || !live || runs <= 0) return;
       const adjustment = await insertScoreAdjustment({
         inningsId: innings.id,
         kind,
         runs,
-      });
+      }, transaction.db);
       const nextLive = { ...live, totalRuns: live.totalRuns + runs };
       await updateInningsTotals(innings.id, {
         runs: nextLive.totalRuns,
         wickets: nextLive.totalWickets,
         balls: nextLive.legalBalls,
-      });
-      setAdjustments(prev => [...prev, adjustment]);
-      setLive(nextLive);
+      }, transaction.db);
+      transaction.afterCommit(() => { setAdjustments(prev => [...prev, adjustment]); });
+      transaction.afterCommit(() => { setLive(nextLive); });
       if (match && isUuid(match.id) && isUuid(innings.id)) {
         await queueCloudScoringEvent({
           clientEventId: adjustment.id,
@@ -630,15 +700,14 @@ export default function ScoreScreen() {
             runs,
             adjustment_kind: kind,
           },
-        });
+        }, transaction);
       }
       await persistSession(
         nextLive,
         null,
         null,
-        balls.length + adjustments.length + retirements.length + 1,
+        balls.length + adjustments.length + retirements.length + 1, transaction.db
       );
-      triggerFlash(kind === 'PENALTY' ? colors.extra : colors.boundary);
 
       const ended = isInningsOver(
         {
@@ -656,35 +725,35 @@ export default function ScoreScreen() {
         innings.target,
       );
       if (ended) {
-        await clearScoringSession(match!.id);
-        const step = await closeAndAdvance(match!.id, innings.id);
+        await clearScoringSession(match!.id, transaction.db);
+        const step = await closeAndAdvance(match!.id, innings.id, transaction);
         if (step.kind === 'COMPLETED') {
-          router.replace({
+          transaction.afterCommit(() => { router.replace({
             pathname: '/wricket/match/[id]/scorecard',
             params: { id: match!.id },
-          });
+          }); });
         }
         else if (step.kind === 'NEXT_INNINGS' && step.next) {
-          await startNextInnings(match!.id, step.next);
-          loadFromDb();
+          await startNextInnings(match!.id, step.next, transaction);
+          transaction.afterCommit(loadFromDb);
         }
         else if (step.kind === 'FOLLOW_ON_DECISION') {
-          await loadFromDb();
+          await transaction.afterCommit(loadFromDb);
         }
       }
-    },
-    [adjustments.length, balls.length, innings, live, loadFromDb, match, persistSession, retirements.length, router, triggerFlash, xiBatting.length],
+    }); },
+    [adjustments.length, balls.length, innings, live, loadFromDb, match, persistSession, retirements.length, router, xiBatting.length],
   );
 
   const recordRetirement = useCallback(
-    async (kind: 'RETIRED_HURT' | 'RETIRED_OUT', outIsStriker: boolean) => {
+    async (kind: 'RETIRED_HURT' | 'RETIRED_OUT', outIsStriker: boolean) => { return withScoringTransaction(async transaction => {
       if (!innings || !live?.strikerId || !live.nonStrikerId) return;
       const playerId = outIsStriker ? live.strikerId : live.nonStrikerId;
       const retirement = await insertBatterRetirement({
         inningsId: innings.id,
         playerId,
         kind,
-      });
+      }, transaction.db);
       const nextLive = {
         ...live,
         totalWickets: live.totalWickets + (kind === 'RETIRED_OUT' ? 1 : 0),
@@ -695,11 +764,14 @@ export default function ScoreScreen() {
         runs: nextLive.totalRuns,
         wickets: nextLive.totalWickets,
         balls: nextLive.legalBalls,
-      });
-      setRetirements(prev => [...prev, retirement]);
-      setLive(nextLive);
+      }, transaction.db);
+      transaction.afterCommit(() => { setRetirements(prev => [...prev, retirement]); });
+      transaction.afterCommit(() => { setLive(nextLive); });
       const playerCloudId = [...xiBatting, ...xiBowling]
         .find(player => player.userId === playerId)?.cloudId;
+      if (match && isUuid(match.id) && isUuid(innings.id) && !playerCloudId) {
+        throw new Error('This batter has not finished syncing. Reload the match before recording a retirement.');
+      }
       if (match && isUuid(match.id) && isUuid(innings.id) && playerCloudId) {
         await queueCloudScoringEvent({
           clientEventId: retirement.id,
@@ -711,43 +783,44 @@ export default function ScoreScreen() {
             player_id: playerCloudId,
             retirement_kind: kind,
           },
-        });
+        }, transaction);
       }
-      setPendingNewBatterSlot(outIsStriker ? 'striker' : 'nonStriker');
+      transaction.afterCommit(() => { setPendingNewBatterSlot(outIsStriker ? 'striker' : 'nonStriker'); });
       await persistSession(
         nextLive,
         'NEXT_BATTER',
         playerId,
-        balls.length + adjustments.length + retirements.length + 1,
+        balls.length + adjustments.length + retirements.length + 1, transaction.db
       );
-      setPickBatterOpen(true);
 
       const battingSideSize = xiBatting.length || match!.rules.playersPerSide;
       const ended = kind === 'RETIRED_OUT' && nextLive.totalWickets >= battingSideSize - 1;
+      if (!ended) transaction.afterCommit(() => { setPickBatterOpen(true); });
       if (ended) {
-        await clearScoringSession(match!.id);
-        const step = await closeAndAdvance(match!.id, innings.id);
+        await clearScoringSession(match!.id, transaction.db);
+        const step = await closeAndAdvance(match!.id, innings.id, transaction);
         if (step.kind === 'COMPLETED') {
-          router.replace({
+          transaction.afterCommit(() => { router.replace({
             pathname: '/wricket/match/[id]/scorecard',
             params: { id: match!.id },
-          });
+          }); });
         }
         else if (step.kind === 'NEXT_INNINGS' && step.next) {
-          await startNextInnings(match!.id, step.next);
-          loadFromDb();
+          await startNextInnings(match!.id, step.next, transaction);
+          await transaction.afterCommit(loadFromDb);
         }
         else if (step.kind === 'FOLLOW_ON_DECISION') {
-          await loadFromDb();
+          await transaction.afterCommit(loadFromDb);
         }
       }
-    },
+    }); },
     [adjustments.length, balls.length, innings, live, loadFromDb, match, persistSession, retirements.length, router, xiBatting, xiBowling],
   );
 
   const onPadAction = useCallback(
     async (a: PadAction) => {
-      if (!live?.strikerId || !live?.nonStrikerId || !live?.bowlerId) {
+      if (scoringGate.busy || deliveryError || scoringAccessBlocked) return;
+      if (a.kind !== 'UNDO' && (!live?.strikerId || !live?.nonStrikerId || !live?.bowlerId)) {
         if (!live?.strikerId || !live?.nonStrikerId) {
           setOpenersOpen(true);
         } else {
@@ -760,14 +833,14 @@ export default function ScoreScreen() {
       } else if (a.kind === 'WICKET') {
         setWicketOpen(true);
       } else if (a.kind === 'UNDO') {
-        if (!innings) return;
-        Alert.alert('Undo last ball?', undefined, [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Undo',
-            style: 'destructive',
-            onPress: async () => {
-              const deletedBall = await deleteLastBall(innings.id);
+        if (!innings || !balls.length) return;
+        const undo = async () => {
+          await scoringGate.run(async () => {
+            setDeliverySaving(true);
+            setDeliveryReceipt(null);
+            try {
+ await withScoringTransaction(async transaction => {
+              const deletedBall = await deleteLastBall(innings.id, transaction.db);
               const deletedBallHasCloudPlayers = deletedBall
                 ? [deletedBall.strikerId, deletedBall.nonStrikerId, deletedBall.bowlerId]
                     .every(localId =>
@@ -775,6 +848,9 @@ export default function ScoreScreen() {
                         .some(player => player.userId === localId && player.cloudId),
                     )
                 : false;
+              if (deletedBall && match && isUuid(match.id) && isUuid(innings.id) && !deletedBallHasCloudPlayers) {
+                throw new Error('This delivery’s players have not finished syncing. Reload the match before Undo.');
+              }
               if (
                 deletedBall &&
                 deletedBallHasCloudPlayers &&
@@ -792,95 +868,76 @@ export default function ScoreScreen() {
                     target_client_event_id: deletedBall.id,
                     correction: 'UNDO',
                   },
-                });
+                }, transaction);
               }
-              const ballList = await listBalls(innings.id);
-              const adjustmentList = await listScoreAdjustments(innings.id);
-              const retirementList = await listBatterRetirements(innings.id);
+              const ballList = await listBalls(innings.id, transaction.db);
+              const adjustmentList = await listScoreAdjustments(innings.id, transaction.db);
+              const retirementList = await listBatterRetirements(innings.id, transaction.db);
               const state = deriveStateFromBalls(
                 ballList,
                 adjustmentList,
                 retirementList,
               );
+              if (!ballList.length && !retirementList.length && deletedBall) {
+                state.strikerId = deletedBall.strikerId;
+                state.nonStrikerId = deletedBall.nonStrikerId;
+                state.bowlerId = deletedBall.bowlerId;
+              }
               await updateInningsTotals(innings.id, {
                 runs: state.totalRuns,
                 wickets: state.totalWickets,
                 balls: state.legalBalls,
-              });
-              setBalls(ballList);
-              setAdjustments(adjustmentList);
-              setRetirements(retirementList);
-              setLive(state);
+              }, transaction.db);
+              transaction.afterCommit(() => { setBalls(ballList); });
+              transaction.afterCommit(() => { setAdjustments(adjustmentList); });
+              transaction.afterCommit(() => { setRetirements(retirementList); });
+              transaction.afterCommit(() => { setLive(state); });
               await persistSession(
                 state,
                 !state.strikerId || !state.nonStrikerId ? 'NEXT_BATTER' : !state.bowlerId ? 'NEXT_BOWLER' : null,
                 null,
-                ballList.length + adjustmentList.length + retirementList.length,
+                ballList.length + adjustmentList.length + retirementList.length, transaction.db
               );
-              if (!state.bowlerId) setBowlerOpen(true);
-            },
-          },
-        ]);
+              if (!state.bowlerId) transaction.afterCommit(() => { setBowlerOpen(true); });
+              transaction.afterCommit(() => { setDeliveryReceipt('Last delivery undone'); });
+
+ });
+} catch (cause) {
+              setDeliveryError(`Could not complete Undo. Review the scorecard before continuing. ${cause instanceof Error ? cause.message : ''}`);
+            } finally { setDeliverySaving(false); }
+          });
+        };
+        if (Platform.OS === 'web') {
+          if (globalThis.confirm('Undo last ball?')) await undo();
+        } else {
+          Alert.alert('Undo last ball?', undefined, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Undo', style: 'destructive', onPress: () => void undo() },
+          ]);
+        }
       }
     },
-    [innings, live, match, persistSession, recordBall, xiBatting, xiBowling],
+    [balls.length, deliveryError, scoringAccessBlocked, innings, live, match, persistSession, recordBall, scoringGate, xiBatting, xiBowling],
   );
 
   const endInningsEarly = useCallback(async () => {
-    if (!match || !innings) return;
-    try {
-      await clearScoringSession(match.id);
-      const step = await closeAndAdvance(match.id, innings.id);
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      if (step.kind === 'COMPLETED') {
-        router.replace({
-          pathname: '/wricket/match/[id]/scorecard',
-          params: { id: match.id },
-        });
-      } else if (step.kind === 'FOLLOW_ON_DECISION') {
-        Alert.alert('Follow-on', 'Trail exceeds threshold. Enforce follow-on?', [
-          {
-            text: `Decline — ${bowlingTeam?.name ?? 'leading team'} bat`,
-            onPress: async () => {
-              const innList = await listInningsForMatch(match.id);
-              await startNextInnings(match.id, {
-                sequence: 3,
-                battingTeamId: innList[0].battingTeamId,
-                bowlingTeamId: innList[1].battingTeamId,
-              });
-              await loadFromDb();
-            },
-          },
-          {
-            text: `Enforce on ${battingTeam?.name ?? 'trailing team'}`,
-            style: 'destructive',
-            onPress: async () => {
-              const innList = await listInningsForMatch(match.id);
-              await startNextInnings(match.id, {
-                sequence: 3,
-                battingTeamId: innList[1].battingTeamId,
-                bowlingTeamId: innList[0].battingTeamId,
-                isFollowOn: true,
-              });
-              await loadFromDb();
-            },
-          },
-        ], { cancelable: false });
-      } else if (step.kind === 'NEXT_INNINGS' && step.next) {
-        await startNextInnings(match.id, step.next);
-        await loadFromDb();
-      }
-    } catch (cause) {
-      Alert.alert(
-        'Could not end innings',
-        cause instanceof Error ? cause.message : 'Please try again.',
-      );
+    if (!match || !innings) throw new Error('No active innings is available.');
+    const step = await withScoringTransaction(async transaction => {
+      const next = await closeAndAdvance(match.id, innings.id, transaction);
+      if (next.kind === 'NEXT_INNINGS' && next.next) await startNextInnings(match.id, next.next, transaction);
+      return next;
+    });
+    if (step.kind === 'COMPLETED') {
+      router.replace({ pathname: '/wricket/match/[id]/scorecard', params: { id: match.id } });
+    } else {
+      await loadFromDb();
     }
-  }, [battingTeam, bowlingTeam, match, innings, loadFromDb, router]);
+  }, [match, innings, loadFromDb, router]);
 
   const resolveFollowOnDecision = useCallback(async (enforce: boolean) => {
-    if (!match) return;
-    setFollowOnDecisionSaving(true);
+    if (!match || followOnDecisionLock.current) return;
+    followOnDecisionLock.current = true;
+    setFollowOnDecisionSaving(true); setFollowOnDecisionError(undefined);
     try {
       const innList = await listInningsForMatch(match.id);
       const firstInnings = innList.find(item => item.sequence === 1);
@@ -894,31 +951,24 @@ export default function ScoreScreen() {
       });
       await loadFromDb();
     } catch (cause) {
-      Alert.alert(
-        'Could not apply follow-on decision',
-        cause instanceof Error ? cause.message : 'Please try again.',
-      );
+      setFollowOnDecisionError(cause instanceof Error ? cause.message : 'Please try again.');
     } finally {
+      followOnDecisionLock.current = false;
       setFollowOnDecisionSaving(false);
     }
   }, [loadFromDb, match]);
 
   const finishExceptionalMatch = useCallback(async (
-    resolution: MatchAbandonmentResolution,
-    winnerTeamId?: string,
+    resolution: MatchAbandonmentResolution, winnerTeamId?: string,
   ) => {
-    if (!match || !innings) return;
-    try {
-      await clearScoringSession(match.id);
-      await resolveAbandonedMatchLifecycle(match.id, innings.id, resolution, winnerTeamId);
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace({ pathname: '/wricket/match/[id]/scorecard', params: { id: match.id } });
-    } catch (cause) {
-      Alert.alert('Could not end match', cause instanceof Error ? cause.message : 'Please try again.');
-    }
+    if (!match || !innings) throw new Error('No active innings is available.');
+    if (resolution === 'WALKOVER' && ![match.teamAId, match.teamBId].includes(winnerTeamId ?? '')) throw new Error('Choose a participating team for the walkover.');
+    await resolveAbandonedMatchLifecycle(match.id, innings.id, resolution, winnerTeamId);
+    router.replace({ pathname: '/wricket/match/[id]/scorecard', params: { id: match.id } });
   }, [innings, match, router]);
 
   useEffect(() => {
+    if (Platform.OS === 'web') return;
     if (match?.status !== 'FOLLOW_ON_DECISION') {
       lastFollowOnPromptRef.current = null;
       return;
@@ -951,21 +1001,37 @@ export default function ScoreScreen() {
     );
   }, [match, matchInnings, resolveFollowOnDecision, teamA, teamB]);
 
-  const abandonMatch = useCallback(() => {
-    if (!match || !teamA || !teamB) return;
-    Alert.alert('End match', 'Choose how this match should be recorded.', [
-      {
-        text: 'Walkover to?',
-        onPress: () => Alert.alert('Walkover to?', 'Select the team that receives the win.', [
-          { text: teamA.name, onPress: () => void finishExceptionalMatch('WALKOVER', teamA.id) },
-          { text: teamB.name, onPress: () => void finishExceptionalMatch('WALKOVER', teamB.id) },
-          { text: 'Back', style: 'cancel' },
-        ]),
-      },
-      { text: 'No Result', onPress: () => void finishExceptionalMatch('NO_RESULT') },
-      { text: 'Cancelled', style: 'destructive', onPress: () => void finishExceptionalMatch('CANCELLED') },
-    ], { cancelable: true });
-  }, [finishExceptionalMatch, match, teamA, teamB]);
+  const confirmControl = async (command: MatchControlCommand): Promise<boolean> => {
+    if (scoringAccessBlocked) { setControlError('Scoring access is unavailable. ' + cloudSync.error); return false; }
+    if (deliveryError || controlError || !match || !innings || !live || innings.isClosed) return false;
+    const result = await scoringGate.run(async () => {
+      setDeliverySaving(true);
+      setDeliveryReceipt(null);
+      try {
+        if (command.type === 'ADJUST') {
+          if (!Number.isInteger(command.runs) || command.runs < 1 || command.runs > 6) throw new Error('Choose between 1 and 6 runs.');
+          await recordScoreAdjustment(command.kind, command.runs);
+          setDeliveryReceipt(`Recorded · +${command.runs} ${command.kind.toLowerCase()} runs`);
+        } else if (command.type === 'RETIRE') {
+          if (!live.strikerId || !live.nonStrikerId) throw new Error('Select both active batters first.');
+          await recordRetirement(command.kind, command.outIsStriker);
+          setDeliveryReceipt(`Recorded · ${command.kind === 'RETIRED_HURT' ? 'Retired hurt' : 'Retired out'}`);
+        } else if (command.type === 'END_INNINGS') {
+          await endInningsEarly();
+        } else {
+          await finishExceptionalMatch(command.resolution, command.winnerTeamId);
+        }
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+        return true;
+      } catch (cause) {
+        const message = `Could not finish this action. Reload the saved match before continuing. ${cause instanceof Error ? cause.message : ''}`;
+        setControlError(message);
+        setDeliveryError(message);
+        return false;
+      } finally { setDeliverySaving(false); }
+    });
+    return result.accepted && result.value;
+  };
 
   if (match?.status === 'FOLLOW_ON_DECISION' && teamA && teamB) {
     const firstInnings = matchInnings.find(item => item.sequence === 1);
@@ -983,6 +1049,7 @@ export default function ScoreScreen() {
           <Text tone="muted" style={styles.loadErrorText}>
             {followingTeam.name} trail {enforcingTeam.name}{deficit !== undefined ? ` by ${deficit} runs` : ''}. Choose who bats in the third innings.
           </Text>
+          {followOnDecisionError ? <Text accessibilityRole="alert" tone="danger">Could not apply this decision. {followOnDecisionError}</Text> : null}
           <View style={styles.loadActions}>
             <Button title={`Enforce on ${followingTeam.name}`} disabled={followOnDecisionSaving} onPress={() => void resolveFollowOnDecision(true)} />
             <Button title={`Decline — ${enforcingTeam.name} bat`} variant="secondary" disabled={followOnDecisionSaving} onPress={() => void resolveFollowOnDecision(false)} />
@@ -1020,62 +1087,37 @@ export default function ScoreScreen() {
   const bowlerLine = bowler ? bowlerLineFor(bowler.userId, balls) : null;
 
   return (
-    <Screen padded={false}>
+    <Screen padded={false} style={{ backgroundColor: colors.bg }}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.topBar}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Leave scoring" onPress={confirmLeaveScoring}>
-          <MaterialCommunityIcons name="chevron-left" size={28} color={colors.text} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Leave scoring" disabled={deliverySaving} onPress={confirmLeaveScoring}>
+          <DesignIcon name="back" />
         </Pressable>
-        <Text variant="caption" tone="muted">
-          Innings {innings.sequence} · {battingTeam.shortName} batting
-        </Text>
-        <Pressable onPress={() => setInningsSettingsOpen(true)}>
-          <MaterialCommunityIcons name="cog-outline" size={24} color={colors.text} />
+        <View style={{ flex: 1, marginHorizontal: 16 }}><Text variant="overline" tone="muted">{match.format} · SCORING</Text><Text variant="h3" numberOfLines={1}>{teamA?.shortName} vs {teamB?.shortName}</Text></View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Match controls" disabled={deliverySaving} onPress={() => setInningsSettingsOpen(true)}>
+          <DesignIcon name="settings" />
         </Pressable>
       </View>
 
-      {isUuid(match.id) && (
-        <Pressable
-          disabled={cloudSync.status !== 'ERROR'}
-          onPress={() => void flushScoringEvents(match.id)}
-          style={[
-            styles.syncBanner,
-            cloudSync.status === 'ERROR' && styles.syncBannerError,
-          ]}
-        >
-          <MaterialCommunityIcons
-            name={
-              cloudSync.status === 'LIVE'
-                ? 'access-point'
-                : cloudSync.status === 'ERROR'
-                  ? 'cloud-alert-outline'
-                  : 'cloud-sync-outline'
-            }
-            size={18}
-            color={cloudSync.status === 'ERROR' ? colors.danger : colors.accent}
-          />
-          <Text variant="caption" style={{ flex: 1 }}>
-            {cloudSync.status === 'LIVE'
-              ? 'Live · spectators are up to date'
-              : cloudSync.status === 'ERROR'
-                ? `${cloudSync.error ?? 'Cloud scoring sync failed'} · ${cloudSync.pending} update${cloudSync.pending === 1 ? '' : 's'} waiting · tap to retry`
-                : `${cloudSync.pending} update${cloudSync.pending === 1 ? '' : 's'} ${cloudSync.status === 'SYNCING' ? 'syncing' : 'waiting'}`}
-          </Text>
-        </Pressable>
-      )}
 
-      <View style={styles.scoringWorkspace}>
+
         <View style={styles.scoreBlock}>
           <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, scoreFlashStyle]} />
-          <Animated.View key={live.totalRuns + '-' + live.totalWickets} entering={FadeIn.duration(200)}>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm }}>
-              <Text variant="scoreXL">{live.totalRuns}</Text>
-              <Text variant="scoreLg" tone="muted">/{live.totalWickets}</Text>
+          <Image pointerEvents="none" style={StyleSheet.absoluteFill} contentFit="fill" source={{ uri: svgDataUri('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#1e2c20"/><stop offset="1" stop-color="#0e1811"/></linearGradient></defs><path fill="url(#g)" d="M0 0h400v200H0z"/></svg>') }} />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Text variant="overline" tone="accent">● LIVE</Text>
+            <Text variant="overline" tone="muted">INNINGS {innings.sequence} · {match.rules.oversPerInnings} OVERS</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text variant="caption" style={{ flex: 1 }}>{battingTeam.name}</Text><TeamCrest name={battingTeam.name} /></View>
+          <Animated.View key={live.totalRuns + '-' + live.totalWickets} entering={reducedMotion ? undefined : FadeIn.duration(200)}>
+            <View accessibilityLabel={`Score ${live.totalRuns} for ${live.totalWickets}`} style={{ flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm }}>
+              <Text style={{ fontFamily: fonts.display, fontSize: 43, lineHeight: 49.45, letterSpacing: -3 }}>{live.totalRuns}</Text>
+              <Text style={{ fontFamily: fonts.display, fontSize: 29, lineHeight: 36, color: '#9baf94', marginLeft: -8 }}>/{live.totalWickets}</Text>
+              <Text variant="mono" tone="muted">{formatOver(live.legalBalls)} / {match.rules.oversPerInnings} ov</Text>
             </View>
           </Animated.View>
-          <Text variant="caption" tone="muted" style={{ marginTop: 4 }}>
-            {formatOver(live.legalBalls)} overs · CRR {runRate(live.totalRuns, live.legalBalls).toFixed(2)}
-            {innings.target ? ` · Need ${Math.max(0, innings.target - live.totalRuns)} off ${Math.max(0, match.rules.oversPerInnings * 6 - live.legalBalls)} balls` : ''}
+          <Text variant="caption" tone={innings.target ? 'accent' : 'muted'} style={{ marginTop: 4 }}>
+            {innings.target ? `Need ${Math.max(0, innings.target - live.totalRuns)} from ${Math.max(0, match.rules.oversPerInnings * 6 - live.legalBalls)} balls` : `${formatOver(live.legalBalls)} overs · CRR ${runRate(live.totalRuns, live.legalBalls).toFixed(2)}`}
           </Text>
           {testSituation.positionText && <Text variant="bodyStrong" style={{ marginTop: spacing.xs }}>
             {testSituation.positionText}
@@ -1085,8 +1127,35 @@ export default function ScoreScreen() {
           </Text>}
         </View>
 
+      <ScrollView style={styles.scoringWorkspace} contentContainerStyle={{ paddingBottom: 18 }} keyboardShouldPersistTaps="handled">
         <View style={styles.scoringContent}>
-          <Card>
+      {isUuid(match.id) && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={cloudSync.status === 'ERROR' ? 'Reconnect scoring updates' : 'Connection status'}
+          onPress={() => {
+            if (cloudSync.status === 'ERROR') { void flushScoringEvents(match.id); return; }
+            const message = cloudSync.status === 'LIVE' ? 'All recorded updates have been sent.' : `${cloudSync.pending} updates waiting to sync.`;
+            if (Platform.OS === 'web') globalThis.alert(message);
+            else Alert.alert('Connection', message);
+          }}
+          style={[
+            styles.syncBanner,
+            cloudSync.status === 'ERROR' && styles.syncBannerError,
+          ]}
+        >
+          <Text style={{ fontSize: 7, color: cloudSync.status === 'ERROR' ? colors.danger : '#819679' }}>●</Text>
+          <Text variant="caption" style={{ flex: 1, fontFamily: fonts.mono, fontSize: 8, color: '#a6bba0' }}>
+            {cloudSync.status === 'LIVE'
+              ? 'Saved · updates sent'
+              : cloudSync.status === 'ERROR'
+                ? `${cloudSync.error ?? 'Cloud scoring sync failed'} · ${cloudSync.pending} update${cloudSync.pending === 1 ? '' : 's'} waiting · tap to retry`
+                : `${cloudSync.pending} update${cloudSync.pending === 1 ? '' : 's'} ${cloudSync.status === 'SYNCING' ? 'syncing' : 'waiting'}`}
+          </Text>
+          <Text variant="caption" tone="accent">{cloudSync.status === 'ERROR' ? 'Reconnect' : 'Connection'}</Text>
+        </Pressable>
+      )}
+          <Card style={{ paddingVertical: 3, paddingHorizontal: 12 }}>
             <PlayerLine
               name={striker?.name ?? 'Pick striker'}
               marker="●"
@@ -1094,9 +1163,9 @@ export default function ScoreScreen() {
               balls={strikerLine?.balls ?? 0}
               fours={strikerLine?.fours ?? 0}
               sixes={strikerLine?.sixes ?? 0}
-              onPress={() => setOpenersOpen(true)}
+              onPress={() => { if (!scoringGate.busy) setOpenersOpen(true); }}
             />
-            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: spacing.sm }} />
+            <View style={{ height: 1, backgroundColor: colors.border }} />
             <PlayerLine
               name={nonStriker?.name ?? 'Pick non-striker'}
               marker=""
@@ -1104,61 +1173,22 @@ export default function ScoreScreen() {
               balls={nonStrikerLine?.balls ?? 0}
               fours={nonStrikerLine?.fours ?? 0}
               sixes={nonStrikerLine?.sixes ?? 0}
-              onPress={() => setOpenersOpen(true)}
+              onPress={() => { if (!scoringGate.busy) setOpenersOpen(true); }}
             />
           </Card>
 
-          <Card>
-            <Pressable onPress={() => setBowlerOpen(true)} style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ flex: 1 }}>
-                <Text variant="overline" tone="dim">BOWLING</Text>
-                <Text variant="bodyStrong" style={{ marginTop: 2 }}>
-                  {bowler?.name ?? 'Pick bowler'}
-                </Text>
-              </View>
-              {bowlerLine && (
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text variant="bodyStrong">
-                    {bowlerLine.wickets}/{bowlerLine.runsConceded}
-                  </Text>
-                  <Text variant="caption" tone="muted">
-                    {bowlerLine.oversText} · Econ {bowlerLine.economy.toFixed(1)}
-                  </Text>
-                </View>
-              )}
-            </Pressable>
-          </Card>
+          <Pressable disabled={deliverySaving} onPress={() => setBowlerOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 24, gap: 8 }}>
+            <Text variant="caption" tone="muted" style={{ flex: 1 }}>Bowling <Text variant="caption">{bowler?.name ?? 'Pick bowler'}</Text></Text>
+            {bowlerLine ? <Text variant="mono">{bowlerLine.wickets}/{bowlerLine.runsConceded} <Text variant="caption" tone="muted">({bowlerLine.oversText})</Text></Text> : null}
+          </Pressable>
 
           <ThisOver balls={thisOverBalls} />
 
-          <View style={styles.inputDeck}>
-            <View style={styles.quickActionRail}>
-              <QuickScoreButton
-                label="Wide"
-                icon="alpha-w-circle-outline"
-                onPress={() => recordBall({ runs: 0, extra: 'WIDE', isWicket: false })}
-              />
-              <QuickScoreButton
-                label="No ball"
-                icon="alpha-n-circle-outline"
-                onPress={() => recordBall({ runs: 0, extra: 'NO_BALL', isWicket: false })}
-              />
-              <QuickScoreButton
-                label="Extras"
-                icon="plus-circle-outline"
-                onPress={() => setExtraOpen(true)}
-              />
-              <QuickScoreButton
-                label="Undo"
-                icon="undo-variant"
-                variant="ghost"
-                onPress={() => onPadAction({ kind: 'UNDO' })}
-              />
-            </View>
-            <View style={styles.padFrame}>
-              <GesturePad onAction={onPadAction} />
-            </View>
-          </View>
+          <ScoringInputDeck uiVersion={uiVersion} mode={inputMode} onModeChange={selectInputMode} onAction={action => void onPadAction(action)}
+            onControls={() => setInningsSettingsOpen(true)} onHistory={() => router.push({ pathname: '/wricket/match/[id]/live', params: { id: match.id, tab: 'commentary' } })}
+            onExtras={() => setExtraOpen(true)} disabled={deliverySaving || Boolean(deliveryError) || scoringAccessBlocked || !live.strikerId || !live.nonStrikerId || !live.bowlerId}
+            saving={deliverySaving} canUndo={balls.length > 0} receipt={deliveryReceipt} error={deliveryError} />
+          {deliveryError ? <Button title="Review scorecard" variant="secondary" onPress={() => router.push({ pathname: '/wricket/match/[id]/scorecard', params: { id: match.id } })} /> : null}
 
           {adjustments.length > 0 && (
             <Text variant="caption" tone="dim" style={styles.adjustmentLabel}>
@@ -1166,37 +1196,15 @@ export default function ScoreScreen() {
             </Text>
           )}
         </View>
-      </View>
+      </ScrollView>
 
-      <InningsSettingsPage
-        visible={inningsSettingsOpen}
-        inningsNumber={innings.sequence}
-        battingTeamName={battingTeam.name}
-        onClose={() => setInningsSettingsOpen(false)}
-        onAdjustment={() => {
-          setInningsSettingsOpen(false);
-          setTimeout(() => setAdjustmentOpen(true), 250);
-        }}
-        onRetirement={() => {
-          setInningsSettingsOpen(false);
-          setTimeout(() => setRetirementOpen(true), 250);
-        }}
-        onEndInnings={() => {
-          setInningsSettingsOpen(false);
-          setTimeout(endInningsEarly, 250);
-        }}
-        onAbandon={() => {
-          setInningsSettingsOpen(false);
-          setTimeout(abandonMatch, 250);
-        }}
-        onScorecard={() => {
-          setInningsSettingsOpen(false);
-          router.push({
-            pathname: '/wricket/match/[id]/scorecard',
-            params: { id: match.id },
-          });
-        }}
-      />
+      <MatchControls visible={inningsSettingsOpen} saving={deliverySaving} error={controlError}
+        onClose={() => { if (!scoringGate.busy) setInningsSettingsOpen(false); }}
+        onScorecard={() => { setInningsSettingsOpen(false); router.push({ pathname: '/wricket/match/[id]/scorecard', params: { id: match.id } }); }}
+        onConfirm={confirmControl} innings={innings.sequence} teamName={battingTeam.name}
+        runs={live.totalRuns} wickets={live.totalWickets} legalBalls={live.legalBalls} overs={match.rules.oversPerInnings}
+        target={innings.target} striker={striker?.name ?? null} nonStriker={nonStriker?.name ?? null}
+        teams={[teamA!, teamB!]} />
 
       <PickPlayersSheet
         visible={openersOpen}
@@ -1257,15 +1265,17 @@ export default function ScoreScreen() {
       />
 
       <WicketSheet
+        bowler={bowler?.name ?? 'Select bowler'}
         visible={wicketOpen}
-        onClose={() => setWicketOpen(false)}
+        saving={deliverySaving}
+        error={deliveryError}
+        onClose={() => { if (!scoringGate.busy) setWicketOpen(false); }}
         striker={striker?.name ?? '?'}
         nonStriker={nonStriker?.name ?? '?'}
         fielders={xiBowling}
         onConfirm={async ({ kind, outIsStriker, fielderId, assistantFielderId }) => {
-          setWicketOpen(false);
           const outPlayerId = outIsStriker ? live.strikerId! : live.nonStrikerId!;
-          await recordBall({
+          const recorded = await recordBall({
             runs: 0,
             extra: null,
             isWicket: true,
@@ -1274,35 +1284,18 @@ export default function ScoreScreen() {
             fielderId,
             assistantFielderId,
           });
-        }}
-      />
-
-      <ScoreAdjustmentSheet
-        visible={adjustmentOpen}
-        onClose={() => setAdjustmentOpen(false)}
-        onConfirm={async ({ kind, runs }) => {
-          setAdjustmentOpen(false);
-          await recordScoreAdjustment(kind, runs);
-        }}
-      />
-
-      <RetirementSheet
-        visible={retirementOpen}
-        onClose={() => setRetirementOpen(false)}
-        striker={striker?.name ?? '?'}
-        nonStriker={nonStriker?.name ?? '?'}
-        onConfirm={async ({ kind, outIsStriker }) => {
-          setRetirementOpen(false);
-          await recordRetirement(kind, outIsStriker);
+          if (recorded) setWicketOpen(false);
         }}
       />
 
       <ExtrasSheet
+        legalBalls={live.legalBalls}
         visible={extraOpen}
-        onClose={() => setExtraOpen(false)}
+        saving={deliverySaving}
+        error={deliveryError}
+        onClose={() => { if (!scoringGate.busy) setExtraOpen(false); }}
         onConfirm={async ({ kind, runs, rotateStrike }) => {
-          setExtraOpen(false);
-          await recordBall({ runs, extra: kind, isWicket: false, rotateStrike });
+          if (await recordBall({ runs, extra: kind, isWicket: false, rotateStrike })) setExtraOpen(false);
         }}
       />
     </Screen>
@@ -1313,185 +1306,28 @@ function totalAdjustmentRuns(items: ScoreAdjustment[]): number {
   return items.reduce((sum, item) => sum + item.runs, 0);
 }
 
-function PlayerLine({
-  name, marker, runs, balls, fours, sixes, onPress,
-}: {
+function PlayerLine({ name, marker, runs, balls, onPress }: {
   name: string; marker: string; runs: number; balls: number; fours: number; sixes: number; onPress?: () => void;
 }) {
-  const sr = balls > 0 ? ((runs / balls) * 100).toFixed(0) : '—';
-  return (
-    <Pressable onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <Text variant="bodyStrong" style={{ width: 18 }}>{marker}</Text>
-      <Text variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>{name}</Text>
-      <Text variant="bodyStrong">{runs}</Text>
-      <Text variant="caption" tone="muted" style={{ marginLeft: spacing.sm }}>({balls})</Text>
-      <Text variant="caption" tone="dim" style={{ marginLeft: spacing.sm, width: 36, textAlign: 'right' }}>
-        SR {sr}
-      </Text>
-    </Pressable>
-  );
-}
-
-function InningsSettingsPage({
-  visible,
-  inningsNumber,
-  battingTeamName,
-  onClose,
-  onAdjustment,
-  onRetirement,
-  onEndInnings,
-  onAbandon,
-  onScorecard,
-}: {
-  visible: boolean;
-  inningsNumber: number;
-  battingTeamName: string;
-  onClose: () => void;
-  onAdjustment: () => void;
-  onRetirement: () => void;
-  onEndInnings: () => void;
-  onAbandon: () => void;
-  onScorecard: () => void;
-}) {
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={onClose}
-    >
-      <Screen padded={false}>
-        <View style={styles.settingsHeader}>
-          <Pressable onPress={onClose} style={styles.settingsClose}>
-            <MaterialCommunityIcons name="close" size={26} color={colors.text} />
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text variant="overline" tone="muted">INNINGS {inningsNumber}</Text>
-            <Text variant="h2">Innings settings</Text>
-          </View>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.settingsContent}>
-          <Text variant="body" tone="muted">
-            Manage exceptional scoring actions for {battingTeamName}. Regular deliveries stay on the scoring pad.
-          </Text>
-
-          <Card>
-            <Text variant="h3">Score corrections</Text>
-            <Text variant="caption" tone="muted" style={styles.settingsDescription}>
-              Add umpire penalties or manual bonus runs without recording a delivery.
-            </Text>
-            <Button title="Penalty / bonus runs" variant="secondary" onPress={onAdjustment} fullWidth />
-          </Card>
-
-          <Card>
-            <Text variant="h3">Batter status</Text>
-            <Text variant="caption" tone="muted" style={styles.settingsDescription}>
-              Mark the striker or non-striker as retired hurt or retired out.
-            </Text>
-            <Button title="Retire batter" variant="secondary" onPress={onRetirement} fullWidth />
-          </Card>
-
-          <Card>
-            <Text variant="h3">Innings control</Text>
-            <Text variant="caption" tone="muted" style={styles.settingsDescription}>
-              Review the scorecard or close the current innings before its automatic limit.
-            </Text>
-            <View style={{ gap: spacing.sm }}>
-              <Button title="View scorecard" variant="secondary" onPress={onScorecard} fullWidth />
-              <Button title="End innings" variant="danger" onPress={onEndInnings} fullWidth />
-            </View>
-          </Card>
-
-          <Card>
-            <Text variant="h3">Match control</Text>
-            <Text variant="caption" tone="muted" style={styles.settingsDescription}>
-              End the match by walkover, no result, or cancellation. This cannot be undone.
-            </Text>
-            <Button title="Abandon match" variant="danger" onPress={onAbandon} fullWidth />
-          </Card>
-        </ScrollView>
-      </Screen>
-    </Modal>
-  );
-}
-
-function QuickScoreButton({
-  label,
-  icon,
-  onPress,
-  variant = 'extra',
-}: {
-  label: string;
-  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
-  onPress: () => void;
-  variant?: 'extra' | 'ghost';
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.quickAction,
-        variant === 'ghost' && styles.quickActionGhost,
-        pressed && styles.quickActionPressed,
-      ]}
-    >
-      <MaterialCommunityIcons
-        name={icon}
-        size={22}
-        color={variant === 'ghost' ? colors.textMuted : colors.extra}
-      />
-      <Text variant="caption" style={styles.quickActionLabel} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
-  );
+  return <Pressable onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9 }}>
+    {marker ? <Text style={{ color: colors.accent, fontSize: 8, marginRight: 6 }}>●</Text> : null}
+    <Text variant="body" style={{ flex: 1, fontSize: 12 }} numberOfLines={1}>{name}</Text>
+    <Text style={{ fontFamily: fonts.mono, fontSize: 16 }}>{runs}</Text>
+    <Text style={{ fontFamily: fonts.mono, fontSize: 9, color: colors.textMuted, marginLeft: 7 }}>({balls})</Text>
+  </Pressable>;
 }
 
 function ThisOver({ balls }: { balls: Ball[] }) {
   const visibleBalls = balls.slice(-8);
-  return (
-    <View style={styles.thisOver}>
-      <View style={styles.thisOverHeader}>
-        <Text variant="overline" tone="dim">THIS OVER</Text>
-        {balls.length > visibleBalls.length && (
-          <Text variant="caption" tone="dim">+{balls.length - visibleBalls.length} earlier</Text>
-        )}
-      </View>
-      <View style={styles.thisOverBalls}>
-        {balls.length === 0 && (
-          <Text variant="caption" tone="dim">No balls yet</Text>
-        )}
-        {visibleBalls.map((b, i) => (
-          <Animated.View
-            key={b.id}
-            entering={ZoomIn.delay(i * 30).duration(200)}
-            style={[
-              styles.ballChip,
-              b.isWicket && { backgroundColor: colors.wicket },
-              !b.isWicket && b.runsBat === 4 && { backgroundColor: colors.boundary },
-              !b.isWicket && b.runsBat === 6 && { backgroundColor: colors.six },
-              !b.isLegal && !b.isWicket && b.runsBat < 4 && styles.ballChipExtra,
-            ]}
-          >
-            <Text
-              variant="caption"
-              style={{
-                color: (b.isWicket || b.runsBat === 4 || b.runsBat === 6)
-                  ? palette.black
-                  : colors.text,
-                fontWeight: '700',
-              }}
-            >
-              {ballSymbol(b)}
-            </Text>
-          </Animated.View>
-        ))}
-      </View>
-    </View>
-  );
+  return <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+    <Text variant="overline" tone="muted" style={{ marginRight: 4 }}>THIS OVER</Text>
+    {visibleBalls.map(ball => <View key={ball.id} style={{ width: 29, height: 29, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: ball.isWicket ? '#694437' : ball.runsBat >= 4 ? '#6b9645' : '#39493b',
+      backgroundColor: ball.isWicket ? '#2c211c' : ball.runsBat >= 4 ? '#334a25' : '#1b271c' }}>
+      <Text style={{ fontFamily: fonts.mono, fontSize: 10, color: ball.isWicket ? colors.danger : colors.text }}>{ballSymbol(ball)}</Text>
+    </View>)}
+    {Array.from({ length: Math.max(0, 6 - visibleBalls.length) }, (_, i) => <View key={i} style={{ width: 29, height: 29, borderRadius: 15, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }}><Text tone="dim">·</Text></View>)}
+  </View>;
 }
 
 function PickPlayersSheet({
@@ -1528,6 +1364,9 @@ function PickPlayersSheet({
               return (
                 <Pressable
                   key={p.userId}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select ${p.name}`}
+                  accessibilityState={{ selected: idx !== -1 }}
                   onPress={() => toggle(p.userId)}
                   style={[styles.pickRow, idx !== -1 && styles.pickRowActive]}
                 >
@@ -1557,353 +1396,6 @@ function PickPlayersSheet({
   );
 }
 
-function WicketSheet({
-  visible, onClose, striker, nonStriker, fielders, onConfirm,
-}: {
-  visible: boolean; onClose: () => void; striker: string; nonStriker: string;
-  fielders: MatchXIPlayer[];
-  onConfirm: (e: {
-    kind: DismissalKind;
-    outIsStriker: boolean;
-    fielderId?: string;
-    assistantFielderId?: string;
-  }) => void;
-}) {
-  const [kind, setKind] = useState<DismissalKind>('BOWLED');
-  const [outIsStriker, setOutIsStriker] = useState(true);
-  const [fielderId, setFielderId] = useState<string | undefined>();
-  const [assistantFielderId, setAssistantFielderId] = useState<string | undefined>();
-
-  useEffect(() => {
-    if (!visible) return;
-    setKind('BOWLED');
-    setOutIsStriker(true);
-    setFielderId(undefined);
-    setAssistantFielderId(undefined);
-  }, [visible]);
-
-  const selectKind = (nextKind: DismissalKind) => {
-    setKind(nextKind);
-    setFielderId(undefined);
-    setAssistantFielderId(undefined);
-  };
-  const needsFielder = kind === 'CAUGHT' || kind === 'STUMPED' || kind === 'RUN_OUT';
-  const canSubmit = !needsFielder || (
-    Boolean(fielderId) &&
-    (kind !== 'RUN_OUT' || Boolean(assistantFielderId))
-  );
-  const fielderLabel = kind === 'CAUGHT'
-    ? 'CAUGHT BY'
-    : kind === 'STUMPED'
-      ? 'STUMPED BY'
-      : 'RUN OUT BY / WICKET BROKEN BY';
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalSheet}>
-          <View style={styles.sheetHeader}>
-            <Text variant="h2">Wicket</Text>
-            <Pressable onPress={onClose}>
-              <MaterialCommunityIcons name="close" size={24} color={colors.text} />
-            </Pressable>
-          </View>
-
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>HOW OUT?</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg }}>
-            {(['BOWLED', 'CAUGHT', 'LBW', 'RUN_OUT', 'STUMPED', 'HIT_WICKET', 'RETIRED_OUT'] as DismissalKind[]).map(k => (
-              <Pressable key={k} onPress={() => selectKind(k)} style={[styles.chip, kind === k && styles.chipActive]}>
-                <Text variant="bodyStrong" style={kind === k ? { color: colors.accentInk } : undefined}>
-                  {labelFor(k)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>WHO IS OUT?</Text>
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
-            <Pressable onPress={() => setOutIsStriker(true)} style={[styles.chip, { flex: 1 }, outIsStriker && styles.chipActive]}>
-              <Text variant="bodyStrong" style={outIsStriker ? { color: colors.accentInk } : undefined}>
-                {striker} (striker)
-              </Text>
-            </Pressable>
-            <Pressable onPress={() => setOutIsStriker(false)} style={[styles.chip, { flex: 1 }, !outIsStriker && styles.chipActive]}>
-              <Text variant="bodyStrong" style={!outIsStriker ? { color: colors.accentInk } : undefined}>
-                {nonStriker}
-              </Text>
-            </Pressable>
-          </View>
-
-          {needsFielder && (
-            <>
-              <FielderPicker
-                label={fielderLabel}
-                players={fielders}
-                selectedId={fielderId}
-                onSelect={setFielderId}
-              />
-              {kind === 'RUN_OUT' && (
-                <FielderPicker
-                  label="THROWER / ASSIST (USE SAME PLAYER FOR DIRECT HIT)"
-                  players={fielders}
-                  selectedId={assistantFielderId}
-                  onSelect={setAssistantFielderId}
-                />
-              )}
-            </>
-          )}
-
-          <Button
-            title="Record wicket"
-            variant="danger"
-            disabled={!canSubmit}
-            onPress={() => onConfirm({ kind, outIsStriker, fielderId, assistantFielderId })}
-            fullWidth
-            size="lg"
-          />
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function FielderPicker({
-  label,
-  players,
-  selectedId,
-  onSelect,
-}: {
-  label: string;
-  players: MatchXIPlayer[];
-  selectedId?: string;
-  onSelect: (playerId: string | undefined) => void;
-}) {
-  return (
-    <View style={styles.fielderPicker}>
-      <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>{label}</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.fielderOptions}
-      >
-        {players.map(player => {
-            const selected = player.userId === selectedId;
-            return (
-              <Pressable
-                key={player.userId}
-                onPress={() => onSelect(selected ? undefined : player.userId)}
-                style={[styles.fielderOption, selected && styles.chipActive]}
-              >
-                <Text
-                  variant="bodyStrong"
-                  style={selected ? { color: colors.accentInk } : undefined}
-                  numberOfLines={1}
-                >
-                  {player.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-      </ScrollView>
-    </View>
-  );
-}
-
-function labelFor(k: DismissalKind) {
-  return { BOWLED: 'Bowled', CAUGHT: 'Caught', LBW: 'LBW', RUN_OUT: 'Run out', STUMPED: 'Stumped', HIT_WICKET: 'Hit wicket', RETIRED_OUT: 'Retired out' }[k];
-}
-
-function ScoreAdjustmentSheet({
-  visible, onClose, onConfirm,
-}: {
-  visible: boolean; onClose: () => void;
-  onConfirm: (e: { kind: ScoreAdjustmentKind; runs: number }) => void;
-}) {
-  const [kind, setKind] = useState<ScoreAdjustmentKind>('PENALTY');
-  const [runs, setRuns] = useState(5);
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalSheet}>
-          <View style={styles.sheetHeader}>
-            <Text variant="h2">Penalty / bonus</Text>
-            <Pressable onPress={onClose}>
-              <MaterialCommunityIcons name="close" size={24} color={colors.text} />
-            </Pressable>
-          </View>
-
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>TYPE</Text>
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
-            {(['PENALTY', 'BONUS'] as const).map(k => (
-              <Pressable key={k} onPress={() => setKind(k)} style={[styles.chip, kind === k && styles.chipActive]}>
-                <Text variant="bodyStrong" style={kind === k ? { color: colors.accentInk } : undefined}>
-                  {k === 'PENALTY' ? 'Penalty' : 'Bonus'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>RUNS</Text>
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
-            {[1, 2, 3, 4, 5, 6].map(r => (
-              <Pressable key={r} onPress={() => setRuns(r)} style={[styles.runChip, runs === r && styles.runChipActive]}>
-                <Text variant="bodyStrong" style={runs === r ? { color: colors.accentInk } : undefined}>{r}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Button title="Add runs" onPress={() => onConfirm({ kind, runs })} fullWidth size="lg" />
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function RetirementSheet({
-  visible, onClose, striker, nonStriker, onConfirm,
-}: {
-  visible: boolean; onClose: () => void; striker: string; nonStriker: string;
-  onConfirm: (e: { kind: 'RETIRED_HURT' | 'RETIRED_OUT'; outIsStriker: boolean }) => void;
-}) {
-  const [kind, setKind] = useState<'RETIRED_HURT' | 'RETIRED_OUT'>('RETIRED_HURT');
-  const [outIsStriker, setOutIsStriker] = useState(true);
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalSheet}>
-          <View style={styles.sheetHeader}>
-            <Text variant="h2">Retire batter</Text>
-            <Pressable onPress={onClose}>
-              <MaterialCommunityIcons name="close" size={24} color={colors.text} />
-            </Pressable>
-          </View>
-
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>TYPE</Text>
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
-            <Pressable onPress={() => setKind('RETIRED_HURT')} style={[styles.chip, { flex: 1 }, kind === 'RETIRED_HURT' && styles.chipActive]}>
-              <Text variant="bodyStrong" style={kind === 'RETIRED_HURT' ? { color: colors.accentInk } : undefined}>Retired hurt</Text>
-            </Pressable>
-            <Pressable onPress={() => setKind('RETIRED_OUT')} style={[styles.chip, { flex: 1 }, kind === 'RETIRED_OUT' && styles.chipActive]}>
-              <Text variant="bodyStrong" style={kind === 'RETIRED_OUT' ? { color: colors.accentInk } : undefined}>Retired out</Text>
-            </Pressable>
-          </View>
-
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>WHO?</Text>
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
-            <Pressable onPress={() => setOutIsStriker(true)} style={[styles.chip, { flex: 1 }, outIsStriker && styles.chipActive]}>
-              <Text variant="bodyStrong" style={outIsStriker ? { color: colors.accentInk } : undefined}>{striker}</Text>
-            </Pressable>
-            <Pressable onPress={() => setOutIsStriker(false)} style={[styles.chip, { flex: 1 }, !outIsStriker && styles.chipActive]}>
-              <Text variant="bodyStrong" style={!outIsStriker ? { color: colors.accentInk } : undefined}>{nonStriker}</Text>
-            </Pressable>
-          </View>
-
-          <Button title="Confirm retirement" onPress={() => onConfirm({ kind, outIsStriker })} fullWidth size="lg" />
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function ExtrasSheet({
-  visible, onClose, onConfirm,
-}: {
-  visible: boolean; onClose: () => void;
-  onConfirm: (e: { kind: NonNullable<ExtraKind>; runs: number; rotateStrike?: boolean }) => void;
-}) {
-  const [kind, setKind] = useState<NonNullable<ExtraKind>>('WIDE');
-  const [runs, setRuns] = useState(0);
-  const [rotateStrike, setRotateStrike] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!visible) return;
-    setKind('WIDE');
-    setRuns(0);
-    setRotateStrike(null);
-  }, [visible]);
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalSheet}>
-          <View style={styles.sheetHeader}>
-            <Text variant="h2">Extras</Text>
-            <Pressable onPress={onClose}>
-              <MaterialCommunityIcons name="close" size={24} color={colors.text} />
-            </Pressable>
-          </View>
-
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>TYPE</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg }}>
-            {(['WIDE', 'NO_BALL', 'BYE', 'LEG_BYE'] as const).map(k => (
-              <Pressable key={k} onPress={() => setKind(k)} style={[styles.chip, kind === k && styles.chipActive]}>
-                <Text variant="bodyStrong" style={kind === k ? { color: colors.accentInk } : undefined}>
-                  {k === 'NO_BALL' ? 'No ball' : k === 'LEG_BYE' ? 'Leg bye' : k === 'WIDE' ? 'Wide' : 'Bye'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>RUNS</Text>
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
-            {[0, 1, 2, 3, 4, 6].map(r => (
-              <Pressable
-                key={r}
-                onPress={() => {
-                  setRuns(r);
-                  setRotateStrike(null);
-                }}
-                style={[styles.runChip, runs === r && styles.runChipActive]}
-              >
-                <Text variant="bodyStrong" style={runs === r ? { color: colors.accentInk } : undefined}>{r}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {runs > 0 && (
-            <>
-              <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>
-                ROTATE STRIKE?
-              </Text>
-              <Text variant="body" tone="muted" style={{ marginBottom: spacing.sm }}>
-                Did the batters change ends on this delivery?
-              </Text>
-              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
-                <Pressable
-                  onPress={() => setRotateStrike(true)}
-                  style={[styles.chip, { flex: 1 }, rotateStrike === true && styles.chipActive]}
-                >
-                  <Text variant="bodyStrong" style={rotateStrike === true ? { color: colors.accentInk } : undefined}>
-                    Yes
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setRotateStrike(false)}
-                  style={[styles.chip, { flex: 1 }, rotateStrike === false && styles.chipActive]}
-                >
-                  <Text variant="bodyStrong" style={rotateStrike === false ? { color: colors.accentInk } : undefined}>
-                    No
-                  </Text>
-                </Pressable>
-              </View>
-            </>
-          )}
-
-          <Button
-            title="Record"
-            disabled={runs > 0 && rotateStrike === null}
-            onPress={() => onConfirm({ kind, runs, rotateStrike: rotateStrike ?? undefined })}
-            fullWidth
-            size="lg"
-          />
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   loadState: {
     flex: 1,
@@ -1922,9 +1414,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   syncBanner: {
-    minHeight: 38,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: colors.surfaceElevated,
+    minHeight: 25,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -1961,10 +1451,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   topBar: {
+    minHeight: 66,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: 18,
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -1974,15 +1465,17 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   scoringContent: {
-    flex: 1,
-    minHeight: 0,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: 18,
+    paddingTop: 8,
     paddingBottom: spacing.sm,
-    gap: spacing.sm,
+    gap: 11,
   },
   scoreBlock: {
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
+    paddingHorizontal: 18,
+    paddingTop: 13,
+    paddingBottom: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
     overflow: 'hidden',
   },
   thisOver: {

@@ -1,4 +1,5 @@
 import { nextPowerOfTwo, roundsFor } from './recommender';
+import { fixtureWinner } from './result';
 import type { FixtureMatch, KnockoutBracket, KnockoutConfig, KORound, KORoundName } from './types';
 
 export interface QualifiedTeam {
@@ -48,7 +49,7 @@ export class KnockoutBracketBuilder {
         matches: [],
         slotMap: Array.from({ length: matchCount * 2 }, (_, slot) => ({
           slot: slot + 1,
-          sourceRef: `Winner of ${required[roundIndex - 1]}${Math.floor(slot / 2) + 1}`,
+          sourceRef: `Winner of ${required[roundIndex - 1]}${slot + 1}`,
         })),
       });
     }
@@ -68,7 +69,8 @@ export class KnockoutBracketBuilder {
     if (!current.matches.every(match => match.status === 'COMPLETED' || match.status === 'WALKOVER')) {
       throw new Error(`${current.name} is not complete`);
     }
-    const winners = current.matches.map(winnerOf);
+    if (next.matches.length) return [];
+    const winners = current.matches.map(fixtureWinner);
     next.matches = Array.from({ length: Math.floor(winners.length / 2) }, (_, index) => ({
       id: idFactory(), stageId: bracket.stageId, roundId: next.id,
       teamA: winners[index * 2], teamB: winners[index * 2 + 1],
@@ -95,11 +97,6 @@ export class KnockoutBracketBuilder {
   }
 }
 
-function winnerOf(match: FixtureMatch): string {
-  if (!match.teamB) return match.teamA;
-  if (match.scoreA == null || match.scoreB == null || match.scoreA === match.scoreB) throw new Error(`Match ${match.id} has no winner`);
-  return match.scoreA > match.scoreB ? match.teamA : match.teamB;
-}
 function normalise(name: KORoundName): KORoundName {
   return ({ QUARTER_FINAL: 'QF', SEMI_FINAL: 'SF', FINAL: 'F' } as Record<string, KORoundName>)[name] ?? name;
 }

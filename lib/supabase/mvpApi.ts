@@ -1,10 +1,9 @@
+import { readIdChunks, readPages } from './readPages';
 import { getSupabaseClient } from './client';
-import type { TournamentMvpRow } from '@/lib/wricket/domain/mvp';
+import { eligibleCompletedMatch } from '@/lib/wricket/presentation/completedStatistics';
+import { aggregateTournamentLeaderboard, type LeaderboardRow, type MvpResultRecord } from '@/lib/wricket/presentation/tournamentLeaderboard';
 
-export interface CloudTournamentMvpRow extends TournamentMvpRow {
-  playerName: string;
-  teamNames: readonly string[];
-}
+export type CloudTournamentMvpRow = LeaderboardRow;
 
 export const mvpApi = {
   async getMatch(matchId: string) {
@@ -43,97 +42,21 @@ export const mvpApi = {
   },
 
   async getCompleteTournamentLeaderboard(tournamentId: string): Promise<CloudTournamentMvpRow[]> {
-    const { data: matches, error: matchError } = await getSupabaseClient()
-      .from('matches').select('id').eq('tournament_id', tournamentId)
-      .eq('status', 'COMPLETED');
-    if (matchError) throw matchError;
-    const matchIds = (matches ?? []).map(match => match.id);
+    const client = getSupabaseClient();
+    const matches = await readPages((start, end) => client.from('matches')
+      .select('id, team_a_id, team_b_id, status, result, scheduled_at, created_at')
+      .eq('tournament_id', tournamentId).eq('status', 'COMPLETED').order('id').range(start, end));
+    const eligible = matches.filter(eligibleCompletedMatch);
+    const matchIds = eligible.map(match => match.id);
     if (!matchIds.length) return [];
-
-    const results: any[] = [];
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await getSupabaseClient()
-        .from('match_mvp_results')
-        .select('*, players(display_name), teams(short_name)')
-        .in('match_id', matchIds)
-        .eq('algorithm_version', 'wricket-mvp-v1')
-        .range(from, from + 999);
-      if (error) throw error;
-      results.push(...data);
-      if (data.length < 1000) break;
-    }
-
-    const aggregated = new Map<string, {
-      playerId: string;
-      playerName: string;
-      teamIds: Set<string>;
-      teamNames: Set<string>;
-      matchIds: Set<string>;
-      battingPoints: number;
-      bowlingPoints: number;
-      fieldingPoints: number;
-      totalPoints: number;
-      playerOfTheMatchCount: number;
-      fighterOfTheMatchCount: number;
-      topThreeFinishes: number;
-      algorithmVersions: Set<string>;
-    }>();
-    for (const result of results) {
-      const current = aggregated.get(result.player_id) ?? {
-        playerId: result.player_id,
-        playerName: result.players?.display_name ?? 'Unknown player',
-        teamIds: new Set<string>(),
-        teamNames: new Set<string>(),
-        matchIds: new Set<string>(),
-        battingPoints: 0,
-        bowlingPoints: 0,
-        fieldingPoints: 0,
-        totalPoints: 0,
-        playerOfTheMatchCount: 0,
-        fighterOfTheMatchCount: 0,
-        topThreeFinishes: 0,
-        algorithmVersions: new Set<string>(),
-      };
-      current.teamIds.add(result.team_id);
-      if (result.teams?.short_name) current.teamNames.add(result.teams.short_name);
-      current.matchIds.add(result.match_id);
-      current.battingPoints += Number(result.batting_points);
-      current.bowlingPoints += Number(result.bowling_points);
-      current.fieldingPoints += Number(result.fielding_points);
-      current.totalPoints += Number(result.total_points);
-      current.playerOfTheMatchCount += Number(Boolean(result.is_player_of_match));
-      current.fighterOfTheMatchCount += Number(Boolean(result.is_fighter_of_match));
-      current.topThreeFinishes += Number(Number(result.rank) <= 3);
-      current.algorithmVersions.add(result.algorithm_version);
-      aggregated.set(result.player_id, current);
-    }
-
-    return [...aggregated.values()]
-      .sort((a, b) =>
-        b.totalPoints - a.totalPoints ||
-        b.playerOfTheMatchCount - a.playerOfTheMatchCount ||
-        b.topThreeFinishes - a.topThreeFinishes ||
-        a.matchIds.size - b.matchIds.size ||
-        a.playerId.localeCompare(b.playerId))
-      .map((row, index) => ({
-        playerId: row.playerId,
-        playerName: row.playerName,
-        teamIds: [...row.teamIds],
-        teamNames: [...row.teamNames],
-        matchesPlayed: row.matchIds.size,
-        battingPoints: row.battingPoints,
-        bowlingPoints: row.bowlingPoints,
-        fieldingPoints: row.fieldingPoints,
-        totalPoints: row.totalPoints,
-        playerOfTheMatchCount: row.playerOfTheMatchCount,
-        fighterOfTheMatchCount: row.fighterOfTheMatchCount,
-        topThreeCount: row.topThreeFinishes,
-        wickets: 0,
-        runs: 0,
-        fieldingDismissals: 0,
-        algorithmVersions: [...row.algorithmVersions],
-        rank: index + 1,
-      }));
+    const teamIds = [...new Set(eligible.flatMap(match => [match.team_a_id, match.team_b_id]))];
+    const teams = await readIdChunks(teamIds, chunk => readPages((start, end) => client.from('teams')
+      .select('id, name').in('id', chunk).order('id').range(start, end)));
+    const results: MvpResultRecord[] = await readIdChunks(matchIds, chunk => readPages((start, end) => client.from('match_mvp_results')
+      .select('*, players(display_name), teams(name)')
+      .in('match_id', chunk).eq('algorithm_version', 'wricket-mvp-v1')
+      .order('match_id').order('player_id').range(start, end)));
+    return aggregateTournamentLeaderboard(results, eligible, new Map(teams.map(team => [team.id, team.name])));
   },
 
   async requestRecalculation(matchId: string) {

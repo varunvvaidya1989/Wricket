@@ -1,0 +1,27 @@
+{
+  "packageVersion": "16.0.10",
+  "originalSha256": "5294dff8ab8489b336f7757d011cbcde2c845b592df0c1924da468a416937cd0",
+  "patchedSha256": "642bae42c92e18fdb0f46f58226c0d76f2b6b3c671c3fdc0e628a8d6b2d9f189",
+  "replacements": [
+    {
+      "before": "let _sqlite3: SQLiteAPI | null = null;",
+      "after": "let _sqlite3: SQLiteAPI | null = null;\nlet _sqliteModule: Awaited<ReturnType<typeof WaSQLiteFactory>> | null = null;"
+    },
+    {
+      "before": "const { vfs } = await maybeInitAsync();\n  if (databasePath !== ':memory:') {\n    vfs.jDelete",
+      "after": "const { vfs } = await maybeInitAsync(databasePath !== ':memory:');\n  if (databasePath !== ':memory:') {\n    if (!vfs) throw new Error('Persistent VFS is unavailable');\n    vfs.jDelete"
+    },
+    {
+      "before": "const { sqlite3, vfs } = await maybeInitAsync();\n  if (!forceOverwrite)",
+      "after": "const { sqlite3, vfs } = await maybeInitAsync(true);\n  if (!vfs) throw new Error('Persistent VFS is unavailable');\n  if (!forceOverwrite)"
+    },
+    {
+      "before": "const { sqlite3 } = await maybeInitAsync();\n  let pointer: DatabasePointer;",
+      "after": "const { sqlite3 } = await maybeInitAsync(databasePath !== ':memory:' && !serializedData);\n  let pointer: DatabasePointer;"
+    },
+    {
+      "before": "async function maybeInitAsync(): Promise<{\n  sqlite3: SQLiteAPI;\n  vfs: AccessHandlePoolVFS;\n  vfsMemory: MemoryVFS;\n}> {\n  if (!_sqlite3) {\n    const module = await WaSQLiteFactory({\n      locateFile: () => wasmModule,\n    });\n    _sqlite3 = SQLite.Factory(module) as SQLiteAPI;\n    if (!_sqlite3) {\n      throw new Error('Failed to initialize wa-sqlite');\n    }\n\n    if (_vfs == null) {\n      _vfs = await AccessHandlePoolVFS.create(VFS_NAME_PERSISTENT, module);\n      if (_vfs == null) {\n        throw new Error('Failed to initialize AccessHandlePoolVFS');\n      }\n    }\n    _sqlite3.vfs_register(_vfs, true);\n\n    if (_vfsMemory == null) {\n      _vfsMemory = await MemoryVFS.create(VFS_NAME_MEMORY, module);\n      if (_vfsMemory == null) {\n        throw new Error('Failed to initialize MemoryVFS');\n      }\n    }\n    _sqlite3.vfs_register(_vfsMemory, false);\n  }\n  if (_vfs == null || _vfsMemory == null) {\n    throw new Error('Invalid VFS state');\n  }\n  return { sqlite3: _sqlite3, vfs: _vfs, vfsMemory: _vfsMemory };\n}\n",
+      "after": "async function maybeInitAsync(requirePersistent = false): Promise<{\n  sqlite3: SQLiteAPI;\n  vfs: AccessHandlePoolVFS | null;\n  vfsMemory: MemoryVFS;\n}> {\n  if (!_sqlite3) {\n    _sqliteModule = await WaSQLiteFactory({ locateFile: () => wasmModule });\n    _sqlite3 = SQLite.Factory(_sqliteModule) as SQLiteAPI;\n    if (!_sqlite3) throw new Error('Failed to initialize wa-sqlite');\n  }\n  if (!_sqliteModule) throw new Error('Invalid SQLite module state');\n  if (!_vfsMemory) {\n    _vfsMemory = await MemoryVFS.create(VFS_NAME_MEMORY, _sqliteModule);\n    if (!_vfsMemory) throw new Error('Failed to initialize MemoryVFS');\n    _sqlite3.vfs_register(_vfsMemory, true);\n  }\n  // In-memory caches must not require an OPFS handle. Persistent requests\n  // still initialise OPFS explicitly and propagate any filesystem failure.\n  if (requirePersistent && !_vfs) {\n    _vfs = await AccessHandlePoolVFS.create(VFS_NAME_PERSISTENT, _sqliteModule);\n    if (!_vfs) throw new Error('Failed to initialize AccessHandlePoolVFS');\n    _sqlite3.vfs_register(_vfs, true);\n  }\n  return { sqlite3: _sqlite3, vfs: _vfs, vfsMemory: _vfsMemory };\n}\n"
+    }
+  ]
+}

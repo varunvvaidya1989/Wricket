@@ -1,5 +1,5 @@
-import { SportStageLiveScreen } from '@/components/sports/platform/SportStageLiveScreen';
+import { SportStageHomeScreen } from '@/components/sports/platform/SportStageHomeScreen';
 
 export default function Live() {
-  return <SportStageLiveScreen />;
+  return <SportStageHomeScreen />;
 }

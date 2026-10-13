@@ -17,7 +17,7 @@ export function SportStageLaunchBoundary({ children }: { children: React.ReactNo
     <View style={styles.root} pointerEvents={complete ? 'auto' : 'none'} accessibilityElementsHidden={!complete} importantForAccessibility={complete ? 'auto' : 'no-hide-descendants'}>
       {children}
     </View>
-    {!complete ? <View style={styles.overlay}><AnimatedSportStageSplash ready={!loading} onFinish={finish} /></View> : null}
+    {!complete ? <View role="status" accessibilityLiveRegion="polite" style={styles.overlay}><AnimatedSportStageSplash ready={!loading} onFinish={finish} /></View> : null}
   </View>;
 }
 

@@ -7,6 +7,18 @@
 
 Open **[index.html](index.html)** in a browser to browse the graphics, play the videos and download individual assets. The gallery works locally; no deployment or account connection is needed. Open the folder after extracting the ZIP, rather than opening HTML from inside an archive.
 
+## October 2026 refresh
+
+Graphics, carousel, captions, calendar, subtitles and brochure were updated on 2026-10-13 to match the redesigned app (SportStage 2.0.0, new home / Start a match / racket scoring board / Performance Lab / organiser workspace). Changes:
+
+- **Visual language** now follows the app's `StageUI` tokens: lime accent `#a6f477`, surface `#151c18`, IBM Plex Mono overlines, lime pill CTA.
+- **Real screenshots** of the current app: `assets/app-home.png` (“Back to your game.”) and `assets/app-start-match.png` (“Which sport today?”), captured from the local web export without signing in. `assets/app-match-setup.png` is the old setup screen and is no longer used.
+- **New concepts** replace generic ones: Performance Lab (09), knockout bracket (10), organiser workspace (05), racket score board (07). Score, chart, bracket and sponsor visuals are labelled illustrative.
+- **Copy** uses current UI wording: “Start a match”, “Who’s playing?”, “Know the format.”, “Tap a score card”, “Undo” (no longer “Undo last rally”).
+- **Videos: not re-rendered.** The four MP4s and covers still show the September designs. No H.264-capable FFmpeg was available on this machine. Install FFmpeg, then run `node source/render-videos.cjs` before publishing them. Subtitles (`.srt`) and video scenes in `campaign.json` are already updated.
+
+CTA is unchanged (“Follow for launch updates”). A web build is reachable at sportstageapp.expo.app but there is no Play Store or App Store listing yet. Switch the CTA once you're ready to point people at a live destination.
+
 ## What is included
 
 | Deliverable | Files | Format |

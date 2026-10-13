@@ -18,6 +18,8 @@ const statsScreen = readFileSync(resolve(
   __dirname,
   '../../../components/sports/scoring/SportStatsScreen.tsx',
 ), 'utf8');
+const playerAnalytics = readFileSync(resolve(__dirname, '../analytics/analyze.ts'), 'utf8');
+const matchHook = readFileSync(resolve(__dirname, '../../../hooks/useSportMatches.ts'), 'utf8');
 const scoringApi = readFileSync(resolve(__dirname, '../../supabase/sportScoringApi.ts'), 'utf8');
 const migration = readFileSync(resolve(
   __dirname,
@@ -28,7 +30,7 @@ describe('cloud sport scoring flow', () => {
   it('creates new sport matches in Supabase instead of local session storage', () => {
     expect(setup).toContain('sportScoringApi.createStandalone');
     expect(setup).not.toContain('saveScoringSession');
-    expect(setup).toContain('rulesSnapshot: { initial_server: initialServer, options: rules }');
+    expect(setup).toContain('rulesSnapshot: { initial_server: initialServer, options: rules,');
     expect(setup).toContain('<SportMatchRulesEditor');
   });
 
@@ -47,11 +49,12 @@ describe('cloud sport scoring flow', () => {
   });
 
   it('derives match history and sport statistics from participating cloud match logs', () => {
-    expect(matchesScreen).toContain('sportScoringApi.listMine');
-    expect(matchesScreen).toContain('activePointEvents(match.events)');
+    expect(matchesScreen).toContain('useSportMatches(sportId)');
+    expect(matchHook).toContain('sportScoringApi.listMine({ accountId, sportId: sport.id })');
     expect(matchesScreen).not.toContain('listScoringSessions');
-    expect(statsScreen).toContain('sportScoringApi.listMine');
-    expect(statsScreen).toContain('activePointEvents(match.events)');
+    expect(statsScreen).toContain('useSportMatches(sportId)');
+    expect(statsScreen).toContain('analyzePlayer(sportId, filtered');
+    expect(playerAnalytics).toContain('activePointEvents(match.events)');
     expect(statsScreen).not.toContain('listScoringSessions');
   });
 });

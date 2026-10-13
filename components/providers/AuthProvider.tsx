@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { CloudProfile, getCloudProfile, saveCloudProfile } from '@/lib/supabase/profiles';
+import { safeAuthReturnTo } from '@/lib/auth/returnTo';
 import { resetDb } from '@/lib/wricket/db/client';
 
 interface AuthContextValue {
@@ -11,18 +12,18 @@ interface AuthContextValue {
   profile: CloudProfile | null;
   loading: boolean;
   error: string | null;
-  authLinkError: { code: string; message: string } | null;
+  authLinkError: { code: string; message: string; returnTo?: string } | null;
   clearAuthLinkError(): void;
   signIn(email: string, password: string): Promise<void>;
   signUp(email: string, password: string, draft?: { displayName: string; sportCodes: string[]; primarySportCode: string; phoneE164: string }, returnTo?: string): Promise<boolean>;
   signOutCurrentDevice(): Promise<void>;
   saveProfile(displayName: string): Promise<void>;
   refreshProfile(): Promise<void>;
-  requestPasswordReset(email: string): Promise<void>;
+  requestPasswordReset(email: string, returnTo?: string): Promise<void>;
   updatePassword(password: string, currentPassword?: string): Promise<void>;
   updateEmail(email: string): Promise<void>;
   updateMobile(phone: string | null): Promise<void>;
-  resendSignupConfirmation(email: string): Promise<void>;
+  resendSignupConfirmation(email: string, returnTo?: string): Promise<void>;
   sendMagicLink(email: string, returnTo?: string): Promise<void>;
   clearDeviceData(): Promise<void>;
   deleteAccount(confirmation: string): Promise<void>;
@@ -35,12 +36,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<CloudProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [authLinkError, setAuthLinkError] = useState<{ code: string; message: string } | null>(null);
+  const [authLinkError, setAuthLinkError] = useState<{ code: string; message: string; returnTo?: string } | null>(null);
 
   const loadProfile = useCallback(async (nextSession: Session | null) => {
-    const nextProfile = nextSession ? await getCloudProfile(nextSession.user.id) : null;
-    setProfile(nextProfile);
-    setSession(nextSession);
+    try {
+      const nextProfile = nextSession ? await getCloudProfile(nextSession.user.id) : null;
+      setProfile(nextProfile);
+      setSession(nextSession);
+      setError(null);
+    } catch (cause) {
+      // Retain the restored device session when profile transport is offline.
+      // The route boundary grants only previously authorised native scoring.
+      setProfile(null); setSession(nextSession);
+      const detail = cause as { message?: unknown };
+      throw new Error(typeof detail?.message === 'string' ? detail.message : 'Could not load cloud profile');
+    }
   }, []);
 
   useEffect(() => {
@@ -63,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const errorDescription = parsed.queryParams?.error_description ?? fragment?.get('error_description');
       const errorCode = parsed.queryParams?.error_code ?? fragment?.get('error_code');
       if (errorDescription) {
-        setAuthLinkError({ code: String(errorCode ?? 'auth_link_invalid'), message: String(errorDescription) });
+        setAuthLinkError({ code: String(errorCode ?? 'auth_link_invalid'), message: String(errorDescription), returnTo: safeAuthReturnTo(parsed.queryParams?.returnTo) });
         return;
       }
       const code = parsed.queryParams?.code;
@@ -88,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuthLinkError({
           code: typeof authCause.code === 'string' ? authCause.code : 'auth_link_invalid',
           message: typeof authCause.message === 'string' ? authCause.message : 'Could not open authentication link',
+          returnTo: safeAuthReturnTo(Linking.parse(url).queryParams?.returnTo),
         });
       });
     };
@@ -125,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password,
         options: {
           emailRedirectTo: Linking.createURL('onboarding', {
-            queryParams: returnTo ? { returnTo } : undefined,
+            queryParams: safeAuthReturnTo(returnTo) ? { returnTo: safeAuthReturnTo(returnTo)! } : undefined,
           }),
           ...(draft ? { data: {
             display_name: draft.displayName.trim(),
@@ -150,9 +161,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!session) { setProfile(null); return; }
       setProfile(await getCloudProfile(session.user.id));
     },
-    async requestPasswordReset(email) {
+    async requestPasswordReset(email, returnTo) {
       const { error } = await getSupabaseClient().auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: Linking.createURL('reset-password'),
+        redirectTo: Linking.createURL('reset-password', { queryParams: safeAuthReturnTo(returnTo) ? { returnTo: safeAuthReturnTo(returnTo)! } : undefined }),
       });
       if (error) throw error;
     },
@@ -176,11 +187,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) throw error;
     },
-    async resendSignupConfirmation(email) {
+    async resendSignupConfirmation(email, returnTo) {
       const { error } = await getSupabaseClient().auth.resend({
         type: 'signup',
         email: email.trim(),
-        options: { emailRedirectTo: Linking.createURL('onboarding') },
+        options: { emailRedirectTo: Linking.createURL('onboarding', { queryParams: safeAuthReturnTo(returnTo) ? { returnTo: safeAuthReturnTo(returnTo)! } : undefined }) },
       });
       if (error) throw error;
     },
@@ -189,7 +200,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: email.trim(),
         options: {
           emailRedirectTo: Linking.createURL('', {
-            queryParams: returnTo ? { returnTo } : undefined,
+            queryParams: safeAuthReturnTo(returnTo) ? { returnTo: safeAuthReturnTo(returnTo)! } : undefined,
           }),
           shouldCreateUser: false,
         },

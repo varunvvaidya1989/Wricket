@@ -1,0 +1,75 @@
+{
+  "date": "2026-10-12",
+  "target": "isolated local Supabase",
+  "checks": [
+    "Five racket contexts use Now/My game/Explore; design fonts, mobile/desktop widths and no horizontal overflow",
+    "Actual public-club discovery excludes private clubs and preserves scoped query after detail/Back/direct refresh",
+    "Actual owned private clubs stay available in My clubs; controlled activity failure reports unavailable results and retries without a false empty count",
+    "All five sports: real eligible player selection, explicit server, readiness/review, persisted venue/rules, create, correct first-rally notation and Undo; doubles grouped; pickleball side-out leaves score unchanged",
+    "Actual spectator live delivery, scoped feed history/information and sharing preview; another player cannot gain scoring access",
+    "Disconnected cloud submission reports failure with no persisted point; reconnect/read/retry records exactly one new rally",
+    "Actual expired scoring lease removes scoring controls, preserves score and restores authorised scoring after reacquiring access",
+    "One-game table tennis reaches actual completion, persists COMPLETED and opens the completed spectator result",
+    "PDF score-card layout, 96px score typography, serving-first side-out, read-only round previews, restored scoring and actual performance; 320px long-name visual uses controlled participant metadata with no scoring writes"
+  ],
+  "visuals": [
+    {
+      "sport": "BADMINTON",
+      "width": 320,
+      "font": "SpaceGrotesk_600SemiBold",
+      "size": "29px",
+      "noOverflow": true,
+      "topTabs": true
+    },
+    {
+      "sport": "BADMINTON",
+      "width": 390,
+      "font": "SpaceGrotesk_600SemiBold",
+      "size": "29px",
+      "noOverflow": true,
+      "topTabs": true
+    },
+    {
+      "sport": "BADMINTON",
+      "width": 1280,
+      "font": "SpaceGrotesk_600SemiBold",
+      "size": "29px",
+      "noOverflow": true,
+      "topTabs": true
+    },
+    {
+      "sport": "TENNIS",
+      "width": 390,
+      "font": "SpaceGrotesk_600SemiBold",
+      "size": "29px",
+      "noOverflow": true,
+      "topTabs": true
+    },
+    {
+      "sport": "PADEL",
+      "width": 390,
+      "font": "SpaceGrotesk_600SemiBold",
+      "size": "29px",
+      "noOverflow": true,
+      "topTabs": true
+    },
+    {
+      "sport": "TABLE_TENNIS",
+      "width": 390,
+      "font": "SpaceGrotesk_600SemiBold",
+      "size": "29px",
+      "noOverflow": true,
+      "topTabs": true
+    },
+    {
+      "sport": "PICKLEBALL",
+      "width": 390,
+      "font": "SpaceGrotesk_600SemiBold",
+      "size": "29px",
+      "noOverflow": true,
+      "topTabs": true
+    }
+  ],
+  "pageErrors": [],
+  "result": "PASS"
+}

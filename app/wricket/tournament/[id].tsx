@@ -1,14 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FixturePagination, fixturePageSize } from '@/components/wricket/fixtures/FixturePagination';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
-  Animated,
   FlatList,
   Image,
   Linking,
   Modal,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,46 +17,56 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { Screen } from '@/components/ui/Screen';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { Text } from '@/components/wricket/ui/Text';
+import { DesignIcon } from '@/components/wricket/ui/DesignIcon';
+import { LinkRow } from '@/components/wricket/ui/DesignRows';
+import { WricketHeader } from '@/components/wricket/ui/WricketHeader';
+import { SectionRow } from '@/components/wricket/ui/SectionRow';
+import { matchStatus } from '@/lib/wricket/presentation/status';
+import { StatusBadge } from '@/components/wricket/ui/StatusBadge';
+import { StateNotice } from '@/components/wricket/ui/StateNotice';
 import { googleStaticMapUrl } from '@/lib/maps/googlePlaces';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { colors, palette } from '@/lib/theme/colors';
+import { Card } from '@/components/wricket/ui/Card';
+import { Button } from '@/components/wricket/ui/Button';
+import { colors, palette } from '@/lib/wricket/presentation/design';
 import { spacing, radius } from '@/lib/theme/spacing';
 import {
   getTournament,
+  getTournamentByCloudId,
   listTeams,
   listMatches,
   listBalls,
   listInningsForMatch,
   listTeamCaptains,
   listUsers,
+  deleteTeam,
 } from '@/lib/wricket/db/repo';
 import { Tournament, Team, Match, Ball, User, FORMAT_LABEL } from '@/lib/wricket/domain/types';
-import { formatOver } from '@/lib/wricket/domain/scoring';
 import { computePointsTable, PointsRow } from '@/lib/wricket/app/points';
 import { fixturesApi, GeneratedFixtureSetup } from '@/lib/supabase/fixturesApi';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { createOnlineTeam } from '@/lib/wricket/data/cloudFirst';
+import { TournamentTeamDirectory } from '@/components/wricket/teams/TournamentTeamDirectory';
+import { AddTournamentTeamSheet } from '@/components/wricket/teams/AddTournamentTeamSheet';
 import { TournamentMvpLeaderboard } from '@/components/wricket/mvp/TournamentMvpLeaderboard';
 import { StandingsCalculator } from '@/lib/wricket/fixtures';
 import { tournamentStatsApi } from '@/lib/supabase/tournamentStatsApi';
-import { TournamentLogo } from '@/components/wricket/tournament/TournamentLogo';
 import {
   scorerManagementApi,
   ScorerSearchResult,
   TournamentScorer,
 } from '@/lib/supabase/scorerManagementApi';
 import { TournamentShareBanner } from '@/components/wricket/tournament/TournamentShareBanner';
+import { TournamentWorkspace } from '@/components/wricket/tournament/TournamentWorkspace';
 import { TournamentSponsors } from '@/components/sponsors/TournamentSponsors';
 import { tournamentManagementApi } from '@/lib/supabase/tournamentManagementApi';
+import { syncTournamentData } from '@/lib/wricket/sync/tournamentSync';
 import { teamManagementApi } from '@/lib/supabase/teamManagementApi';
-import { WricketAvatarButton } from '@/components/wricket/navigation/WricketProfileDrawer';
+import { TournamentPlayers, TournamentRegistrationManagement } from '@/components/wricket/tournament/TournamentRegistrations';
 
-type Tab = 'fixtures' | 'table' | 'teams' | 'stats' | 'settings';
+type Tab = 'fixtures' | 'table' | 'teams' | 'players' | 'stats' | 'settings' | 'about';
 
 interface TournamentPlayerStats {
   id: string;
@@ -91,18 +98,17 @@ export default function TournamentDetailScreen() {
   const { id, tab: linkedTab } = useLocalSearchParams<{ id: string; tab?: Tab }>();
   const router = useRouter();
   const auth = useAuth();
+  const reducedMotion = useReducedMotion();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [captainByTeamId, setCaptainByTeamId] = useState<Map<string, string>>(new Map());
   const [points, setPoints] = useState<PointsRow[]>([]);
-  const initialTab = linkedTab && ['fixtures', 'table', 'teams', 'stats', 'settings'].includes(linkedTab) ? linkedTab : 'fixtures';
+  const initialTab = linkedTab && ['fixtures', 'table', 'teams', 'players', 'stats', 'settings', 'about'].includes(linkedTab) ? linkedTab : 'fixtures';
   const [tab, setTab] = useState<Tab>(initialTab);
-  const [collapsed, setCollapsed] = useState(Boolean(linkedTab));
-  const [overviewHeight, setOverviewHeight] = useState(620);
-  const revealProgress = useRef(new Animated.Value(linkedTab ? 0 : 1)).current;
-  const tabScrollY = useRef(0);
-  const [tabsAtEnd, setTabsAtEnd] = useState(false);
+  const [manageSection, setManageSection] = useState<'details' | 'scorers' | 'sponsors' | 'registrations'>();
+  const [loadError, setLoadError] = useState<string>();
+  const [progressionError, setProgressionError] = useState<string>();
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showShareBanner, setShowShareBanner] = useState(false);
   const [showChampionCelebration, setShowChampionCelebration] = useState(false);
@@ -115,47 +121,66 @@ export default function TournamentDetailScreen() {
   const [organizerContact, setOrganizerContact] = useState<{ name: string; phone?: string }>({ name: 'Tournament organiser' });
   const [canScore, setCanScore] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const loadTournament = useCallback(async () => {
     if (!id) return;
-    const [t, teamList, matchList, users] = await Promise.all([
-      getTournament(id),
-      listTeams(id),
-      listMatches(id),
-      listUsers(),
+    let t = await getTournament(id) ?? await getTournamentByCloudId(id);
+    if (!t && auth.session) {
+      await syncTournamentData(auth.session.user.id);
+      t = await getTournament(id) ?? await getTournamentByCloudId(id);
+    }
+    if (!t) throw new Error('This tournament is unavailable. Return to My cricket or try again.');
+    const [teamList, matchList, users] = await Promise.all([
+      listTeams(t.id), listMatches(t.id), listUsers(),
     ]);
     const cloudTeamIds = teamList.flatMap(team => team.cloudId ? [team.cloudId] : []);
     const [cloudLogos, captainNames] = await Promise.all([
       cloudTeamIds.length ? teamManagementApi.listTeamLogos(cloudTeamIds) : Promise.resolve(new Map<string, string | undefined>()),
       listTeamCaptains(teamList.map(team => team.id)),
     ]);
-    const refreshedTeams = teamList.map(team => team.cloudId && cloudLogos.has(team.cloudId)
+    // A successful cloud read is authoritative for entries removed on another device.
+    // Retain any cached match history while excluding those entries from management.
+    const visibleTeams = teamList.filter(team => !team.cloudId || cloudLogos.has(team.cloudId));
+    if (auth.session) {
+      for (const team of teamList) {
+        if (team.cloudId && !cloudLogos.has(team.cloudId) && team.syncStatus === 'SYNCED'
+          && !matchList.some(match => match.teamAId === team.id || match.teamBId === team.id)) await deleteTeam(team.id);
+      }
+    }
+    const refreshedTeams = visibleTeams.map(team => team.cloudId && cloudLogos.has(team.cloudId)
       ? { ...team, logoUrl: cloudLogos.get(team.cloudId) }
       : team);
     setTournament(t);
     setTeams(refreshedTeams);
     setCaptainByTeamId(captainNames);
     if (t?.cloudId) {
-      setOrganizerContact(await tournamentManagementApi.getOrganizerContact(t.cloudId));
+      const contact = auth.session ? await tournamentManagementApi.getOrganizerContact(t.cloudId) : { name: 'Tournament organiser' };
+      setOrganizerContact({ name: contact.name, phone: t.organizerProfileId === auth.session?.user.id ? contact.phone : undefined });
       setCanScore(auth.session?.user.id
         ? await scorerManagementApi.canScoreTournament(t.cloudId, auth.session.user.id)
         : false);
     } else {
-      setOrganizerContact({ name: 'Tournament organiser', phone: t?.organizerPhone });
+      setOrganizerContact({ name: 'Tournament organiser', phone: t?.organizerProfileId === auth.session?.user.id ? t.organizerPhone : undefined });
       setCanScore(t?.organizerProfileId === auth.session?.user.id);
     }
     setMatches(matchList);
     if (t?.cloudId && t.organizerProfileId === auth.session?.user.id) {
-      await fixturesApi.advanceTournamentIfReady(t.cloudId);
+      try { await fixturesApi.advanceTournamentIfReady(t.cloudId); setProgressionError(undefined); }
+      catch (cause) { setProgressionError(cause instanceof Error ? cause.message : 'The bracket needs review.'); }
     }
     setGeneratedSetup(t?.cloudId
       ? await fixturesApi.getFixtureSetup(t.cloudId)
       : { stages: [], groups: [], matches: [], bracket: null });
-    const pts = await computePointsTable(id);
-    setPoints(pts);
+    const pts = await computePointsTable(t.id);
+    setPoints(pts.filter(row => visibleTeams.some(team => team.id === row.teamId)));
     setStats(t?.cloudId
       ? await tournamentStatsApi.get(t.cloudId)
       : await buildTournamentStats(matchList, users));
-  }, [auth.session?.user.id, id]);
+  }, [auth.session, id]);
+
+  const refresh = useCallback(async () => {
+    try { await loadTournament(); setLoadError(undefined); }
+    catch (cause) { setLoadError(cause instanceof Error ? cause.message : 'Could not load tournament'); }
+  }, [loadTournament]);
 
   useFocusEffect(
     useCallback(() => {
@@ -173,187 +198,44 @@ export default function TournamentDetailScreen() {
   const championTeam = tournamentChampion(generatedSetup, teams);
   const championTeamId = championTeam?.id;
   useEffect(() => {
-    if (championTeamId) setShowChampionCelebration(true);
-  }, [championTeamId]);
-
-  const springReveal = useCallback((toValue: 0 | 1, onEnd?: () => void) => {
-    Animated.spring(revealProgress, {
-      toValue,
-      stiffness: 240,
-      damping: 28,
-      mass: 0.8,
-      useNativeDriver: false,
-    }).start(({ finished }) => { if (finished) onEnd?.(); });
-  }, [revealProgress]);
+    if (championTeamId && !reducedMotion) setShowChampionCelebration(true);
+  }, [championTeamId, reducedMotion]);
 
   useEffect(() => {
-    const nextTab = linkedTab && ['fixtures', 'table', 'teams', 'stats', 'settings'].includes(linkedTab)
-      ? linkedTab
-      : 'fixtures';
-    setTab(nextTab);
-    setCollapsed(Boolean(linkedTab));
-    revealProgress.setValue(linkedTab ? 0 : 1);
-  }, [linkedTab, revealProgress]);
-
-  const expandOverview = useCallback(() => {
-    if (!collapsed) return;
-    if (linkedTab) {
-      router.replace({ pathname: '/wricket/tournament/[id]', params: { id } });
-      return;
-    }
-    springReveal(1, () => setCollapsed(false));
-  }, [collapsed, id, linkedTab, router, springReveal]);
-
-  const selectTab = useCallback((next: Tab) => {
-    if (!id || (linkedTab === next && tab === next)) return;
-    const destination = { pathname: '/wricket/tournament/[id]' as const, params: { id, tab: next } };
-    if (linkedTab) router.replace(destination);
-    else router.push(destination);
-  }, [id, linkedTab, router, tab]);
-
-  const handlePanResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_, gesture) => collapsed && tabScrollY.current <= 0 && gesture.dy > 2 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
-    onPanResponderMove: (_, gesture) => {
-      if (tabScrollY.current > 0) return;
-      revealProgress.setValue(Math.max(0, Math.min(1, gesture.dy / Math.max(overviewHeight, 1))));
-    },
-    onPanResponderRelease: (_, gesture) => {
-      const fraction = Math.max(0, gesture.dy / Math.max(overviewHeight, 1));
-      if (fraction >= 0.3) springReveal(1, () => setCollapsed(false));
-      else springReveal(0);
-    },
-    onPanResponderTerminate: () => springReveal(0),
-  }), [collapsed, overviewHeight, revealProgress, springReveal]);
-
-  const onTabContentScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    tabScrollY.current = Math.max(0, event.nativeEvent.contentOffset.y);
-  }, []);
+    setTab(linkedTab && ['fixtures', 'table', 'teams', 'players', 'stats', 'settings', 'about'].includes(linkedTab) ? linkedTab : 'fixtures');
+  }, [linkedTab]);
+  const selectTab = (next: Tab) => { setManageSection(undefined); router.setParams({ tab: next }); };
 
   if (!tournament) {
-    return <Screen padded={false}><SportStageLoader message="Opening tournament stage" detail="Loading teams, fixtures, and standings" /></Screen>;
+    return <Screen padded={false}><Stack.Screen options={{ headerShown: false }} /><WricketHeader title="Tournament" backTo="/wricket/my-wricket" />
+      {loadError ? <StateNotice error title="Tournament unavailable" detail={loadError} action={{ label: 'Try again', onPress: () => void refresh() }} />
+        : <SportStageLoader message="Opening tournament" detail="Loading teams, fixtures, and standings" />}</Screen>;
   }
 
-  const overviewNode = <View style={styles.overview} onLayout={event => setOverviewHeight(event.nativeEvent.layout.height)}>
-      <View style={styles.header}>
-        <View style={styles.hero}>
-          {(tournament.bannerUrl || tournament.bannerLocalUri)
-            ? <Image source={{ uri: tournament.bannerUrl ?? tournament.bannerLocalUri }} style={styles.heroImage} />
-            : <View style={styles.heroFallback}><View style={styles.pitchStripeOne} /><View style={styles.pitchStripeTwo} /><View style={styles.pitchSeam}>{Array.from({ length: 8 }, (_, index) => <View key={index} style={styles.pitchStitch} />)}</View></View>}
-          <View style={styles.heroShade} />
-          <View style={[styles.statusPill, tournament.status === 'COMPLETED' && styles.statusPillComplete]}><Text variant="overline" tone={tournament.status === 'ACTIVE' ? 'accent' : 'muted'}>● {tournament.status}</Text></View>
-          <View style={styles.heroIdentity}>
-            <TournamentLogo name={tournament.name} uri={tournament.logoUrl ?? tournament.logoLocalUri} size={72} style={styles.heroLogo} />
-            <View style={styles.heroCopy}>
-              <Text variant="overline" style={{ color: colors.gold }}>{FORMAT_LABEL[tournament.format]}</Text>
-              <Text variant="h1" numberOfLines={2}>{tournament.name}</Text>
-              <Text variant="caption" tone="muted" numberOfLines={1}>{tournament.location ?? formatTournamentDate(tournament.startDate)}</Text>
-            </View>
-          </View>
-        </View>
-        <View style={styles.quickActions}>
-          <Pressable style={styles.quickAction} onPress={() => setShowShareBanner(true)}><MaterialCommunityIcons name="share-variant-outline" size={18} color={colors.textMuted} /><Text variant="caption">SHARE</Text></Pressable>
-          {tournament.organizerProfileId === auth.session?.user.id ? <Pressable style={styles.quickAction} onPress={() => selectTab('settings')}><MaterialCommunityIcons name="pencil-outline" size={18} color={colors.textMuted} /><Text variant="caption">EDIT</Text></Pressable> : <Pressable style={styles.quickAction} onPress={() => router.push({ pathname: '/wricket/tournament/[id]/moments', params: { id: tournament.id } })}><MaterialCommunityIcons name="image-multiple-outline" size={18} color={colors.gold} /><Text variant="caption">MOMENTS</Text></Pressable>}
-        </View>
-        <View style={styles.overviewMetrics}>
-          <OverviewMetric value={String(teams.length)} label="TEAMS" icon="account-group-outline" />
-          <OverviewMetric value={String(matches.length)} label="MATCHES" icon="cricket" />
-          <OverviewMetric value={String(tournament.oversPerMatch)} label="OVERS" icon="counter" />
-        </View>
-        <View style={styles.sectionHeading}><Text variant="overline" tone="dim">TOURNAMENT DETAILS</Text></View>
-        <Card style={styles.infoCard}>
-          <InfoRow icon="calendar-outline" text={formatTournamentDate(tournament.startDate)} />
-          <InfoRow
-            icon="account-outline"
-            text={organizerContact.name}
-            detail={organizerContact.phone}
-            actions={organizerContact.phone ? [
-              { label: 'CALL', onPress: () => void openOrganizerLink(`tel:${organizerContact.phone}`, 'calling') },
-              { label: 'WHATSAPP', onPress: () => void openOrganizerLink(`https://wa.me/${organizerContact.phone!.replace(/\D/g, '')}`, 'WhatsApp') },
-            ] : undefined}
-            last={!tournament.location}
-          />
-          {tournament.location ? <InfoRow icon="map-marker-outline" text={tournament.location} last /> : null}
-        </Card>
-        {tournament.location && (
-          <>
-            {tournament.latitude != null && tournament.longitude != null && (
-              <Pressable
-                style={styles.mapPreview}
-                onPress={() => Linking.openURL(
-                  tournament.googleMapsUrl
-                    ?? `https://www.google.com/maps/search/?api=1&query=${tournament.latitude},${tournament.longitude}`,
-                ).catch(() => Alert.alert('Could not open map', 'Google Maps is unavailable.'))}
-              >
-                {googleStaticMapUrl(tournament.latitude, tournament.longitude) ? (
-                  <Image
-                    source={{ uri: googleStaticMapUrl(tournament.latitude, tournament.longitude) }}
-                    style={styles.mapImage}
-                  />
-                ) : (
-                  <View style={styles.mapFallback}>
-                    <MaterialCommunityIcons name="map-marker" size={30} color={colors.accent} />
-                  </View>
-                )}
-                <View style={styles.mapCaption}>
-                  <Text variant="bodyStrong">Open venue in Google Maps</Text>
-                  <MaterialCommunityIcons name="open-in-new" size={18} color={colors.accent} />
-                </View>
-              </Pressable>
-            )}
-          </>
-        )}
-        {tournament.cloudId && (
-          <View style={styles.momentsPreview}>
-            <View style={styles.momentsPreviewTop}>
-              <View style={styles.momentsIcon}><MaterialCommunityIcons name="image-multiple-outline" size={20} color={colors.accent} /></View>
-              <View style={{ flex: 1 }}><Text variant="bodyStrong">Match Moments</Text><Text variant="caption" tone="muted">Photos and conversations from this tournament</Text></View>
-              <Pressable onPress={() => router.push({ pathname: '/wricket/tournament/[id]/moments', params: { id: tournament.id } })}><Text variant="caption" tone="accent">VIEW ALL ›</Text></Pressable>
-            </View>
-          </View>
-        )}
-        {tournament.cloudId ? <View style={{ marginTop: spacing.md }}><TournamentSponsors key={tournament.cloudId} parent={{ kind: 'cricket', id: tournament.cloudId }} canManage={tournament.organizerProfileId === auth.session?.user.id} /></View> : tournament.organizerProfileId === auth.session?.user.id ? <Text variant="caption" tone="muted">Sponsor management will be available when this tournament finishes syncing.</Text> : null}
-        {tournament.description && (
-          <Text variant="body" tone="muted" style={{ marginTop: spacing.md }}>
-            {tournament.description}
-          </Text>
-        )}
-        {tournament.socialMediaUrl && (
-          <Pressable
-            onPress={() => Linking.openURL(tournament.socialMediaUrl!).catch(() => {
-              Alert.alert('Could not open link', 'The tournament social link is unavailable.');
-            })}
-            style={{ marginTop: spacing.sm, alignSelf: 'flex-start' }}
-          >
-            <Text variant="bodyStrong" style={{ color: colors.accent }}>Open tournament social page</Text>
-          </Pressable>
-        )}
-      </View>
-    </View>;
+  const overviewNode = <View style={{ gap: 14 }}>
+    <View><Text variant="overline" tone="muted">{tournament.name}</Text>
+      <Text variant="h1" style={{ marginTop: 8 }}>Cricket brings{'\n'}the community together.</Text>
+      {tournament.description ? <Text style={{ fontSize: 12, lineHeight: 19.8, marginTop: 9 }} tone="muted">{tournament.description}</Text> : null}</View>
+    <Card>
+      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><DesignIcon name="calendar" /><Text variant="caption">{formatTournamentDate(tournament.startDate)}{tournament.endDate ? ` – ${formatTournamentDate(tournament.endDate)}` : ''}</Text></View>
+      <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 14 }} />
+      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}><DesignIcon name="bat" /><Text variant="caption">{FORMAT_LABEL[tournament.format]} · {tournament.oversPerMatch} overs · {tournament.playersPerTeam}-a-side</Text></View>
+    </Card>
+    {tournament.location ? <View><Text variant="overline" tone="muted">The venue</Text><Text variant="h3" style={{ marginVertical: 9 }}>{tournament.location}</Text>
+      {tournament.latitude != null && tournament.longitude != null && googleStaticMapUrl(tournament.latitude, tournament.longitude) ? <Image source={{ uri: googleStaticMapUrl(tournament.latitude!, tournament.longitude!) }} style={{ height: 126, borderRadius: 11 }} /> : null}
+    </View> : null}
+    <Card style={{ backgroundColor: 'transparent' }}><Text variant="overline" tone="muted">Organised by</Text>
+      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 12 }}><View style={{ width: 33, height: 33, borderRadius: 17, backgroundColor: '#34472f', alignItems: 'center', justifyContent: 'center' }}><Text variant="mono" style={{ fontSize: 10 }}>{organizerContact.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</Text></View><Text variant="h3" style={{ flex: 1 }}>{organizerContact.name}</Text></View>
+      {tournament.socialMediaUrl ? <Button title="Visit tournament social page ↗" variant="ghost" size="sm" onPress={() => void Linking.openURL(tournament.socialMediaUrl!)} /> : null}
+    </Card>
+    <LinkRow title="Match moments" detail="Photos and stories from the boundary" icon="image" onPress={() => router.push({ pathname: '/wricket/tournament/[id]/moments', params: { id: tournament.id } })} />
+    {tournament.cloudId ? <TournamentSponsors parent={{ kind: 'cricket', id: tournament.cloudId }} /> : null}
+  </View>;
 
-  const tabBarNode = <View style={styles.tabBarShell}>
-          <View pointerEvents="none" style={styles.stickyGapCover} />
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabBar}
-            scrollEventThrottle={16}
-            onScroll={({ nativeEvent }) => setTabsAtEnd(
-              nativeEvent.contentOffset.x + nativeEvent.layoutMeasurement.width >= nativeEvent.contentSize.width - 8,
-            )}
-          >
-            <TabBtn label="Fixtures" active={tab === 'fixtures'} onPress={() => selectTab('fixtures')} />
-            <TabBtn label="Table" active={tab === 'table'} onPress={() => selectTab('table')} />
-            <TabBtn label="Teams" active={tab === 'teams'} onPress={() => selectTab('teams')} />
-            <TabBtn label="Stats" active={tab === 'stats'} onPress={() => selectTab('stats')} />
-            {tournament.organizerProfileId === auth.session?.user.id && (
-              <TabBtn label="Settings" active={tab === 'settings'} onPress={() => selectTab('settings')} />
-            )}
-          </ScrollView>
-          {!tabsAtEnd ? <View pointerEvents="none" style={styles.tabFadeEdge}><MaterialCommunityIcons name="chevron-right" size={22} color={colors.accent} /></View> : null}
-        </View>;
+  const tabBarNode = <SectionRow label="Tournament sections" selected={tab} onSelect={selectTab}
+    items={[{ id: 'fixtures', label: 'Matches' }, { id: 'table', label: 'Standings' }, { id: 'teams', label: 'Teams' }, { id: 'players', label: 'Players' }, { id: 'stats', label: 'Stats' }]} />;
 
-  const tabContentNode = <View style={styles.tabContent}>
+  const tabContentNode = <View style={[styles.tabContent, (tab === 'teams' || tab === 'players' || (tab === 'settings' && manageSection === 'registrations')) && { paddingHorizontal: 0 }]}>
           {tab === 'fixtures' && (
             <FixturesView
               matches={matches}
@@ -369,15 +251,24 @@ export default function TournamentDetailScreen() {
             <PointsTableView rows={points} teams={teams} generatedSetup={generatedSetup} />
           )}
           {tab === 'teams' && (
-            <TeamsView
+            <TournamentTeamDirectory
+              tournamentId={tournament.cloudId}
+              accountId={auth.session?.user.id}
               teams={teams}
-              standings={points}
-              generatedSetup={generatedSetup}
-              plannedTeamCount={tournament.plannedTeamCount}
+              setup={generatedSetup}
+              plannedCount={tournament.plannedTeamCount}
               canManage={tournament.organizerProfileId === auth.session?.user.id}
               onAdd={() => setShowAddTeam(true)}
+              onRemove={async team => {
+                if (!tournament.cloudId || !team.cloudId) throw new Error('Connect and sync this tournament before removing a team.');
+                await teamManagementApi.removeTournamentTeam(tournament.cloudId, team.cloudId);
+                setTeams(current => current.filter(item => item.id !== team.id));
+                try { await deleteTeam(team.id); await refresh(); }
+                catch (cause) { setLoadError(cause instanceof Error ? cause.message : 'Team removed online. Refresh the tournament to update this device.'); }
+              }}
             />
           )}
+          {tab === 'players' && (tournament.cloudId ? <TournamentPlayers tournamentId={tournament.cloudId} accountId={auth.session?.user.id} owner={tournament.organizerProfileId === auth.session?.user.id} /> : <StateNotice title="Connect to view registrations" detail="Player registrations are available for online tournaments." />)}
           {tab === 'stats' && (
             <View style={styles.statsPanelContent}>
               <TournamentStatsView stats={stats} />
@@ -388,68 +279,55 @@ export default function TournamentDetailScreen() {
               />
             </View>
           )}
-          {tab === 'settings' && (
-            <TournamentSettingsView
-              tournament={tournament}
+          {tab === 'settings' && tournament.organizerProfileId === auth.session?.user.id && (
+            !manageSection ? <TournamentWorkspace tournament={tournament} teamCount={teams.length} setup={generatedSetup} onAction={action => {
+              if (action === 'teams') selectTab('teams');
+              else if (action === 'view') selectTab('fixtures');
+              else if (action === 'fixtures' || action === 'bracket') router.push({ pathname: '/wricket/tournament/[id]/fixtures', params: { id: tournament.id, focus: action === 'bracket' ? 'knockout' : 'plan' } });
+              else setManageSection(action);
+            }} /> : manageSection === 'registrations' ? tournament.cloudId && auth.session ? <TournamentRegistrationManagement tournamentId={tournament.cloudId} accountId={auth.session.user.id} teamCount={teams.length} onTeamsChanged={async () => { if (auth.session) await syncTournamentData(auth.session.user.id); await refresh(); }} /> : <StateNotice title="Connect to manage registrations" detail="Sync your tournament to publish and review applications." /> : manageSection === 'sponsors' ? tournament.cloudId ? <TournamentSponsors parent={{ kind: 'cricket', id: tournament.cloudId }} canManage /> : <Text tone="muted">Sync this tournament before managing sponsors.</Text> : <TournamentSettingsView
+              tournament={{ ...tournament, organizerPhone: organizerContact.phone }}
               teams={teams}
               hasGenerated={generatedSetup.stages.length > 0}
+              section={manageSection}
               onChanged={refresh}
             />
           )}
         </View>;
 
-  const handleNode = <View style={styles.dragHandleZone} {...handlePanResponder.panHandlers}>
-    <Pressable accessibilityRole="button" accessibilityLabel="Show tournament information" onPress={expandOverview} hitSlop={8}>
-      <View style={styles.dragHandle} />
-    </Pressable>
-  </View>;
-
   return (
     <Screen padded={false}>
       <Stack.Screen options={{ headerShown: false }} />
-      {collapsed
-        ? <CompactTournamentHeader tournament={tournament} hasLiveMatch={matches.some(match => matchSectionLabel(match) === 'LIVE')} onBack={() => router.back()} onExpand={expandOverview} />
-        : <AppHeader
-            title={tournament.name}
-            back
-            right={<WricketAvatarButton />}
-          />}
+      <WricketHeader title={tab === 'settings' ? 'Manage tournament' : tab === 'about' ? 'About the tournament' : tab === 'fixtures' ? 'Tournament' : tournament.name}
+        backTo="/wricket/my-wricket" onBack={tab === 'settings' && manageSection ? () => setManageSection(undefined) : tab === 'about' || tab === 'settings' ? () => selectTab('fixtures') : undefined}>
+        {tab !== 'about' && tab !== 'settings' ? <Pressable accessibilityRole="button" accessibilityLabel="Share tournament" onPress={() => setShowShareBanner(true)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><DesignIcon name="share" /></Pressable> : null}
+      </WricketHeader>
+      {tab === 'fixtures' ? <View style={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 18 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><View style={{ width: 46, height: 46, borderRadius: 14, borderWidth: 1, borderColor: '#465e38', backgroundColor: '#243c22', alignItems: 'center', justifyContent: 'center' }}><DesignIcon name="trophy" size={24} color={colors.accent} /></View><StatusBadge kind="tournament" status={tournament.status} /></View>
+        <Text variant="h2" style={{ marginTop: 10 }}>{tournament.name}</Text>
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ fontSize: 10, flex: 1 }} tone="muted">{formatTournamentDate(tournament.startDate)} · {FORMAT_LABEL[tournament.format]}</Text><Button title="About" size="sm" variant="ghost" onPress={() => selectTab('about')} /></View>
+      </View> : null}
+      {tab !== 'about' && tab !== 'settings' ? tabBarNode : null}
+      {loadError ? <StateNotice error title="Could not refresh tournament" detail={loadError} action={{ label: 'Try again', onPress: () => void refresh() }} /> : null}
+      {progressionError ? <StateNotice title="Bracket needs review" detail={progressionError} action={{ label: 'Review bracket', onPress: () => router.push({ pathname: '/wricket/tournament/[id]/fixtures', params: { id: tournament.id, focus: 'knockout' } }) }} /> : null}
       <ChampionCelebration team={championTeam} visible={showChampionCelebration} onClose={() => setShowChampionCelebration(false)} />
-      {collapsed ? <View style={styles.collapsedPage}>
-        <Animated.View pointerEvents="none" style={[styles.overviewReveal, { height: revealProgress.interpolate({ inputRange: [0, 1], outputRange: [0, overviewHeight] }) }]}>
-          {overviewNode}
-        </Animated.View>
-        {tabBarNode}
-        {handleNode}
-        <ScrollView
-          style={styles.collapsedTabScroll}
-          contentContainerStyle={styles.collapsedTabContent}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled
-          scrollEventThrottle={16}
-          onScroll={onTabContentScroll}
-        >
-          {tabContentNode}
-        </ScrollView>
-      </View> : <ScrollView
-        style={styles.pageScroll}
-        contentContainerStyle={styles.overviewContent}
-        showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[1]}
-      >
-        {overviewNode}
-        {tabBarNode}
-        {tabContentNode}
-      </ScrollView>}
+      <ScrollView testID="tournament-detail-scroll" style={styles.pageScroll} contentContainerStyle={[styles.overviewContent, { paddingHorizontal: 18, paddingTop: 19, gap: 14 }]} showsVerticalScrollIndicator={false}>
+        {tab === 'fixtures' && tournament.organizerProfileId === auth.session?.user.id ? <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text variant="overline" tone="muted">{new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</Text><Button title="Manage" size="sm" variant="ghost" onPress={() => selectTab('settings')} /></View> : null}
+        {tab === 'about' ? overviewNode : tab === 'settings' && tournament.organizerProfileId !== auth.session?.user.id
+          ? <StateNotice title="Owner access required" detail="Tournament management is available to the tournament owner." action={{ label: 'View matches', onPress: () => selectTab('fixtures') }} />
+          : tabContentNode}
+      </ScrollView>
 
-      <AddTournamentTeamModal
+      <AddTournamentTeamSheet
         visible={showAddTeam}
         tournament={tournament}
-        usedColors={teams.map(team => team.colorHex)}
         onClose={() => setShowAddTeam(false)}
-        onSaved={() => {
+        onSaved={async () => {
           setShowAddTeam(false);
-          void refresh();
+          try {
+            if (auth.session) await syncTournamentData(auth.session.user.id);
+            await refresh();
+          } catch (cause) { setLoadError(cause instanceof Error ? cause.message : 'Team was saved. Try refreshing the tournament.'); }
         }}
       />
       <TournamentShareBanner
@@ -464,56 +342,6 @@ export default function TournamentDetailScreen() {
   );
 }
 
-function CompactTournamentHeader({ tournament, hasLiveMatch, onBack, onExpand }: { tournament: Tournament; hasLiveMatch: boolean; onBack: () => void; onExpand: () => void }) {
-  const label = hasLiveMatch ? 'LIVE' : tournament.status;
-  return <View style={styles.compactHeader}>
-    <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={onBack} style={styles.compactBack}>
-      <MaterialCommunityIcons name="arrow-left" size={20} color={colors.text} />
-    </Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel="Show tournament information" onPress={onExpand} style={styles.compactContext}>
-      <TournamentLogo name={tournament.name} uri={tournament.logoUrl ?? tournament.logoLocalUri} size={30} style={styles.compactLogo} />
-      <Text variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>{tournament.name}</Text>
-      <View style={[styles.compactStatus, hasLiveMatch && styles.compactStatusLive]}><Text variant="overline" tone={hasLiveMatch || tournament.status === 'ACTIVE' ? 'accent' : 'muted'}>● {label}</Text></View>
-    </Pressable>
-    <WricketAvatarButton />
-  </View>;
-}
-
-function TabBtn({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.tab, active && styles.tabActive]}>
-      <Text variant="bodyStrong" tone={active ? 'default' : 'muted'}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function OverviewMetric({ value, label, icon }: { value: string; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }) {
-  return <View style={styles.overviewMetric}>
-    <View style={styles.metricIcon}><MaterialCommunityIcons name={icon} size={17} color={colors.accent} /></View>
-    <Text variant="h3">{value}</Text>
-    <Text variant="overline" tone="dim">{label}</Text>
-  </View>;
-}
-
-function InfoRow({ icon, text, detail, action, actions, last }: {
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  text: string;
-  detail?: string;
-  action?: { label: string; onPress: () => void };
-  actions?: { label: string; onPress: () => void }[];
-  last?: boolean;
-}) {
-  return <View style={[styles.infoRow, last && styles.infoRowLast]}>
-    <MaterialCommunityIcons name={icon} size={19} color={colors.textMuted} />
-    <View style={{ flex: 1 }}><Text variant="body">{text}</Text>{detail ? <Text variant="caption" tone="muted">{detail}</Text> : null}</View>
-    {(actions ?? (action ? [action] : [])).map(item => <Pressable key={item.label} onPress={item.onPress} style={styles.infoAction}><Text variant="caption" tone="accent">{item.label}</Text></Pressable>)}
-  </View>;
-}
-
-async function openOrganizerLink(url: string, channel: string): Promise<void> {
-  try { await Linking.openURL(url); }
-  catch { Alert.alert(`Could not open ${channel}`, 'This action is unavailable on your device.'); }
-}
 
 function FixturesView({
   matches,
@@ -534,6 +362,7 @@ function FixturesView({
 }) {
   const router = useRouter();
   const [section, setSection] = useState<'UPCOMING' | 'LIVE' | 'PAST'>('UPCOMING');
+  const [fixturePage, setFixturePage] = useState(0);
   const teamMap = new Map(teams.map(t => [t.id, t]));
   const cloudTeamMap = new Map(teams.filter(t => t.cloudId).map(t => [t.cloudId!, t]));
   const groupMap = new Map(generatedSetup.groups.map(group => [group.id, group.name]));
@@ -551,6 +380,11 @@ function FixturesView({
         : item.status === 'COMPLETED' || item.status === 'WALKOVER',
   );
 
+  const total = generatedMatches.length + sortedMatches.length;
+  const currentPage = Math.min(fixturePage, Math.max(0, Math.ceil(total / fixturePageSize) - 1));
+  const start = currentPage * fixturePageSize, end = start + fixturePageSize;
+  const shownGenerated = generatedMatches.slice(start, end);
+  const shownMatches = sortedMatches.slice(Math.max(0, start - generatedMatches.length), Math.max(0, end - generatedMatches.length));
   if (matches.length === 0 && generatedSetup.matches.length === 0) {
     return (
       <View style={{ alignItems: 'center', paddingTop: spacing.xxl }}>
@@ -565,7 +399,7 @@ function FixturesView({
   return (
     <FlatList
       scrollEnabled={false}
-      data={sortedMatches}
+      data={shownMatches}
       keyExtractor={m => m.id}
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
       contentContainerStyle={{ paddingVertical: spacing.md, paddingBottom: spacing.xxxl }}
@@ -575,16 +409,18 @@ function FixturesView({
             {(['UPCOMING', 'LIVE', 'PAST'] as const).map(item => (
               <Pressable
                 key={item}
-                onPress={() => setSection(item)}
+                accessibilityRole="tab" accessibilityLabel={`Fixtures ${item.toLowerCase()}`} aria-selected={section === item} accessibilityState={{ selected: section === item }}
+                onPress={() => { setSection(item); setFixturePage(0); }}
                 style={[styles.fixtureTab, section === item && styles.fixtureTabActive]}
               >
                 <Text variant="caption" tone={section === item ? 'accent' : 'muted'}>{item}</Text>
               </Pressable>
             ))}
           </View>
-          {generatedMatches.length > 0 && (
+          <FixturePagination total={total} page={currentPage} onPage={setFixturePage} />
+          {shownGenerated.length > 0 && (
             <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-              {generatedMatches.map(item => {
+              {shownGenerated.map(item => {
                 const teamA = cloudTeamMap.get(item.teamA);
                 const teamB = item.teamB ? cloudTeamMap.get(item.teamB) : undefined;
                 return (
@@ -733,17 +569,12 @@ function FixturesView({
         const a = teamMap.get(item.teamAId);
         const b = teamMap.get(item.teamBId);
         const isCompleted = item.status === 'COMPLETED';
-        const isLive = item.status === 'IN_PROGRESS' || item.status === 'INNINGS_BREAK';
         return (
           <View style={{ gap: spacing.sm }}>
           <Card
             onPress={() =>
               router.push({
-                pathname: isCompleted
-                  ? '/wricket/match/[id]/live'
-                  : isLive && !canScore
-                    ? '/wricket/match/[id]/live'
-                    : '/wricket/match/[id]/score',
+                pathname: matchStatus(item.status).terminal || !canScore ? '/wricket/match/[id]/live' : '/wricket/match/[id]/score',
                 params: isCompleted ? { id: item.id, tab: 'insights' } : { id: item.id },
               })
             }
@@ -760,12 +591,7 @@ function FixturesView({
                   <Text variant="bodyStrong">{b?.name ?? '—'}</Text>
                 </View>
               </View>
-              {isLive && (
-                <View style={styles.livePill}>
-                  <View style={styles.liveDot} />
-                  <Text variant="caption" style={{ color: colors.danger }}>LIVE</Text>
-                </View>
-              )}
+              <StatusBadge status={item.status} />
               {isCompleted && (
                 <Text variant="caption" tone="muted" style={{ maxWidth: 150, textAlign: 'right' }}>
                   {formatFixtureResult(
@@ -954,8 +780,7 @@ function PointsTableView({
 }
 
 function tournamentChampion(setup: GeneratedFixtureSetup, teams: Team[]): Team | undefined {
-  const finalRound = setup.bracket?.rounds.find(round => round.name === 'F' || round.name === 'FINAL')
-    ?? setup.bracket?.rounds.at(-1);
+  const finalRound = setup.bracket?.rounds.find(round => round.name === 'F' || round.name === 'FINAL');
   const finalTemplate = finalRound?.matches[0];
   if (!finalTemplate) return undefined;
   const fixture = setup.matches.find(match => match.id === finalTemplate.id);
@@ -1124,11 +949,13 @@ function TournamentSettingsView({
   tournament,
   teams,
   hasGenerated,
+  section,
   onChanged,
 }: {
   tournament: Tournament;
   teams: Team[];
   hasGenerated: boolean;
+  section: 'details' | 'scorers';
   onChanged: () => Promise<void>;
 }) {
   const router = useRouter();
@@ -1235,6 +1062,7 @@ function TournamentSettingsView({
     else next.setHours(value.getHours(), value.getMinutes(), 0, 0);
     setDetails(current => ({ ...current, startDate: next.getTime() }));
   };
+  if (section === 'scorers') return tournament.cloudId ? <ScorerSettingsCard tournamentId={tournament.cloudId} /> : <Text tone="muted">Sync this tournament before assigning scorers.</Text>;
   return (
     <View style={{ gap: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.xxxl }}>
       <Text variant="h2">Tournament settings</Text>
@@ -1254,9 +1082,6 @@ function TournamentSettingsView({
           <Button title="Save tournament details" loading={savingDetails} onPress={() => void saveDetails()} fullWidth />
         </View> : null}
       </Card>
-      {tournament.cloudId ? <ScorerSettingsCard tournamentId={tournament.cloudId} /> : (
-        <Card><Text variant="h3">Manage scorers</Text><Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>Sync this tournament to the cloud before assigning scorers.</Text></Card>
-      )}
       <Card>
         <Text variant="h3">Tournament branding</Text>
         <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs }}>Update the logo used in lists and the banner shown on the tournament page.</Text>
@@ -1348,6 +1173,7 @@ function ScorerSettingsCard({ tournamentId }: { tournamentId: string }) {
   const [busyAccountId, setBusyAccountId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [removing, setRemoving] = useState<TournamentScorer>();
 
   const loadAssigned = useCallback(async () => {
     try {
@@ -1382,23 +1208,22 @@ function ScorerSettingsCard({ tournamentId }: { tournamentId: string }) {
       await loadAssigned();
       setResults(current => current.map(item => item.accountId === scorer.accountId ? { ...item, isAssigned: true } : item));
     } catch (cause) {
-      Alert.alert('Could not assign scorer', cause instanceof Error ? cause.message : 'Please try again.');
+      setError(cause instanceof Error ? cause.message : 'Could not assign scorer. Please try again.');
     } finally { setBusyAccountId(undefined); }
   };
 
-  const confirmRemove = (scorer: TournamentScorer) => {
-    Alert.alert('Remove tournament scorer?', `${scorer.displayName} will no longer be able to score this tournament.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove', style: 'destructive', onPress: () => {
-          setBusyAccountId(scorer.accountId);
-          scorerManagementApi.remove(tournamentId, scorer.scorerId)
-            .then(loadAssigned)
-            .catch(cause => Alert.alert('Could not remove scorer', cause instanceof Error ? cause.message : 'Please try again.'))
-            .finally(() => setBusyAccountId(undefined));
-        },
-      },
-    ]);
+  const confirmRemove = (scorer: TournamentScorer) => { setError(undefined); setRemoving(scorer); };
+  const remove = async () => {
+    if (!removing || busyAccountId) return;
+    setBusyAccountId(removing.accountId);
+    setError(undefined);
+    try {
+      await scorerManagementApi.remove(tournamentId, removing.scorerId);
+      setResults(current => current.map(item => item.accountId === removing.accountId ? { ...item, isAssigned: false } : item));
+      setRemoving(undefined);
+      await loadAssigned();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not remove scorer. Please try again.'); }
+    finally { setBusyAccountId(undefined); }
   };
 
   return <Card>
@@ -1410,6 +1235,7 @@ function ScorerSettingsCard({ tournamentId }: { tournamentId: string }) {
     <TextInput
       value={query}
       onChangeText={setQuery}
+      accessibilityLabel="Search tournament scorers"
       placeholder="Search members by name"
       placeholderTextColor={colors.textDim}
       autoCapitalize="words"
@@ -1440,6 +1266,15 @@ function ScorerSettingsCard({ tournamentId }: { tournamentId: string }) {
       onAction={() => confirmRemove(item)}
     />)}
     {error ? <Pressable onPress={() => void loadAssigned()}><Text variant="caption" tone="danger" style={styles.scorerMessage}>{error} · Tap to retry</Text></Pressable> : null}
+    <Modal visible={Boolean(removing)} transparent animationType="fade" onRequestClose={() => { if (!busyAccountId) setRemoving(undefined); }}>
+      <View style={styles.modalBackdrop}><View style={[styles.modalSheet, { maxHeight: '90%' }]} accessibilityViewIsModal>
+        <Text variant="h2">Remove tournament scorer?</Text>
+        <Text tone="muted" style={{ marginVertical: 16 }}>{removing?.displayName} will lose scoring access to this tournament.</Text>
+        {error ? <Text accessibilityRole="alert" tone="danger">{error}</Text> : null}
+        <Button title="Confirm remove scorer" variant="danger" loading={Boolean(busyAccountId)} onPress={() => void remove()} />
+        <Button title="Keep scorer" variant="ghost" disabled={Boolean(busyAccountId)} onPress={() => setRemoving(undefined)} />
+      </View></View>
+    </Modal>
   </Card>;
 }
 
@@ -1454,7 +1289,7 @@ function ScorerRow({ name, avatarUrl, detail, actionLabel, disabled, onAction }:
   return <View style={styles.scorerRow}>
     {avatarUrl ? <Image source={{ uri: avatarUrl }} style={styles.scorerAvatar} /> : <View style={styles.scorerAvatarFallback}><Text variant="bodyStrong" tone="accent">{name.slice(0, 1).toUpperCase()}</Text></View>}
     <View style={{ flex: 1 }}><Text variant="bodyStrong">{name}</Text><Text variant="caption" tone="muted">{detail}</Text></View>
-    {actionLabel ? <Pressable disabled={disabled} onPress={onAction} style={[styles.scorerAction, disabled && styles.scorerActionDisabled]}><Text variant="overline" tone={actionLabel === 'REMOVE' ? 'danger' : 'accent'}>{actionLabel}</Text></Pressable> : null}
+    {actionLabel ? <Pressable accessibilityRole="button" accessibilityLabel={`${actionLabel === 'REMOVE' ? 'Remove' : 'Assign'} scorer ${name}`} accessibilityState={{ disabled: Boolean(disabled) }} disabled={disabled} onPress={onAction} style={[styles.scorerAction, disabled && styles.scorerActionDisabled]}><Text variant="overline" tone={actionLabel === 'REMOVE' ? 'danger' : 'accent'}>{actionLabel}</Text></Pressable> : null}
   </View>;
 }
 
@@ -1487,82 +1322,6 @@ function matchSectionLabel(match: Match): 'LIVE' | 'UPCOMING' | 'PAST' {
   return rank === 0 ? 'LIVE' : rank === 1 ? 'UPCOMING' : 'PAST';
 }
 
-function AddTournamentTeamModal({
-  visible,
-  tournament,
-  usedColors,
-  onClose,
-  onSaved,
-}: {
-  visible: boolean;
-  tournament: Tournament;
-  usedColors: string[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const auth = useAuth();
-  const [name, setName] = useState('');
-  const [shortName, setShortName] = useState('');
-  const [color, setColor] = useState<string>(palette.team[0]);
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    if (!name.trim() || !shortName.trim()) {
-      Alert.alert('Missing team details', 'Enter a team name and short name.');
-      return;
-    }
-    if (!auth.session) return;
-    setSaving(true);
-    try {
-      await createOnlineTeam({
-        tournament,
-        name: name.trim(),
-        shortName: shortName.trim().toUpperCase().slice(0, 4),
-        colorHex: color,
-        userId: auth.session.user.id,
-      });
-      setName('');
-      setShortName('');
-      onSaved();
-    } catch (cause) {
-      Alert.alert('Could not create team', cause instanceof Error ? cause.message : 'Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalSheet}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.lg }}>
-            <View><Text variant="h2">Create tournament team</Text><Text variant="caption" tone="muted">Available only to the tournament owner.</Text></View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close team creation" onPress={onClose}>
-              <MaterialCommunityIcons name="close" size={24} color={colors.text} />
-            </Pressable>
-          </View>
-          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.xs }}>TEAM NAME</Text>
-          <TextInput value={name} onChangeText={setName} placeholder="Mumbai Mavericks" placeholderTextColor={colors.textDim} style={styles.input} />
-          <Text variant="caption" tone="muted" style={{ marginTop: spacing.md, marginBottom: spacing.xs }}>SHORT NAME</Text>
-          <TextInput value={shortName} onChangeText={value => setShortName(value.toUpperCase().slice(0, 4))} placeholder="MUM" placeholderTextColor={colors.textDim} autoCapitalize="characters" style={styles.input} />
-          <Text variant="caption" tone="muted" style={{ marginTop: spacing.md, marginBottom: spacing.sm }}>TEAM COLOR</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-            {palette.team.map(item => (
-              <Pressable
-                key={item}
-                accessibilityRole="button"
-                accessibilityLabel="Choose team color"
-                onPress={() => setColor(item)}
-                style={[styles.colorDot, { backgroundColor: item }, color === item && styles.colorDotActive, usedColors.includes(item) && color !== item && { opacity: 0.45 }]}
-              />
-            ))}
-          </View>
-          <Button title="Create team" loading={saving} onPress={() => void save()} fullWidth size="lg" style={{ marginTop: spacing.xl }} />
-        </View>
-      </View>
-    </Modal>
-  );
-}
 
 function showFixtureError(cause: unknown) {
   Alert.alert('Fixture update failed', cause instanceof Error ? cause.message : 'Please try again.');
@@ -1606,104 +1365,15 @@ function formatFixtureResult(
   return 'Match completed';
 }
 
-function TeamsView({
-  teams,
-  standings,
-  generatedSetup,
-  plannedTeamCount,
-  canManage,
-  onAdd,
-}: {
-  teams: Team[];
-  standings: PointsRow[];
-  generatedSetup: GeneratedFixtureSetup;
-  plannedTeamCount: number;
-  canManage: boolean;
-  onAdd: () => void;
-}) {
-  const router = useRouter();
-  const bracketRounds = generatedSetup.bracket?.rounds ?? [];
-  const finalBracketMatch = bracketRounds[bracketRounds.length - 1]?.matches[0];
-  const finalFixture = finalBracketMatch ? generatedSetup.matches.find(match => match.id === finalBracketMatch.id) : undefined;
-  const championId = finalFixture?.result && (finalFixture.result.winnerTeamId ?? finalFixture.result.winner_team_id);
-  const runnerUpId = finalBracketMatch && championId
-    ? (championId === finalBracketMatch.teamA ? finalBracketMatch.teamB : finalBracketMatch.teamA)
-    : undefined;
-
-  return (
-    <View style={{ flex: 1, paddingTop: spacing.md }}>
-      {canManage && teams.length < plannedTeamCount ? (
-        <Button title="Create tournament team" variant="secondary" onPress={onAdd} fullWidth style={{ marginBottom: spacing.lg }} />
-      ) : null}
-      <Text variant="caption" tone="muted" style={{ marginBottom: spacing.md }}>
-        {teams.length}/{plannedTeamCount} teams entered. Owners can create another team from this tab.
-      </Text>
-      {teams.length === 0 ? (
-        <Text variant="body" tone="muted" style={{ textAlign: 'center', marginTop: spacing.xl }}>
-          No teams have entered this tournament yet. Create at least two to schedule matches.
-        </Text>
-      ) : (
-        <FlatList
-          scrollEnabled={false}
-          data={teams}
-          keyExtractor={t => t.id}
-          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-          contentContainerStyle={{ paddingBottom: spacing.xxxl }}
-          renderItem={({ item }) => {
-            const localRecord = standings.find(row => row.teamId === item.id || row.teamId === item.cloudId);
-            const cloudRecord = item.cloudId ? fixtureWinLoss(item.cloudId, generatedSetup.matches) : undefined;
-            const record = cloudRecord?.played ? cloudRecord : localRecord;
-            const special = item.cloudId === championId ? 'CHAMPION' : item.cloudId === runnerUpId ? 'RUNNER-UP' : undefined;
-            return (
-            <Card onPress={() => item.cloudId && router.push({
-              pathname: '/wricket/team/[id]',
-              params: { id: item.cloudId },
-            })}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                <View style={[styles.teamListSwatch, { backgroundColor: item.colorHex }]}>{item.logoUrl ? <Image source={{ uri: item.logoUrl }} style={styles.teamLogo} /> : <Text variant="bodyStrong" style={{ color: palette.black }}>{item.shortName}</Text>}</View>
-                <View style={{ flex: 1 }}>
-                  <Text variant="h3">{item.name}</Text>
-                  <View style={styles.teamRecordRow}>{special ? <Text variant="caption" style={{ color: colors.gold }}>{special}</Text> : null}<Text variant="caption" tone={record?.won ? 'accent' : 'muted'}>{record ? `${record.won}W – ${record.lost}L` : '0W – 0L'}</Text></View>
-                </View>
-                <MaterialCommunityIcons name="chevron-right" size={24} color={colors.textDim} />
-              </View>
-            </Card>
-            );
-          }}
-        />
-      )}
-    </View>
-  );
-}
-
-function fixtureWinLoss(teamId: string, matches: GeneratedFixtureSetup['matches']): { played: number; won: number; lost: number } {
-  return matches.reduce((record, match) => {
-    if ((match.status !== 'COMPLETED' && match.status !== 'WALKOVER') || (match.teamA !== teamId && match.teamB !== teamId)) {
-      return record;
-    }
-    const winnerId = match.result && (match.result.winnerTeamId ?? match.result.winner_team_id);
-    if (typeof winnerId !== 'string') return { ...record, played: record.played + 1 };
-    return winnerId === teamId
-      ? { ...record, played: record.played + 1, won: record.won + 1 }
-      : { ...record, played: record.played + 1, lost: record.lost + 1 };
-  }, { played: 0, won: 0, lost: 0 });
-}
 
 function TournamentStatsView({ stats }: { stats: TournamentStats }) {
-  const router = useRouter();
-  const topRuns = [...stats.players].filter(player => player.runs > 0)
-    .sort((a, b) => b.runs - a.runs).slice(0, 5);
-  const topWickets = [...stats.players].filter(player => player.wickets > 0)
-    .sort((a, b) => b.wickets - a.wickets).slice(0, 5);
-  const topFielders = [...stats.players].filter(player => player.catches + player.stumpings > 0)
-    .sort((a, b) => (b.catches + b.stumpings) - (a.catches + a.stumpings)).slice(0, 5);
   if (stats.balls === 0) {
     return (
       <View style={styles.statsEmpty}>
         <MaterialCommunityIcons name="chart-line" size={36} color={colors.accent} />
         <Text variant="h3" style={{ marginTop: spacing.md }}>No tournament stats yet</Text>
         <Text variant="body" tone="muted" style={{ marginTop: spacing.sm, textAlign: 'center' }}>
-          Leaderboards appear after scoring begins.
+          Tournament totals appear after eligible matches are completed.
         </Text>
       </View>
     );
@@ -1716,27 +1386,6 @@ function TournamentStatsView({ stats }: { stats: TournamentStats }) {
         <StatTile label="RUNS" value={String(stats.runs)} detail={`${stats.balls} balls`} />
         <StatTile label="WICKETS" value={String(stats.wickets)} detail="Tournament" />
       </View>
-      <StatsLeaderboard
-        title="Top run scorers"
-        rows={topRuns}
-        value={player => `${player.runs} runs`}
-        detail={player => `${player.innings} inn · Avg ${battingAverage(player)} · SR ${strikeRate(player)} · Form ${formText(player.recentScores)}`}
-        onPress={id => router.push({ pathname: '/wricket/player/[id]', params: { id } })}
-      />
-      <StatsLeaderboard
-        title="Top wicket takers"
-        rows={topWickets}
-        value={player => `${player.wickets} wickets`}
-        detail={player => `${formatOver(player.bowlingBalls)} ov · Econ ${economyRate(player)} · Avg ${bowlingAverage(player)} · Form ${formText(player.recentWickets)}`}
-        onPress={id => router.push({ pathname: '/wricket/player/[id]', params: { id } })}
-      />
-      <StatsLeaderboard
-        title="Top fielders"
-        rows={topFielders}
-        value={player => `${player.catches + player.stumpings} dismissals`}
-        detail={player => `${player.catches} catches · ${player.stumpings} stumpings`}
-        onPress={id => router.push({ pathname: '/wricket/player/[id]', params: { id } })}
-      />
     </View>
   );
 }
@@ -1748,33 +1397,6 @@ function StatTile({ label, value, detail }: { label: string; value: string; deta
       <Text variant="h2" style={{ marginTop: spacing.xs }}>{value}</Text>
       <Text variant="caption" tone="muted">{detail}</Text>
     </View>
-  );
-}
-
-function StatsLeaderboard({
-  title,
-  rows,
-  value,
-  detail,
-  onPress,
-}: {
-  title: string;
-  rows: TournamentPlayerStats[];
-  value: (player: TournamentPlayerStats) => string;
-  detail: (player: TournamentPlayerStats) => string;
-  onPress: (id: string) => void;
-}) {
-  return (
-    <Card>
-      <Text variant="h3">{title}</Text>
-      {rows.map((player, index) => (
-        <Pressable key={player.id} onPress={() => onPress(player.id)} style={styles.statRow}>
-          <Text variant="caption" tone="dim" style={{ width: 24 }}>{index + 1}</Text>
-          <View style={{ flex: 1 }}><Text variant="bodyStrong">{player.name}</Text><Text variant="caption" tone="muted">{detail(player)}</Text></View>
-          <Text variant="bodyStrong" tone="accent">{value(player)}</Text>
-        </Pressable>
-      ))}
-    </Card>
   );
 }
 
@@ -1820,20 +1442,6 @@ function emptyTournamentPlayer(id: string, name: string): TournamentPlayerStats 
     bowlingBalls: 0, runsConceded: 0, catches: 0, stumpings: 0, recentScores: [], recentWickets: [] };
 }
 
-function battingAverage(player: TournamentPlayerStats) {
-  return player.dismissals ? (player.runs / player.dismissals).toFixed(2) : player.runs ? '—' : '0.00';
-}
-function strikeRate(player: TournamentPlayerStats) {
-  return player.ballsFaced ? ((player.runs / player.ballsFaced) * 100).toFixed(2) : '0.00';
-}
-function economyRate(player: TournamentPlayerStats) {
-  return player.bowlingBalls ? ((player.runsConceded * 6) / player.bowlingBalls).toFixed(2) : '0.00';
-}
-function bowlingAverage(player: TournamentPlayerStats) {
-  return player.wickets ? (player.runsConceded / player.wickets).toFixed(2) : '—';
-}
-function formText(values: number[]) { return values.length ? values.join(', ') : '—'; }
-
 function isBowlerWicket(ball: Ball): boolean {
   return Boolean(
     ball.isWicket &&
@@ -1875,7 +1483,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
   },
-  hero: { height: 224, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface, position: 'relative', borderWidth: 1, borderColor: colors.border },
+  hero: { minHeight: 224, paddingTop: 100, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surface, position: 'relative', borderWidth: 1, borderColor: colors.border },
   heroImage: { ...StyleSheet.absoluteFillObject, width: undefined, height: undefined },
   heroFallback: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceElevated },
   heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8, 11, 9, 0.34)', borderBottomWidth: 108, borderBottomColor: 'rgba(8, 11, 9, 0.42)' },
@@ -1883,7 +1491,7 @@ const styles = StyleSheet.create({
   pitchStripeTwo: { position: 'absolute', top: 0, bottom: 0, right: '18%', width: '18%', backgroundColor: 'rgba(95, 227, 138, 0.035)' },
   pitchSeam: { height: 112, width: 18, borderLeftWidth: 2, borderRightWidth: 2, borderColor: 'rgba(232, 196, 104, 0.36)', alignItems: 'center', justifyContent: 'space-around' },
   pitchStitch: { width: 9, height: 2, transform: [{ rotate: '-25deg' }], backgroundColor: 'rgba(232, 196, 104, 0.6)' },
-  heroIdentity: { position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.md, flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md },
+  heroIdentity: { margin: spacing.md, flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md },
   heroLogo: { flexShrink: 0, borderWidth: 3, borderColor: 'rgba(238, 242, 237, 0.9)', backgroundColor: colors.surface },
   heroCopy: { flex: 1, minWidth: 0, gap: spacing.xs, paddingBottom: 2 },
   overviewMetrics: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
@@ -2105,7 +1713,7 @@ const styles = StyleSheet.create({
   scorerRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   scorerAvatar: { width: 38, height: 38, borderRadius: 19 },
   scorerAvatarFallback: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
-  scorerAction: { minWidth: 64, minHeight: 34, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
+  scorerAction: { minWidth: 64, minHeight: 44, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
   scorerActionDisabled: { opacity: 0.45 },
   dangerZone: { borderColor: 'rgba(239, 83, 80, 0.42)', backgroundColor: 'rgba(239, 83, 80, 0.055)' },
   dangerHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },

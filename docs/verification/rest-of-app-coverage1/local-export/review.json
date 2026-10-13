@@ -1,0 +1,18 @@
+{
+  "origin": "http://127.0.0.1:4180",
+  "label": "local-export",
+  "widths": [
+    320,
+    390,
+    1280
+  ],
+  "checks": [
+    "Actual production configuration, isolation headers, guest roots at three widths, hosted JavaScript exactly matches export",
+    "Archive empty, populated, detail and missing record states; three responsive widths; no management actions; controlled disabled-feature fallback opens saved archive",
+    "Independent hosted guest receives an explicit sign-in destination and cannot open organiser tools; existing authenticated detail policy is retained"
+  ],
+  "pageErrors": [],
+  "bundleSHA256": "88627feed00270fe226bcdf768493ba3d16a8447e16b7e2d22e5c60e072891a1",
+  "status": "PASS",
+  "fixtureRemoved": true
+}

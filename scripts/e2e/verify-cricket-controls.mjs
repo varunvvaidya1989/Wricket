@@ -1,0 +1,82 @@
+import assert from 'node:assert/strict';
+import { expect } from '@playwright/test';
+import { checked } from './backend-fixture.mjs';
+
+export async function verifyCricketControls({ page, stack, matchId, fixture }) {
+  const button = name => page.getByRole('button', { name, exact: true });
+  const capture = async (name, close) => {
+    await expect.poll(async () => (await button(close).boundingBox())?.y ?? 999).toBeLessThan(12);
+    await page.screenshot({ path: `.e2e/r4-${name}.png`, fullPage: true });
+  };
+  const snapshot = async () => (await checked(stack.admin.from('match_snapshots').select('scoreboard').eq('match_id', matchId).single())).scoreboard;
+  await button('Controls').click();
+  await expect(page.getByText('Match controls.', { exact: true })).toBeVisible();
+  await capture('controls', 'Close match controls');
+  await button('Penalty / bonus runs').click();
+  await expect(page.getByText('5/0 · 0.0 ov', { exact: true })).toBeVisible();
+  await capture('adjustment', 'Close penalty / bonus');
+  assert.equal(await page.getByRole('radio', { name: '5', exact: true }).evaluate(element => getComputedStyle(element.firstElementChild).fontSize), '17px');
+  assert.equal(await page.getByText('+5', { exact: true }).evaluate(element => getComputedStyle(element).fontSize), '45px');
+  await button('Cancel').click();
+  await button('Close match controls').click();
+  await expect(page.getByLabel('Score 0 for 0', { exact: true })).toBeVisible();
+  await button('Controls').click();
+  await button('Penalty / bonus runs').click();
+  await button('Add 5 runs').click();
+  await expect(page.getByText('Recorded · +5 penalty runs', { exact: true })).toBeVisible();
+  await button('Controls').click();
+  await button('Penalty / bonus runs').click();
+  await page.getByRole('radio', { name: 'Bonus', exact: true }).click();
+  await page.getByRole('radio', { name: '2', exact: true }).click();
+  await button('Add 2 runs').click();
+  await expect(page.getByLabel('Score 7 for 0', { exact: true })).toBeVisible();
+  await expect.poll(async () => { const s = await snapshot(); return [s.total_runs, s.legal_balls]; }, { timeout: 30000 }).toEqual([7, 0]);
+  const events = await checked(stack.admin.from('match_events').select('kind').eq('match_id', matchId));
+  assert.equal(events.filter(event => event.kind === 'BALL_RECORDED').length, 0);
+  assert.equal(events.filter(event => event.kind === 'SCORE_ADJUSTED').length, 2);
+
+  await button('Controls').click();
+  await button('Retire a batter').click();
+  await capture('retirement', 'Close retire batter');
+  await button('Confirm retirement').click();
+  await expect(page.getByText('Next batter', { exact: true })).toBeVisible();
+  await button('Select R0 A3').click();
+  await button('Confirm').click();
+  await expect(page.getByLabel('Score 7 for 0', { exact: true })).toBeVisible();
+  await expect.poll(async () => (await checked(stack.admin.from('match_events').select('kind').eq('match_id', matchId))).filter(event => event.kind === 'BATTER_RETIRED').length, { timeout: 30000 }).toBe(1);
+
+  await button('Controls').click();
+  await button('End innings early').click();
+  await capture('end-innings', 'Close end innings');
+  await button('End innings').click();
+  await expect(page.getByText('Select openers', { exact: true })).toBeVisible();
+  await button('Select R0 B1').click();
+  await button('Select R0 B2').click();
+  await button('Confirm').click();
+  await button('Select R0 A1').click();
+  await button('Confirm').click();
+  await expect(page.getByText('Need 8 from 12 balls', { exact: true })).toBeVisible();
+
+  await button('Controls').click();
+  await button('End match exceptionally').click();
+  await page.getByRole('radio', { name: 'Walkover', exact: true }).click();
+  await expect(button('Confirm walkover')).toBeDisabled();
+  await page.getByRole('radio', { name: fixture.teams[0].name, exact: true }).click();
+  await expect(button('Confirm walkover')).toBeEnabled();
+  await page.getByRole('radio', { name: 'No result', exact: true }).click();
+  await capture('exception', 'Close end match');
+  await page.setViewportSize({ width: 320, height: 740 });
+  await expect(button('Confirm no result')).toBeInViewport();
+  await page.screenshot({ path: '.e2e/r4-exception-320.png', fullPage: true });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await button('Confirm no result').click();
+  await page.waitForURL('**/scorecard');
+  await expect.poll(async () => (await checked(stack.admin.from('matches').select('result').eq('id', matchId).single())).result?.kind, { timeout: 30000 }).toBe('NO_RESULT');
+  const finalEvents = await checked(stack.admin.from('match_events').select('kind').eq('match_id', matchId));
+  assert.equal(finalEvents.filter(event => event.kind === 'BALL_RECORDED').length, 0);
+  assert.equal(finalEvents.filter(event => event.kind === 'MATCH_ABANDONED').length, 1);
+  await page.goto(`http://127.0.0.1:4173/wricket/match/${matchId}/score`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByText('Could not resume scoring', { exact: true })).toBeVisible();
+  await expect(button('Record 0 runs')).toHaveCount(0);
+  console.log('PASS: control previews/cancel, penalty + bonus without balls, retired hurt/replacement, innings progression/target, required walkover team and confirmed no result.');
+}

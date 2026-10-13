@@ -2,6 +2,8 @@ import { getSupabaseClient } from './client';
 
 export interface CloudLiveMatch {
   id: string;
+  tossWinnerTeamId?: string;
+  tossChoice?: string;
   tournamentId?: string;
   tournamentLocalId?: string;
   tournamentName: string;
@@ -73,6 +75,7 @@ export interface LiveMatchPage { matches: CloudLiveMatch[]; nextCursor?: LiveMat
 
 export interface CloudMatchEvent {
   id: string;
+  clientEventId?: string;
   sequence: number;
   kind: string;
   payload: Record<string, unknown>;
@@ -81,6 +84,7 @@ export interface CloudMatchEvent {
 
 interface RawLiveEvent {
   id: string;
+  client_event_id?: string;
   match_id: string;
   sequence: number | string;
   kind: string;
@@ -168,7 +172,7 @@ export const liveMatchApi = {
   async get(matchId: string): Promise<CloudLiveMatch | null> {
     const { data: match, error } = await getSupabaseClient()
       .from('matches')
-      .select('id, tournament_id, format, status, team_a_id, team_b_id, venue, rules, result')
+      .select('id, tournament_id, format, status, team_a_id, team_b_id, venue, rules, result, toss_winner_team_id, toss_choice')
       .eq('id', matchId)
       .maybeSingle();
     if (error) throw error;
@@ -288,6 +292,7 @@ export const liveMatchApi = {
         filter: `id=eq.${matchId}`,
       }, onChange)
       .subscribe((status, error) => {
+        if (status === 'SUBSCRIBED') onChange();
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           onError?.(error?.message ?? 'Live updates are temporarily unavailable');
         }
@@ -450,6 +455,8 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
       status: match.status,
       venue: match.venue ?? tournament?.location ?? undefined,
       rules: match.rules ?? {},
+      tossWinnerTeamId: match.toss_winner_team_id ?? undefined,
+      tossChoice: match.toss_choice ?? undefined,
       result: match.result ?? undefined,
       teamA: { id: teamA.id, name: teamA.name, shortName: teamA.short_name },
       teamB: { id: teamB.id, name: teamB.name, shortName: teamB.short_name },
@@ -467,9 +474,9 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
         target: item.target ?? undefined,
         isFollowOn: Boolean(item.is_follow_on),
         status: item.status,
-        totalRuns: Number(item.total_runs ?? 0),
-        totalWickets: Number(item.total_wickets ?? 0),
-        totalBalls: Number(item.total_balls ?? 0),
+        totalRuns: Number(item.id === scoreboard.innings_id ? scoreboard.total_runs ?? item.total_runs ?? 0 : item.total_runs ?? 0),
+        totalWickets: Number(item.id === scoreboard.innings_id ? scoreboard.total_wickets ?? item.total_wickets ?? 0 : item.total_wickets ?? 0),
+        totalBalls: Number(item.id === scoreboard.innings_id ? scoreboard.legal_balls ?? item.total_balls ?? 0 : item.total_balls ?? 0),
       })),
       score: {
         runs: Number(scoreboard.total_runs ?? 0),
@@ -483,6 +490,7 @@ async function loadRelated(matches: any[], detailed: boolean): Promise<CloudLive
         .filter(event => event.match_id === match.id)
         .map(event => ({
           id: event.id,
+          clientEventId: event.client_event_id,
           sequence: Number(event.sequence),
           kind: event.kind,
           payload: event.payload ?? {},
@@ -499,7 +507,7 @@ async function loadAllMatchEvents(matchIds: string[]) {
   const events: any[] = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await client.from('match_events')
-      .select('id, match_id, sequence, kind, payload, created_at')
+      .select('id, client_event_id, match_id, sequence, kind, payload, created_at')
       .in('match_id', matchIds)
       .order('sequence', { ascending: false })
       .range(from, from + 999);

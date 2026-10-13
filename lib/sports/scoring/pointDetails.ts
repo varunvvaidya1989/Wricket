@@ -29,11 +29,14 @@ export function pointDetailOptions(sportId: ScoringSportId): readonly PointDetai
     { value: 'SERVICE_WINNER', label: 'Service winner' },
     { value: 'WINNER', label: 'Winner' },
     { value: 'UNFORCED_ERROR', label: 'Unforced error' },
+    { value: 'FORCED_ERROR', label: 'Forced error' },
     { value: 'DOUBLE_FAULT', label: 'Double fault' },
   ]);
   if (sportId === 'badminton') return Object.freeze([
     ...COMMON,
     { value: 'SMASH_WINNER', label: 'Smash winner' },
+    { value: 'WINNER', label: 'Winner' },
+    { value: 'UNFORCED_ERROR', label: 'Unforced error' },
     { value: 'FORCED_ERROR', label: 'Forced error' },
     { value: 'SERVICE_FAULT', label: 'Service fault' },
   ]);
@@ -42,10 +45,13 @@ export function pointDetailOptions(sportId: ScoringSportId): readonly PointDetai
     { value: 'SERVICE_WINNER', label: 'Service winner' },
     { value: 'WINNER', label: 'Winner' },
     { value: 'UNFORCED_ERROR', label: 'Unforced error' },
+    { value: 'FORCED_ERROR', label: 'Forced error' },
+    { value: 'SERVICE_FAULT', label: 'Service fault' },
   ]);
   return Object.freeze([
     ...COMMON,
     { value: 'WINNER', label: 'Winner' },
+    { value: 'UNFORCED_ERROR', label: 'Unforced error' },
     { value: 'FORCED_ERROR', label: 'Forced error' },
     { value: 'FAULT', label: 'Fault' },
   ]);

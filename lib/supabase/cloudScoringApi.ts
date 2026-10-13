@@ -1,3 +1,4 @@
+import type { ScoringTransaction } from '@/lib/wricket/db/scoringTransaction';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { getSupabaseClient } from './client';
@@ -13,6 +14,8 @@ import { fixturesApi } from './fixturesApi';
 
 const DEVICE_ID_KEY = 'wricket.scoring-device-id';
 const activeFlushes = new Map<string, Promise<void>>();
+const requestedFlushes = new Set<string>();
+const activeLeaseRequests = new Map<string, Promise<{ lease_token: string }>>();
 const syncStates = new Map<string, CloudScoringSyncState>();
 const syncListeners = new Map<string, Set<(state: CloudScoringSyncState) => void>>();
 
@@ -42,16 +45,58 @@ export interface CloudBallPayload extends Record<string, unknown> {
   assistant_fielder_id?: string;
 }
 
+export function isScoringAccessDenied(message?: string): boolean {
+  return Boolean(message && /not authori[sz]ed|another scorer|permission denied|scoring access/i.test(message));
+}
+
+async function acquireScoringLease(matchId: string): Promise<{ lease_token: string }> {
+  const existing = activeLeaseRequests.get(matchId);
+  if (existing) return existing;
+  const request = (async () => {
+    const deviceId = await getDeviceId();
+    const { data, error } = await getSupabaseClient().rpc('acquire_scoring_lease', { p_match_id: matchId, p_device_id: deviceId });
+    if (error) {
+      if (isScoringAccessDenied(describeSupabaseError(error))) {
+        const { data } = await getSupabaseClient().auth.getSession();
+        if (data.session) await AsyncStorage.removeItem(`wricket.scoring-access:${data.session.user.id}:${matchId}`);
+      }
+      throw error;
+    }
+    return data as { lease_token: string };
+  })().finally(() => activeLeaseRequests.delete(matchId));
+  activeLeaseRequests.set(matchId,request);
+  return request;
+}
+
+/** Check the server role/lease before exposing inputs, including cold links. */
+export async function ensureCloudScoringAccess(matchId: string): Promise<void> {
+  const { data, error } = await getSupabaseClient().auth.getSession();
+  if (error) throw error;
+  if (!data.session) throw new Error('Sign in to resume scoring.');
+  const key = `wricket.scoring-access:${data.session.user.id}:${matchId}`;
+  try {
+    await acquireScoringLease(matchId);
+    await AsyncStorage.setItem(key,'1');
+  } catch (cause) {
+    const message = describeSupabaseError(cause);
+    // Offline scoring is available only to the same account previously
+    // authorised on this device. A server denial never uses the cached grant.
+    if (/network request failed|failed to fetch|fetch failed|networkerror|offline/i.test(message)
+      && await AsyncStorage.getItem(key) === '1') return;
+    throw new Error(message);
+  }
+}
+
 export async function queueCloudBall(input: {
   clientEventId: string;
   matchId: string;
   inningsId: string;
   payload: CloudBallPayload;
-}): Promise<void> {
+}, transaction?: ScoringTransaction): Promise<void> {
   return queueCloudScoringEvent({
     ...input,
     kind: 'BALL_RECORDED',
-  });
+  }, transaction);
 }
 
 export async function queueCloudScoringEvent(input: {
@@ -60,14 +105,18 @@ export async function queueCloudScoringEvent(input: {
   inningsId: string;
   kind: PendingScoringEvent['kind'];
   payload: Record<string, unknown>;
-}): Promise<void> {
+}, transaction?: ScoringTransaction): Promise<void> {
   await enqueueScoringEvent({
     clientEventId: input.clientEventId,
     matchId: input.matchId,
     inningsId: input.inningsId,
     kind: input.kind,
     payload: input.payload,
-  });
+  }, transaction?.db);
+  if (transaction) {
+    transaction.afterCommit(() => { void flushScoringEvents(input.matchId); });
+    return;
+  }
   const pending = await listPendingScoringEvents(input.matchId);
   setSyncState(input.matchId, { status: 'PENDING', pending: pending.length });
   void flushScoringEvents(input.matchId);
@@ -93,8 +142,13 @@ export function subscribeToCloudScoringSync(
 
 export function flushScoringEvents(matchId: string): Promise<void> {
   const existing = activeFlushes.get(matchId);
-  if (existing) return existing;
-  const flush = runFlush(matchId).finally(() => activeFlushes.delete(matchId));
+  if (existing) { requestedFlushes.add(matchId); return existing; }
+  const flush = (async () => {
+    do {
+      requestedFlushes.delete(matchId);
+      await runFlush(matchId);
+    } while (requestedFlushes.has(matchId));
+  })().finally(() => activeFlushes.delete(matchId));
   activeFlushes.set(matchId, flush);
   return flush;
 }
@@ -107,12 +161,7 @@ async function runFlush(matchId: string): Promise<void> {
       return;
     }
     setSyncState(matchId, { status: 'SYNCING', pending: initiallyPending.length });
-    const deviceId = await getDeviceId();
-    const { data: lease, error: leaseError } = await getSupabaseClient().rpc(
-      'acquire_scoring_lease',
-      { p_match_id: matchId, p_device_id: deviceId },
-    );
-    if (leaseError) throw leaseError;
+    const lease = await acquireScoringLease(matchId);
     const { data: match, error: matchError } = await getSupabaseClient()
       .from('matches')
       .select('current_sequence')
@@ -199,14 +248,12 @@ async function advanceCompletedTournament(matchId: string): Promise<void> {
 }
 
 function describeSupabaseError(cause: unknown): string {
-  if (cause instanceof Error) return cause.message;
-  if (cause && typeof cause === 'object') {
-    const error = cause as Record<string, unknown>;
-    const parts = [error.message, error.details, error.hint]
-      .filter((value): value is string => typeof value === 'string' && value.length > 0);
-    if (parts.length > 0) return [...new Set(parts)].join(' — ');
+  const error = cause as { message?: unknown } | null;
+  const message = typeof error?.message === 'string' ? error.message : String(cause);
+  if (/network request failed|failed to fetch|fetch failed|networkerror|offline/i.test(message)) {
+    return 'Offline. Updates are saved on this device.';
   }
-  return String(cause);
+  return message;
 }
 
 async function normalizeLifecyclePayload(

@@ -1,169 +1,109 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { TournamentSponsors } from '@/components/sponsors/TournamentSponsors';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import * as Linking from 'expo-linking';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { Modal, ScrollView, Share, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { SportIcon } from '@/components/sports/SportIcon';
-import { SportLiveActivityBadge } from '@/components/sports/platform/SportLiveActivityBadge';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { Screen } from '@/components/ui/Screen';
-import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
-import { SPORT_CONFIGS, SPORT_PRESENTATION, activePointEvents, formatLiveHeadline, replay, type ScoringSportId } from '@/lib/sports/scoring';
-import { sportStageContent } from '@/lib/sports/platform/sportLiveContent';
-import { buildSportMatchTimeline, splitLiveHeadline } from '@/lib/sports/platform/sportMatchTimeline';
+import { TournamentSponsors } from '@/components/sponsors/TournamentSponsors';
+import { RacquetScorePanel } from '@/components/sports/scoring/RacquetScorePanel';
+import { SPORT_CONFIGS, SPORT_PRESENTATION, activePointEvents, replay, sportRulesSummary, type ScoringSportId } from '@/lib/sports/scoring';
+import { buildSportMatchTimeline } from '@/lib/sports/platform/sportMatchTimeline';
 import { sportScoringApi, type SportCloudMatchFeed } from '@/lib/supabase/sportScoringApi';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
+import { supabaseErrorMessage } from '@/lib/supabase/errorMessage';
+import { StageButton, StageIntro, StageList, StageNotice, StagePage, StageRow, StageText, stageColors as colors } from './StageUI';
 
 export function SportCloudMatchFeedScreen({ sportId }: { sportId: ScoringSportId }) {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; tab?: string }>();
+  const id = params.id;
+  const tab = params.tab === 'history' || params.tab === 'info' ? params.tab : 'watch';
+  const router = useRouter();
   const auth = useAuth();
   const config = SPORT_CONFIGS[sportId];
   const presentation = SPORT_PRESENTATION[sportId];
-  const liveContent = sportStageContent(presentation.catalogCode);
   const [feed, setFeed] = useState<SportCloudMatchFeed>();
+  const [feedOwner, setFeedOwner] = useState<string>();
+  const owner = `${auth.session?.user.id ?? ''}:${id}`;
   const [loading, setLoading] = useState(true);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [error, setError] = useState<string>();
-
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareError, setShareError] = useState<string>();
+  const generation = useRef(0);
   const load = useCallback(async (silent = false) => {
+    const request = ++generation.current;
     if (!id) { setError('The match feed link is incomplete.'); setLoading(false); return; }
     if (!silent) setLoading(true);
     try {
       const next = await sportScoringApi.feed(id);
-      const connectedSport = auth.profile?.connectedSports.find((sport) => sport.code === presentation.catalogCode);
-      if (!connectedSport || connectedSport.accessStatus !== 'ACTIVE' || connectedSport.id !== next.sportId) {
-        throw new Error(`This match is not available with your current ${config.name} app selection.`);
-      }
-      setFeed(next);
-      setError(undefined);
+      if (request !== generation.current) return;
+      const connected = auth.profile?.connectedSports.find(sport => sport.code === presentation.catalogCode && sport.accessStatus === 'ACTIVE');
+      if (!connected || connected.id !== next.sportId) throw new Error(`This match is not available with your current ${config.name} app selection.`);
+      setFeed(next); setFeedOwner(owner); setError(undefined);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load this match feed.');
-    } finally {
-      setLoading(false);
-    }
-  }, [auth.profile?.connectedSports, config.name, id, presentation.catalogCode]);
-
+      if (request === generation.current) setError(supabaseErrorMessage(cause, 'Could not load this match feed.'));
+    } finally { if (request === generation.current) setLoading(false); }
+  }, [auth.profile?.connectedSports, config.name, id, owner, presentation.catalogCode]);
   useFocusEffect(useCallback(() => {
     void load();
-    if (!id) return undefined;
-    return sportScoringApi.subscribe(
-      id,
-      () => void load(true),
-      (message) => setError(message),
-      setRealtimeConnected,
-    );
+    if (!id) return;
+    const unsubscribe = sportScoringApi.subscribe(id, () => void load(true), setError, setRealtimeConnected);
+    return () => { generation.current++; unsubscribe(); };
   }, [id, load]));
-
-  const matchView = useMemo(() => {
-    if (!feed) return undefined;
-    const options = feed.rulesSnapshot.options && typeof feed.rulesSnapshot.options === 'object'
-      && !Array.isArray(feed.rulesSnapshot.options)
-      ? feed.rulesSnapshot.options as Record<string, boolean | number | string | undefined>
-      : {};
-    const settings = {
-      initialServer: feed.rulesSnapshot.initial_server === 1 ? 1 as const : 0 as const,
-      options,
-    };
+  const view = useMemo(() => {
+    if (!feed || feed.id !== id || feedOwner !== owner) return undefined;
+    const options = feed.rulesSnapshot.options && typeof feed.rulesSnapshot.options === 'object' && !Array.isArray(feed.rulesSnapshot.options) ? feed.rulesSnapshot.options as Record<string, boolean | number | string | undefined> : {};
+    const settings = { initialServer: feed.rulesSnapshot.initial_server === 1 ? 1 as const : 0 as const, options };
     const sideNames = [feed.participantA, feed.participantB] as const;
-    const points = activePointEvents(feed.events);
-    const headline = formatLiveHeadline(config, replay(config, points, settings));
-    return {
-      sideNames,
-      pointCount: points.length,
-      score: splitLiveHeadline(headline),
-      timeline: buildSportMatchTimeline(config, feed.events, sideNames, settings),
-      unitLabel: config.root.child?.level === 'set' ? 'SETS WON' : 'GAMES WON',
-    };
-  }, [config, feed]);
-
-  if (loading && !feed) return <Screen padded={false}><SportStageLoader message={`Opening ${config.name} match feed`} detail="Connecting live events and match context" accent={presentation.accent} /></Screen>;
-  if (!feed || !matchView) return <Screen padded={false}><AppHeader title="Match feed" eyebrow={config.name.toUpperCase()} back /><View style={styles.center}><MaterialCommunityIcons name="scoreboard-outline" size={38} color={colors.textDim} /><Text variant="h3">Match feed unavailable</Text><Text tone="muted" style={styles.centerCopy}>{friendlyFeedError(error)}</Text></View></Screen>;
-
-  return <Screen scroll padded={false}>
-    <AppHeader title="Match feed" eyebrow={config.name.toUpperCase()} back />
-    <View style={styles.content}>
-      {error ? <View accessibilityRole="alert" style={styles.warning}><MaterialCommunityIcons name="cloud-alert-outline" size={18} color={colors.gold} /><Text variant="caption" style={styles.flex}>{friendlyFeedError(error)}</Text></View> : null}
-      <View style={[styles.scoreCard, { borderColor: presentation.accent }]}>
-        <View style={styles.competition}><View style={styles.competitionIdentity}><SportIcon code={presentation.catalogCode} size={19} color={presentation.accent} /><Text variant="bodyStrong" numberOfLines={1} style={styles.flex}>{feed.competitionName}</Text></View>{feed.status === 'LIVE' ? <SportLiveActivityBadge count={1} appearance="card" /> : <Text variant="overline" tone="muted">{feed.status}</Text>}</View>
-        <View style={styles.matchup}>
-          <PlayerIdentity label={feed.matchFormat === 'SINGLES' ? 'PLAYER 1' : 'SIDE 1'} name={feed.participantA} />
-          <View style={styles.versus}><Text variant="overline" tone="dim">VS</Text></View>
-          <PlayerIdentity label={feed.matchFormat === 'SINGLES' ? 'PLAYER 2' : 'SIDE 2'} name={feed.participantB} right />
-        </View>
-        <View style={styles.scoreBreakdown}>
-          <ScoreUnit label={matchView.unitLabel} value={matchView.score.match} accent={presentation.accent} />
-          <View style={styles.scoreDivider} />
-          <ScoreUnit label="CURRENT GAME" value={matchView.score.current} accent={presentation.accent} />
-        </View>
-        <View style={styles.meta}><Text variant="overline" tone="dim">{feed.matchFormat.replaceAll('_', ' ')}</Text><Text variant="overline" tone="dim">{sportId === 'pickleball' ? 'RALLY' : 'POINT'} {matchView.pointCount}</Text></View>
-      </View>
-
+    return { options, sideNames, state: replay(config, activePointEvents(feed.events), settings), timeline: buildSportMatchTimeline(config, feed.events, sideNames, settings) };
+  }, [config, feed, feedOwner, id, owner]);
+  if (loading && !view) return <StagePage focused title="Match view" eyebrow={config.name.toUpperCase()}><StageNotice>Opening the match · getting the latest score…</StageNotice></StagePage>;
+  if (!feed || !view) return <StagePage focused title="Match view" eyebrow={config.name.toUpperCase()}><StageIntro title="Match unavailable." description={error ?? 'This match could not be restored for your account.'} /><StageButton title="Try again" onPress={() => void load()} /></StagePage>;
+  const header = tab === 'history' ? 'Rally history' : tab === 'info' ? 'Match information' : `${feed.participantA} vs ${feed.participantB}`;
+  const share = async () => {
+    setShareError(undefined);
+    try {
+      const url = Linking.createURL('match', { queryParams: { id: feed.id } });
+      await Share.share({ title: `${config.name} match`, message: `${feed.participantA} vs ${feed.participantB} · ${feed.headlineScore}\n${url}`, url });
+    } catch (cause) { setShareError(supabaseErrorMessage(cause, 'Sharing is unavailable on this device.')); }
+  };
+  return <StagePage focused title={header} eyebrow={`${config.name.toUpperCase()} · ${feed.status.replaceAll('_', ' ')}`} onBack={tab !== 'watch' ? () => router.setParams({ tab: 'watch' }) : undefined}>
+    {error ? <StageNotice retry={() => void load(true)}>{error} The last loaded score remains visible.</StageNotice> : null}
+    {tab === 'watch' ? <>
+      <RacquetScorePanel config={config} state={view.state} sideNames={view.sideNames} accent={colors.accent} />
+      {view.state.isComplete && view.state.winner !== undefined ? <StageIntro eyebrow="MATCH WINNER" title={view.sideNames[view.state.winner]} description="Completed result from the recorded match." /> : null}
+      <StageNotice>{feed.status.replaceAll('_', ' ')} · {realtimeConnected ? 'Live updates connected' : 'Live updates reconnecting'} · Score updated {new Date(feed.updatedAt).toLocaleString()}</StageNotice>
       {feed.competitionId ? <TournamentSponsors key={feed.competitionId} parent={{ kind: 'sport', id: feed.competitionId }} placement="match" /> : null}
-      <View style={styles.sectionTitle}><Text variant="overline" tone="muted">{liveContent.timelineLabel.toUpperCase()}</Text><View style={styles.connection}><View style={[styles.connectionDot, { backgroundColor: realtimeConnected ? colors.live : colors.gold }]} /><Text variant="caption" tone="dim">{realtimeConnected ? 'Updating live' : 'Reconnecting'}</Text></View></View>
-      {matchView.timeline.length ? <View style={styles.timeline}>{matchView.timeline.map((item) => <FeedEvent key={item.event.sequence} item={item} accent={presentation.accent} />)}</View> : <View style={styles.empty}><MaterialCommunityIcons name="timeline-clock-outline" size={30} color={colors.textDim} /><Text variant="bodyStrong">Waiting for the first point</Text><Text variant="caption" tone="muted">This timeline will update automatically when scoring starts.</Text></View>}
-    </View>
-  </Screen>;
+      <StageText variant="eyebrow" muted>MATCH PROGRESS</StageText>
+      {view.timeline.length ? <View style={styles.timeline}>{view.timeline.slice(0, 3).map(item => <FeedEvent key={item.event.sequence} item={item} />)}</View> : <StageNotice>Waiting for the first rally. Recorded updates will appear here.</StageNotice>}
+      <StageList><StageRow title="Rally history" detail="Recorded rallies and corrections" symbol="↗" onPress={() => router.setParams({ tab: 'history' })} /><StageRow title="Match information" detail="Players, venue and selected rules" symbol="↗" onPress={() => router.setParams({ tab: 'info' })} /></StageList>
+      <StageButton title="Share match" onPress={() => setShareOpen(true)} />
+    </> : tab === 'history' ? <>
+      <StageIntro eyebrow="MATCH UPDATES" title="Every rally, in order." description="Latest recorded updates first, including corrections." />
+      {view.timeline.length ? <View style={styles.timeline}>{view.timeline.map(item => <FeedEvent key={item.event.sequence} item={item} />)}</View> : <StageNotice>No rallies recorded yet.</StageNotice>}
+    </> : <>
+      <StageIntro eyebrow="MATCH FACTS" title="The essentials." description="Players and the format selected before play." />
+      <View style={styles.facts}>{[{ label: 'Side A', value: feed.sideAPlayers.join(' / ') }, { label: 'Side B', value: feed.sideBPlayers.join(' / ') }, { label: 'Format', value: feed.matchFormat.toLowerCase() }, { label: 'Match rules', value: sportRulesSummary(sportId, view.options) }, { label: 'First server', value: view.sideNames[feed.rulesSnapshot.initial_server === 1 ? 1 : 0] }, { label: 'Venue', value: typeof feed.rulesSnapshot.venue === 'string' ? feed.rulesSnapshot.venue : 'Not specified' }, { label: 'Competition', value: feed.competitionName }].map(item => <View key={item.label} style={styles.fact}><StageText variant="small" muted>{item.label}</StageText><StageText variant="rowTitle">{item.value}</StageText></View>)}</View>
+    </>}
+    <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}><View style={styles.overlay}><View style={styles.dialog}><ScrollView contentContainerStyle={{ gap: 16 }}>
+      <StageIntro eyebrow="MATCH LINK" title="Share the match." description="Preview the current score, then share the spectator link." />
+      <RacquetScorePanel config={config} state={view.state} sideNames={view.sideNames} accent={colors.accent} />
+      {shareError ? <StageNotice>{shareError}</StageNotice> : null}
+      <StageButton primary title="Share spectator link" onPress={() => void share()} /><StageButton title="Back to match" onPress={() => setShareOpen(false)} />
+    </ScrollView></View></View></Modal>
+  </StagePage>;
 }
 
-function FeedEvent({ item, accent }: { item: ReturnType<typeof buildSportMatchTimeline>[number]; accent: string }) {
-  const event = item.event;
-  return <View style={styles.event}>
-    <View style={[styles.sequence, { borderColor: accent }]}><Text variant="mono" style={{ color: accent }}>{item.marker}</Text></View>
-    <View style={styles.flex}><Text variant="bodyStrong">{item.title}</Text><Text variant="caption" tone="muted">{item.description}</Text><Text variant="overline" tone="dim" style={styles.eventTime}>{formatEventTime(event.createdAt, item.elapsedMs)}</Text></View>
-  </View>;
-}
-
-function PlayerIdentity({ label, name, right = false }: { label: string; name: string; right?: boolean }) {
-  return <View style={[styles.playerIdentity, right && styles.playerIdentityRight]}><Text variant="overline" tone="dim">{label}</Text><Text variant="h3" numberOfLines={2} style={right ? styles.sideRight : undefined}>{name}</Text></View>;
-}
-
-function ScoreUnit({ label, value, accent }: { label: string; value: string; accent: string }) {
-  return <View style={styles.scoreUnit}><Text variant="overline" tone="dim">{label}</Text><Text variant="scoreLg" style={{ color: accent }}>{value}</Text></View>;
-}
-
-function formatEventTime(value: string, elapsedMs?: number): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Time unavailable';
-  const clock = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  if (elapsedMs === undefined) return clock;
-  const elapsed = elapsedMs < 1000 ? `${elapsedMs} ms` : `${(elapsedMs / 1000).toFixed(1)} s`;
-  return `${clock} · +${elapsed}`;
-}
-
-function friendlyFeedError(error?: string) {
-  if (!error) return 'This match may have ended, moved, or no longer be available to your account.';
-  if (/row|result|json|single/i.test(error)) return 'This match is unavailable or you do not have permission to view its detailed feed.';
-  return error;
+function FeedEvent({ item }: { item: ReturnType<typeof buildSportMatchTimeline>[number] }) {
+  const date = new Date(item.event.createdAt);
+  return <View style={styles.event}><View style={styles.sequence}><StageText variant="eyebrow" style={{ color: colors.accent, letterSpacing: 0 }}>{item.marker}</StageText></View><View style={{ flex: 1, minWidth: 0, gap: 4 }}><StageText variant="rowTitle">{item.title}</StageText><StageText variant="small" muted>{item.description}</StageText><StageText variant="eyebrow" muted>{Number.isNaN(date.getTime()) ? 'Time unavailable' : date.toLocaleTimeString()}</StageText></View></View>;
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
-  center: { flex: 1, minHeight: 320, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
-  centerCopy: { maxWidth: 480, textAlign: 'center', lineHeight: 21 },
-  warning: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.goldMuted, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  scoreCard: { padding: spacing.lg, borderRadius: radius.xl, borderWidth: 1, backgroundColor: '#111D17', gap: spacing.lg },
-  competition: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  competitionIdentity: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  matchup: { minHeight: 92, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  playerIdentity: { flex: 1, minWidth: 0, gap: 5 },
-  playerIdentityRight: { alignItems: 'flex-end' },
-  sideRight: { textAlign: 'right' },
-  versus: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  scoreBreakdown: { minHeight: 88, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, flexDirection: 'row', alignItems: 'center' },
-  scoreUnit: { flex: 1, alignItems: 'center', gap: spacing.xs },
-  scoreDivider: { width: 1, height: 48, backgroundColor: colors.border },
-  meta: { paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
-  sectionTitle: { marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-  connection: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  connectionDot: { width: 6, height: 6, borderRadius: 3 },
-  timeline: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surface, overflow: 'hidden' },
-  event: { minHeight: 78, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-  sequence: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  eventTime: { marginTop: spacing.xs },
-  empty: { minHeight: 220, padding: spacing.xl, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  flex: { flex: 1, minWidth: 0 },
+  timeline: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.surface, overflow: 'hidden' },
+  event: { padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', gap: 12 },
+  sequence: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: '#42563a', backgroundColor: '#263b25', alignItems: 'center', justifyContent: 'center' },
+  facts: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, backgroundColor: colors.surface, overflow: 'hidden' },
+  fact: { padding: 16, gap: 5, borderBottomWidth: 1, borderBottomColor: colors.border },
+  overlay: { flex: 1, padding: 18, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.72)' },
+  dialog: { width: '100%', maxWidth: 560, alignSelf: 'center', padding: 18, maxHeight: '95%', borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 16, backgroundColor: colors.bg, gap: 18 },
 });

@@ -2,22 +2,20 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
 import type { Href } from 'expo-router';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
-import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { Button } from '@/components/ui/Button';
-import { Screen } from '@/components/ui/Screen';
+import { StagePage, StageIntro, StageNotice, StageList, StageRow, StageButton, StageField } from '@/components/sports/platform/StageUI';
+import { OrganiserButton as Button } from '@/components/sports/platform/OrganiserButton';
 import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
+import { OrganiserText as Text } from '@/components/sports/platform/OrganiserText';
 import { useSportFeatureFlag } from '@/hooks/useSportFeatureFlag';
 import { getGooglePlace, searchGooglePlaces, type GooglePlaceDetails, type GooglePlaceSuggestion } from '@/lib/maps/googlePlaces';
 import { SPORT_CONFIGS, SPORT_PRESENTATION, defaultSportRules, type MatchOptions, type ScoringSportId } from '@/lib/sports/scoring';
 import { sportCompetitionApi, type CloudCompetition, type CloudCompetitionInvitation, type CloudCompetitionKind } from '@/lib/supabase/sportCompetitionApi';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
-import { SportAvatarButton } from './SportProfileDrawer';
 import { SportCloudCompetitionUnavailable } from './SportCloudCompetitionUnavailable';
 import { SportMatchRulesEditor } from './SportMatchRulesEditor';
 
@@ -25,7 +23,7 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
   const router = useRouter();
   const auth = useAuth();
   const config = SPORT_CONFIGS[sportId];
-  const presentation = SPORT_PRESENTATION[sportId];
+  const presentation = { ...SPORT_PRESENTATION[sportId], accent: colors.accent };
   const cloudCompetitions = useSportFeatureFlag(
     'cloud_competitions',
     presentation.catalogCode,
@@ -33,6 +31,12 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
   );
   const [competitions, setCompetitions] = useState<readonly CloudCompetition[]>([]);
   const [invitations, setInvitations] = useState<readonly CloudCompetitionInvitation[]>([]);
+  const [loadError, setLoadError] = useState<string>();
+  const [manageable, setManageable] = useState<string[]>([]);
+  const generation = useRef(0);
+  const savingRef = useRef(false);
+  const owner = `${auth.session?.user.id ?? 'guest'}:${sportId}`;
+  const [loadedOwner, setLoadedOwner] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
@@ -57,19 +61,25 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
       setLoading(false);
       return;
     }
-    setLoading(true);
+    const request = ++generation.current;
+    setLoading(true); setLoadError(undefined);
     void (async () => {
       const [competitionResult, invitationResult] = await Promise.allSettled([
         sportCompetitionApi.list(presentation.catalogCode),
         sportCompetitionApi.listInvitations(presentation.catalogCode),
       ]);
       if (competitionResult.status === 'rejected') throw competitionResult.reason;
+      const access = auth.session ? await Promise.allSettled(competitionResult.value.map(item => sportCompetitionApi.canManage(item.id))) : [];
+      if (request !== generation.current) return;
+      setLoadedOwner(owner);
+      setManageable(competitionResult.value.filter((item, index) => item.ownerAccountId === auth.session?.user.id || (access[index]?.status === 'fulfilled' && access[index].value)).map(item => item.id));
       setCompetitions(competitionResult.value);
       setInvitations(invitationResult.status === 'fulfilled' ? invitationResult.value : []);
     })()
-      .catch((cause) => Alert.alert('Could not load competitions', message(cause)))
-      .finally(() => setLoading(false));
-  }, [cloudCompetitions.enabled, presentation.catalogCode]);
+      .catch((cause) => { if (request === generation.current) { setCompetitions([]); setInvitations([]); setManageable([]); setLoadError(message(cause)); } })
+      .finally(() => { if (request === generation.current) setLoading(false); });
+    return () => { generation.current++; };
+  }, [cloudCompetitions.enabled, presentation.catalogCode, auth.session, owner]);
   useFocusEffect(reload);
 
   React.useEffect(() => {
@@ -96,7 +106,7 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
   };
 
   const create = async () => {
-    if (!name.trim() || saving) return;
+    if (!name.trim() || savingRef.current) return;
     const creatorAccountId = auth.session?.user.id;
     if (!creatorAccountId) {
       Alert.alert('Sign in required', 'Sign in to create a competition.');
@@ -107,6 +117,7 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
     if (organizerPhone.trim() && organizerPhone.replace(/\D/g, '').length < 7) { Alert.alert('Invalid organizer number', 'Enter a valid phone number.'); return; }
     if (socialMediaUrl.trim() && !/^https?:\/\/\S+$/i.test(socialMediaUrl.trim())) { Alert.alert('Invalid social link', 'Use a complete http:// or https:// link.'); return; }
     if (venueQuery.trim() && !venuePlace) { Alert.alert('Select the venue', 'Choose a venue from the Google Maps suggestions.'); return; }
+    savingRef.current = true;
     setSaving(true);
     try {
       const competitionId = await sportCompetitionApi.create({
@@ -135,17 +146,18 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
     } catch (cause) {
       Alert.alert('Could not create competition', cause instanceof Error ? cause.message : 'Please try again.');
     } finally {
-      setSaving(false);
+      savingRef.current = false; setSaving(false);
     }
   };
 
   const respondInvitation = (invitation: CloudCompetitionInvitation, accept: boolean) => {
-    if (saving) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     void sportCompetitionApi.respondOrganizer(invitation.accessId, accept)
       .then((competitionId) => { reload(); if (accept) router.push(`/${presentation.routeSegment}/competition/${competitionId}` as Href); })
       .catch((cause) => Alert.alert('Could not respond', message(cause)))
-      .finally(() => setSaving(false));
+      .finally(() => { savingRef.current = false; setSaving(false); });
   };
 
   if (cloudCompetitions.loading || !cloudCompetitions.enabled) {
@@ -153,76 +165,42 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
   }
 
   return (
-    <Screen scroll padded={false}>
-      <AppHeader
-        title="Competitions"
-        eyebrow={config.name.toUpperCase()}
-        right={<View style={styles.headerActions}><Pressable accessibilityLabel="Create competition" onPress={() => setCreateOpen(true)} style={[styles.headerAction, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="plus" size={23} color={presentation.accent} /></Pressable><SportAvatarButton /></View>}
-      />
+    <StagePage focused title="Competitions" eyebrow={config.name.toUpperCase()}>
+      <StageIntro title="A bigger day of play." description="Find a competition or manage one you organise." eyebrow={config.name.toUpperCase()} />
       <View style={styles.content}>
-        {invitations.length ? <View style={styles.invitationStack}><Text variant="overline" style={{ color: presentation.accent }}>ORGANIZER INVITATIONS · {invitations.length}</Text>{invitations.map((invitation) => <View key={invitation.accessId} style={styles.competition}><View style={styles.flex}><Text variant="bodyStrong">{invitation.competitionName}</Text><Text variant="caption" tone="muted">{invitation.kind} · ORGANIZER</Text></View><Pressable disabled={saving} onPress={() => respondInvitation(invitation, false)}><Text variant="overline" tone="danger">DECLINE</Text></Pressable><Pressable disabled={saving} onPress={() => respondInvitation(invitation, true)}><Text variant="overline" style={{ color: presentation.accent }}>ACCEPT</Text></Pressable></View>)}</View> : null}
-        <View style={styles.summary}>
-          <SummaryValue value={competitions.filter((item) => item.kind === 'TOURNAMENT').length} label="TOURNAMENTS" />
-          <SummaryValue value={competitions.filter((item) => item.kind === 'LEAGUE').length} label="LEAGUES" />
-          <SummaryValue value={competitions.filter((item) => item.lifecycle === 'LIVE').length} label="LIVE" />
-        </View>
-        <Button title="Create tournament or league" fullWidth onPress={() => setCreateOpen(true)} style={{ backgroundColor: presentation.accent }} />
-
-        {loading ? <SportStageLoader variant="compact" message={`Loading ${config.name} competitions`} detail="" accent={presentation.accent} /> : competitions.length ? competitions.map((competition) => {
-          const canManage = competition.ownerAccountId === auth.session?.user.id;
-          return (
-            <Pressable
-              key={competition.id}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${competition.name}`}
-              onPress={() => router.push(`/${presentation.routeSegment}/competition/${competition.id}` as Href)}
-              style={({ pressed }) => [styles.competition, pressed && styles.pressed]}
-            >
-              <View style={[styles.kindIcon, { backgroundColor: `${presentation.accent}16` }]}>
-                <MaterialCommunityIcons name={competition.kind === 'LEAGUE' ? 'table-large' : 'tournament'} size={23} color={presentation.accent} />
-              </View>
-              <View style={styles.flex}>
-                <Text variant="bodyStrong" numberOfLines={1}>{competition.name}</Text>
-                <Text variant="caption" tone="dim">{competition.kind} · {competition.lifecycle.replaceAll('_', ' ')}</Text>
-                <Text variant="caption" tone="muted">{canManage ? 'OWNED BY YOU' : 'PARTICIPATING OR ORGANIZING'}</Text>
-              </View>
-              <View style={[styles.playButton, { backgroundColor: presentation.accent }]}>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={colors.accentInk} />
-              </View>
-            </Pressable>
-          );
-        }) : (
-          <View style={styles.empty}>
-            <MaterialCommunityIcons name="trophy-outline" size={32} color={colors.textDim} />
-            <Text variant="bodyStrong">No competitions yet</Text>
-            <Text variant="caption" tone="muted" style={styles.emptyCopy}>Create a tournament or league, add entrants, then schedule each match manually.</Text>
-          </View>
-        )}
+        {loadedOwner === owner && invitations.length ? <View style={styles.invitationStack}><Text variant="overline" style={{ color: presentation.accent }}>ORGANIZER INVITATIONS · {invitations.length}</Text>{invitations.map((invitation) => <View key={invitation.accessId} style={styles.competition}><View style={styles.flex}><Text variant="bodyStrong">{invitation.competitionName}</Text><Text variant="caption" tone="muted">{invitation.kind} · ORGANIZER</Text></View><Pressable disabled={saving} onPress={() => respondInvitation(invitation, false)}><Text variant="overline" tone="danger">DECLINE</Text></Pressable><Pressable disabled={saving} onPress={() => respondInvitation(invitation, true)}><Text variant="overline" style={{ color: presentation.accent }}>ACCEPT</Text></Pressable></View>)}</View> : null}
+        {loading || (loadedOwner !== owner && !loadError) ? <SportStageLoader variant="compact" message={`Loading ${config.name} competitions`} detail="" accent={presentation.accent} /> : loadError ? <StageNotice retry={reload}>{loadError}</StageNotice> : <>
+          {competitions.filter(item => item.lifecycle !== 'ARCHIVED').length ? <StageList>{competitions.filter(item => item.lifecycle !== 'ARCHIVED').map(item => <StageRow key={item.id} title={item.name} detail={`${item.lifecycle.replaceAll('_', ' ')} · ${item.kind} · ${item.visibility}`} symbol="↗" onPress={() => router.push(`/${presentation.routeSegment}/competition/${item.id}` as Href)} />)}</StageList> : <StageNotice>No current competitions yet.</StageNotice>}
+          {manageable.length ? <><Text variant="overline" tone="dim">YOUR ORGANISER WORKSPACES</Text><StageList>{competitions.filter(item => manageable.includes(item.id) && item.lifecycle !== 'ARCHIVED').map(item => <StageRow key={item.id} title={item.name} detail="Manage entries, fixtures and matchday readiness" symbol="↗" onPress={() => router.push({ pathname: `/${presentation.routeSegment}/competition/${item.id}`, params: { section: 'manage' } } as Href)} />)}</StageList></> : null}
+          {competitions.some(item => item.lifecycle === 'ARCHIVED') ? <><Text variant="overline" tone="dim">ARCHIVED COMPETITIONS</Text><StageList>{competitions.filter(item => item.lifecycle === 'ARCHIVED').map(item => <StageRow key={item.id} title={item.name} detail="Archived competition" symbol="≡" onPress={() => router.push(`/${presentation.routeSegment}/competition/${item.id}` as Href)} />)}</StageList></> : null}
+        </>}
+        <StageButton title="Create a competition" onPress={() => setCreateOpen(true)} />
+        <StageButton title="View legacy competition archive" onPress={() => router.push(`/${presentation.routeSegment}/legacy-competitions` as Href)} />
       </View>
 
-      <Modal visible={createOpen} transparent animationType="fade" onRequestClose={() => setCreateOpen(false)}>
+      <Modal accessibilityLabel="New competition" visible={createOpen} transparent animationType="fade" onRequestClose={() => setCreateOpen(false)}>
         <View style={styles.overlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeading}>
               <View><Text variant="overline" tone="dim">{config.name}</Text><Text variant="h2">New competition</Text></View>
-              <Pressable accessibilityLabel="Close" onPress={() => setCreateOpen(false)} style={styles.close}><MaterialCommunityIcons name="close" size={21} color={colors.textMuted} /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setCreateOpen(false)} style={styles.close}><MaterialCommunityIcons name="close" size={21} color={colors.textMuted} /></Pressable>
             </View>
             <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={styles.mediaRow}><MediaChoice label="LOGO" uri={logoUri} square onPress={() => void pickMedia('logo')} /><MediaChoice label="16:9 BANNER" uri={bannerUri} onPress={() => void pickMedia('banner')} /></View>
-            <TextInput value={name} onChangeText={setName} autoFocus maxLength={60} placeholder="Competition name" placeholderTextColor={colors.textDim} style={styles.input} />
-            <TextInput value={description} onChangeText={setDescription} multiline placeholder="Competition description" placeholderTextColor={colors.textDim} style={[styles.input, styles.multiline]} />
-            <TextInput value={organizerPhone} onChangeText={setOrganizerPhone} keyboardType="phone-pad" placeholder="Organizer phone / WhatsApp" placeholderTextColor={colors.textDim} style={styles.input} />
-            <TextInput value={plannedEntryCount} onChangeText={setPlannedEntryCount} keyboardType="number-pad" placeholder={kind === 'TOURNAMENT' ? 'Planned teams or clubs' : 'Planned players'} placeholderTextColor={colors.textDim} style={styles.input} />
-            <View><TextInput value={venueQuery} onChangeText={(value) => { setVenueQuery(value); setVenuePlace(undefined); }} placeholder="Search primary venue on Google Maps" placeholderTextColor={colors.textDim} style={styles.input} />{venueSuggestions.map((suggestion) => <Pressable key={suggestion.placeId} onPress={() => void selectVenue(suggestion)} style={styles.venueSuggestion}><Text variant="caption">{suggestion.text}</Text></Pressable>)}{venuePlace ? <Text variant="caption" tone="accent">Google Maps venue selected</Text> : null}</View>
-            <TextInput value={socialMediaUrl} onChangeText={setSocialMediaUrl} autoCapitalize="none" keyboardType="url" placeholder="Social media link (optional)" placeholderTextColor={colors.textDim} style={styles.input} />
+            <StageField label="Competition name" value={name} onChangeText={setName} autoFocus maxLength={60} placeholder="Competition name" placeholderTextColor={colors.textDim} style={styles.input} />
+            <StageField label="Competition description" value={description} onChangeText={setDescription} multiline placeholder="Competition description" placeholderTextColor={colors.textDim} style={[styles.input, styles.multiline]} />
+            <StageField label="Organizer phone / WhatsApp" value={organizerPhone} onChangeText={setOrganizerPhone} keyboardType="phone-pad" placeholder="Organizer phone / WhatsApp" placeholderTextColor={colors.textDim} style={styles.input} />
+            <StageField label={kind === 'TOURNAMENT' ? 'Planned teams or clubs' : 'Planned players'} value={plannedEntryCount} onChangeText={setPlannedEntryCount} keyboardType="number-pad" placeholder={kind === 'TOURNAMENT' ? 'Planned teams or clubs' : 'Planned players'} placeholderTextColor={colors.textDim} style={styles.input} />
+            <View><StageField label="Primary venue" value={venueQuery} onChangeText={(value) => { setVenueQuery(value); setVenuePlace(undefined); }} placeholder="Search primary venue on Google Maps" placeholderTextColor={colors.textDim} style={styles.input} />{venueSuggestions.map((suggestion) => <Pressable accessibilityRole="button" key={suggestion.placeId} onPress={() => void selectVenue(suggestion)} style={styles.venueSuggestion}><Text variant="caption">{suggestion.text}</Text></Pressable>)}{venuePlace ? <Text variant="caption" tone="accent">Google Maps venue selected</Text> : null}</View>
+            <StageField label="Social media link (optional)" value={socialMediaUrl} onChangeText={setSocialMediaUrl} autoCapitalize="none" keyboardType="url" placeholder="Social media link (optional)" placeholderTextColor={colors.textDim} style={styles.input} />
             <View style={styles.kindSelector}>
               {(['TOURNAMENT', 'LEAGUE'] as const).map((value) => (
-                <Pressable key={value} onPress={() => setKind(value)} style={[styles.kindOption, kind === value && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}16` }]}>
+                <Pressable key={value} accessibilityRole="button" aria-pressed={kind === value} onPress={() => setKind(value)} style={[styles.kindOption, kind === value && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}16` }]}>
                   <Text variant="caption" style={kind === value ? { color: presentation.accent } : undefined}>{value}</Text>
                 </Pressable>
               ))}
             </View>
-            <View style={styles.formatSection}><Text variant="overline" tone="dim">VISIBILITY</Text><View style={styles.kindSelector}>{(['PRIVATE', 'PUBLIC'] as const).map((value) => <Pressable key={value} onPress={() => setVisibility(value)} style={[styles.kindOption, visibility === value && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}16` }]}><Text variant="caption" style={visibility === value ? { color: presentation.accent } : undefined}>{value}</Text></Pressable>)}</View></View>
+            <View style={styles.formatSection}><Text variant="overline" tone="dim">VISIBILITY</Text><View style={styles.kindSelector}>{(['PRIVATE', 'PUBLIC'] as const).map((value) => <Pressable key={value} accessibilityRole="button" aria-pressed={visibility === value} onPress={() => setVisibility(value)} style={[styles.kindOption, visibility === value && { borderColor: presentation.accent, backgroundColor: `${presentation.accent}16` }]}><Text variant="caption" style={visibility === value ? { color: presentation.accent } : undefined}>{value}</Text></Pressable>)}</View></View>
             <View style={styles.participantNote}>
               <MaterialCommunityIcons name={kind === 'TOURNAMENT' ? 'account-group-outline' : 'account-outline'} size={20} color={presentation.accent} />
               <Text variant="caption" tone="muted" style={styles.flex}>
@@ -237,20 +215,16 @@ export function SportCompetitionsScreen({ sportId }: { sportId: ScoringSportId }
           </View>
         </View>
       </Modal>
-    </Screen>
+    </StagePage>
   );
 }
 
-function SummaryValue({ value, label }: { value: number; label: string }) {
-  return <View style={styles.summaryValue}><Text variant="scoreMd">{value}</Text><Text variant="overline" tone="dim">{label}</Text></View>;
-}
-
 function MediaChoice({ label, uri, square, onPress }: { label: string; uri?: string; square?: boolean; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={[styles.mediaChoice, square && styles.mediaSquare]}>{uri ? <Image source={{ uri }} style={styles.mediaImage} /> : <><MaterialCommunityIcons name="image-plus" size={24} color={colors.textDim} /><Text variant="overline" tone="dim">{label}</Text></>}</Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Choose ${label.toLowerCase()} image`} onPress={onPress} style={[styles.mediaChoice, square && styles.mediaSquare]}>{uri ? <Image accessible={false} source={{ uri }} style={styles.mediaImage} /> : <><MaterialCommunityIcons name="image-plus" size={24} color={colors.textDim} /><Text variant="overline" tone="dim">{label}</Text></>}</Pressable>;
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
+  content: { gap: 18 },
   invitationStack: { gap: spacing.sm },
   headerAction: { width: 40, height: 40, borderWidth: 1, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -262,11 +236,11 @@ const styles = StyleSheet.create({
   empty: { padding: spacing.xl, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg, alignItems: 'center', gap: spacing.sm },
   emptyCopy: { textAlign: 'center', lineHeight: 18 },
   overlay: { flex: 1, padding: spacing.lg, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center' },
-  modalCard: { maxHeight: '92%', padding: spacing.lg, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.lg, backgroundColor: colors.surface, gap: spacing.md },
+  modalCard: { width: '100%', maxWidth: 560, alignSelf: 'center', maxHeight: '92%', padding: spacing.lg, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.lg, backgroundColor: colors.surface, gap: spacing.md },
   modalContent: { gap: spacing.md, paddingBottom: spacing.xs },
   modalHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  close: { width: 38, height: 38, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  input: { minHeight: 52, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.bg, color: colors.text, fontFamily: 'Inter_500Medium', fontSize: 16 },
+  close: { minWidth: 44, minHeight: 44, width: 38, height: 38, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  input: { minHeight: 52, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.bg, color: colors.text, fontFamily: 'Inter_400Regular', fontSize: 13 },
   multiline: { minHeight: 90, paddingTop: spacing.md, textAlignVertical: 'top' },
   mediaRow: { minHeight: 110, flexDirection: 'row', gap: spacing.sm },
   mediaChoice: { flex: 1, overflow: 'hidden', borderWidth: 1, borderStyle: 'dashed', borderColor: colors.borderStrong, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },

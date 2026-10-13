@@ -1,8 +1,10 @@
 import { getDb, newId } from './client';
+import type { ScoringDatabase } from './scoringTransaction';
 import {
   clearScoringSessionInDb,
   getScoringSessionFromDb,
   saveScoringSessionInDb,
+  writeScoringSessionInDb,
 } from './scoringSessionRepo';
 import {
   Ball,
@@ -359,8 +361,10 @@ export async function deleteTeam(teamId: string): Promise<void> {
   await db.runAsync('DELETE FROM teams WHERE id = ?', teamId);
 }
 
-export async function getTeam(id: string): Promise<Team | null> {
-  const db = await getDb();
+export async function getTeam(id: string,
+  connection?: ScoringDatabase,
+): Promise<Team | null> {
+  const db = connection ?? await getDb();
   const row = await db.getFirstAsync<any>('SELECT * FROM teams WHERE id = ?', id);
   return row ? rowToTeam(row) : null;
 }
@@ -529,16 +533,18 @@ export async function setMatchToss(
 export async function setMatchStatus(
   matchId: string,
   status: MatchStatus,
+  connection?: ScoringDatabase,
 ): Promise<void> {
-  const db = await getDb();
+  const db = connection ?? await getDb();
   await db.runAsync('UPDATE matches SET status = ? WHERE id = ?', status, matchId);
 }
 
 export async function setMatchResult(
   matchId: string,
   result: MatchResult,
+  connection?: ScoringDatabase,
 ): Promise<void> {
-  const db = await getDb();
+  const db = connection ?? await getDb();
   await db.runAsync(
     `UPDATE matches SET result_json = ?, status = 'COMPLETED' WHERE id = ?`,
     JSON.stringify(result),
@@ -546,8 +552,10 @@ export async function setMatchResult(
   );
 }
 
-export async function getMatch(id: string): Promise<Match | null> {
-  const db = await getDb();
+export async function getMatch(id: string,
+  connection?: ScoringDatabase,
+): Promise<Match | null> {
+  const db = connection ?? await getDb();
   const row = await db.getFirstAsync<any>('SELECT * FROM matches WHERE id = ?', id);
   return row ? rowToMatch(row) : null;
 }
@@ -664,8 +672,10 @@ export async function createInnings(input: {
   bowlingTeamId: string;
   isFollowOn?: boolean;
   target?: number;
-}): Promise<Innings> {
-  const db = await getDb();
+},
+  connection?: ScoringDatabase,
+): Promise<Innings> {
+  const db = connection ?? await getDb();
   const existing = await db.getFirstAsync<any>(
     'SELECT * FROM innings WHERE match_id = ? AND sequence = ?',
     input.matchId,
@@ -700,14 +710,18 @@ export async function createInnings(input: {
   return inn;
 }
 
-export async function getInnings(id: string): Promise<Innings | null> {
-  const db = await getDb();
+export async function getInnings(id: string,
+  connection?: ScoringDatabase,
+): Promise<Innings | null> {
+  const db = connection ?? await getDb();
   const row = await db.getFirstAsync<any>('SELECT * FROM innings WHERE id = ?', id);
   return row ? rowToInnings(row) : null;
 }
 
-export async function listInningsForMatch(matchId: string): Promise<Innings[]> {
-  const db = await getDb();
+export async function listInningsForMatch(matchId: string,
+  connection?: ScoringDatabase,
+): Promise<Innings[]> {
+  const db = connection ?? await getDb();
   const rows = await db.getAllAsync<any>(
     'SELECT * FROM innings WHERE match_id = ? ORDER BY sequence',
     matchId,
@@ -715,16 +729,19 @@ export async function listInningsForMatch(matchId: string): Promise<Innings[]> {
   return rows.map(rowToInnings);
 }
 
-export async function closeInnings(inningsId: string): Promise<void> {
-  const db = await getDb();
+export async function closeInnings(inningsId: string,
+  connection?: ScoringDatabase,
+): Promise<void> {
+  const db = connection ?? await getDb();
   await db.runAsync('UPDATE innings SET is_closed = 1 WHERE id = ?', inningsId);
 }
 
 export async function updateInningsTotals(
   inningsId: string,
   totals: { runs: number; wickets: number; balls: number },
+  connection?: ScoringDatabase,
 ): Promise<void> {
-  const db = await getDb();
+  const db = connection ?? await getDb();
   await db.runAsync(
     `UPDATE innings SET total_runs = ?, total_wickets = ?, total_balls = ? WHERE id = ?`,
     totals.runs,
@@ -770,8 +787,10 @@ export async function insertBall(input: {
   outPlayerId?: string;
   fielderId?: string;
   assistantFielderId?: string;
-}): Promise<Ball> {
-  const db = await getDb();
+},
+  connection?: ScoringDatabase,
+): Promise<Ball> {
+  const db = connection ?? await getDb();
   const ball: Ball = {
     id: newId(),
     inningsId: input.inningsId,
@@ -826,8 +845,10 @@ export async function insertBall(input: {
   return ball;
 }
 
-export async function deleteLastBall(inningsId: string): Promise<Ball | null> {
-  const db = await getDb();
+export async function deleteLastBall(inningsId: string,
+  connection?: ScoringDatabase,
+): Promise<Ball | null> {
+  const db = connection ?? await getDb();
   const row = await db.getFirstAsync<any>(
     `SELECT * FROM balls WHERE innings_id = ? ORDER BY created_at DESC LIMIT 1`,
     inningsId,
@@ -837,8 +858,10 @@ export async function deleteLastBall(inningsId: string): Promise<Ball | null> {
   return rowToBall(row);
 }
 
-export async function listBalls(inningsId: string): Promise<Ball[]> {
-  const db = await getDb();
+export async function listBalls(inningsId: string,
+  connection?: ScoringDatabase,
+): Promise<Ball[]> {
+  const db = connection ?? await getDb();
   const rows = await db.getAllAsync<any>(
     'SELECT * FROM balls WHERE innings_id = ? ORDER BY created_at ASC',
     inningsId,
@@ -895,8 +918,10 @@ export async function insertScoreAdjustment(input: {
   kind: ScoreAdjustmentKind;
   runs: number;
   note?: string;
-}): Promise<ScoreAdjustment> {
-  const db = await getDb();
+},
+  connection?: ScoringDatabase,
+): Promise<ScoreAdjustment> {
+  const db = connection ?? await getDb();
   const adjustment: ScoreAdjustment = {
     id: newId(),
     inningsId: input.inningsId,
@@ -920,8 +945,9 @@ export async function insertScoreAdjustment(input: {
 
 export async function listScoreAdjustments(
   inningsId: string,
+  connection?: ScoringDatabase,
 ): Promise<ScoreAdjustment[]> {
-  const db = await getDb();
+  const db = connection ?? await getDb();
   const rows = await db.getAllAsync<any>(
     'SELECT * FROM score_adjustments WHERE innings_id = ? ORDER BY created_at ASC',
     inningsId,
@@ -946,8 +972,10 @@ export async function insertBatterRetirement(input: {
   inningsId: string;
   playerId: string;
   kind: RetirementKind;
-}): Promise<BatterRetirement> {
-  const db = await getDb();
+},
+  connection?: ScoringDatabase,
+): Promise<BatterRetirement> {
+  const db = connection ?? await getDb();
   const retirement: BatterRetirement = {
     id: newId(),
     inningsId: input.inningsId,
@@ -969,8 +997,9 @@ export async function insertBatterRetirement(input: {
 
 export async function listBatterRetirements(
   inningsId: string,
+  connection?: ScoringDatabase,
 ): Promise<BatterRetirement[]> {
-  const db = await getDb();
+  const db = connection ?? await getDb();
   const rows = await db.getAllAsync<any>(
     'SELECT * FROM batter_retirements WHERE innings_id = ? ORDER BY created_at ASC',
     inningsId,
@@ -992,9 +1021,9 @@ function rowToBatterRetirement(row: any): BatterRetirement {
 
 export async function saveScoringSession(
   input: Omit<ScoringSession, 'updatedAt'> & { updatedAt?: number },
+  connection?: ScoringDatabase,
 ): Promise<ScoringSession> {
-  const db = await getDb();
-  return saveScoringSessionInDb(db, input);
+  return connection ? writeScoringSessionInDb(connection, input) : saveScoringSessionInDb(await getDb(), input);
 }
 
 export async function getScoringSession(matchId: string): Promise<ScoringSession | null> {
@@ -1002,7 +1031,9 @@ export async function getScoringSession(matchId: string): Promise<ScoringSession
   return getScoringSessionFromDb(db, matchId);
 }
 
-export async function clearScoringSession(matchId: string): Promise<void> {
-  const db = await getDb();
-  await clearScoringSessionInDb(db, matchId);
+export async function clearScoringSession(matchId: string,
+  connection?: ScoringDatabase,
+): Promise<void> {
+  if (connection) await connection.runAsync('DELETE FROM scoring_sessions WHERE match_id = ?', matchId);
+  else await clearScoringSessionInDb(await getDb(), matchId);
 }

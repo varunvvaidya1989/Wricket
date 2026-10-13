@@ -1,9 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Text } from '@/components/ui/Text';
+import { Text } from '@/components/wricket/ui/Text';
 import type { PersonalStats } from '@/lib/supabase/personalStatsApi';
-import { colors } from '@/lib/theme/colors';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
 import { formBarPercent, formTag, isPeakForm } from '@/lib/wricket/performance';
 

@@ -1,110 +1,84 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { Href } from 'expo-router';
-import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { type Href, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { Screen } from '@/components/ui/Screen';
-import { Text } from '@/components/ui/Text';
+import { StageButton, StageField, StageIntro, StageList, StageNotice, StagePage, StageRow, StageText } from '@/components/sports/platform/StageUI';
 import { useSportFeatureFlag } from '@/hooks/useSportFeatureFlag';
-import {
-  SPORT_CONFIGS,
-  SPORT_PRESENTATION,
-  type ScoringSportId,
-} from '@/lib/sports/scoring';
-import { sportCompetitionApi, type CloudCompetition } from '@/lib/supabase/sportCompetitionApi';
-import { sportScoringApi, type SportCloudMatchFeed } from '@/lib/supabase/sportScoringApi';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
-import { SportAvatarButton } from './SportProfileDrawer';
+import { SPORT_CONFIGS, SPORT_PRESENTATION, type ScoringSportId } from '@/lib/sports/scoring';
+import { sportCompetitionApi } from '@/lib/supabase/sportCompetitionApi';
+import { sportDiscoveryApi } from '@/lib/supabase/sportDiscoveryApi';
+import { sportRosterApi } from '@/lib/supabase/sportRosterApi';
+import { sportScoringApi } from '@/lib/supabase/sportScoringApi';
+
+const categories = ['Matches', 'Competitions', 'Clubs'] as const;
+type Result = { id: string; title: string; detail: string; route: string };
 
 export function SportSearchScreen({ sportId }: { sportId: ScoringSportId }) {
   const router = useRouter();
   const auth = useAuth();
-  const config = SPORT_CONFIGS[sportId];
   const presentation = SPORT_PRESENTATION[sportId];
-  const cloudCompetitions = useSportFeatureFlag(
-    'cloud_competitions',
-    presentation.catalogCode,
-    auth.session?.user.id,
-  );
-  const [query, setQuery] = useState('');
-  const [competitions, setCompetitions] = useState<readonly CloudCompetition[]>([]);
-  const [matches, setMatches] = useState<readonly SportCloudMatchFeed[]>([]);
-
-  const reload = useCallback(() => {
-    const connectedSport = auth.profile?.connectedSports.find((sport) => sport.code === presentation.catalogCode);
-    const accountId = auth.session?.user.id;
-    void Promise.all([
-      cloudCompetitions.enabled ? sportCompetitionApi.list(presentation.catalogCode) : [],
-      connectedSport && accountId ? sportScoringApi.listMine({ sportId: connectedSport.id, accountId }) : [],
-    ])
-      .then(([storedCompetitions, storedMatches]) => {
-        setCompetitions(storedCompetitions);
-        setMatches(storedMatches);
-      })
-      .catch(() => { setCompetitions([]); setMatches([]); });
-  }, [auth.profile?.connectedSports, auth.session?.user.id, cloudCompetitions.enabled, presentation.catalogCode]);
-  useFocusEffect(reload);
-
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleCompetitions = useMemo(() => competitions.filter((competition) => !normalizedQuery
-    || competition.name.toLowerCase().includes(normalizedQuery)
-    || competition.lifecycle.toLowerCase().includes(normalizedQuery)), [competitions, normalizedQuery]);
-  const visibleMatches = useMemo(() => matches.filter((match) => !normalizedQuery
-    || match.sideAPlayers.some((name) => name.toLowerCase().includes(normalizedQuery))
-    || match.sideBPlayers.some((name) => name.toLowerCase().includes(normalizedQuery))), [matches, normalizedQuery]);
-
-  return (
-    <Screen scroll padded={false}>
-      <AppHeader title="Search" eyebrow={config.name.toUpperCase()} right={<SportAvatarButton />} />
-      <View style={styles.content}>
-        <View style={styles.searchBox}><MaterialCommunityIcons name="magnify" size={21} color={colors.textDim} /><TextInput value={query} onChangeText={setQuery} placeholder="Search competitions, teams, or players" placeholderTextColor={colors.textDim} style={styles.searchInput} /></View>
-        <View style={[styles.viewerNote, { borderColor: presentation.accent }]}><MaterialCommunityIcons name="eye-outline" size={22} color={presentation.accent} /><View style={styles.flex}><Text variant="bodyStrong">Spectator viewing</Text><Text variant="caption" tone="muted">Open any competition or started match without gaining scoring controls.</Text></View></View>
-
-        <View style={styles.sectionHeading}><Text variant="overline" tone="dim">COMPETITIONS</Text><Text variant="caption" tone="muted">{visibleCompetitions.length}</Text></View>
-        {cloudCompetitions.enabled ? visibleCompetitions.map((competition) => (
-          <Pressable
-            key={competition.id}
-            onPress={() => router.push(`/${presentation.routeSegment}/competition/${competition.id}?mode=view` as Href)}
-            style={({ pressed }) => [styles.resultCard, pressed && styles.pressed]}
-          >
-            <View style={[styles.resultIcon, { backgroundColor: `${presentation.accent}16` }]}><MaterialCommunityIcons name={competition.kind === 'TOURNAMENT' ? 'trophy-outline' : 'table-large'} size={22} color={presentation.accent} /></View>
-            <View style={styles.flex}><Text variant="bodyStrong" numberOfLines={1}>{competition.name}</Text><Text variant="caption" tone="muted">{competition.kind} · {competition.lifecycle.replaceAll('_', ' ')}</Text></View>
-            <Text variant="overline" style={{ color: presentation.accent }}>VIEW</Text>
-          </Pressable>
-        )) : <Empty copy={cloudCompetitions.loading ? 'Checking competition availability…' : 'Competitions are not available yet.'} />}
-        {cloudCompetitions.enabled && !visibleCompetitions.length ? <Empty copy="No matching competitions." /> : null}
-
-        <View style={styles.sectionHeading}><Text variant="overline" tone="dim">MATCHES</Text><Text variant="caption" tone="muted">{visibleMatches.length}</Text></View>
-        {visibleMatches.map((match) => (
-            <Pressable key={match.id} onPress={() => router.push(`/${presentation.routeSegment}/match/${match.id}/feed` as Href)} style={({ pressed }) => [styles.resultCard, pressed && styles.pressed]}>
-              <View style={[styles.resultIcon, { backgroundColor: `${presentation.accent}16` }]}><MaterialCommunityIcons name={match.status === 'COMPLETED' ? 'check' : 'access-point'} size={22} color={presentation.accent} /></View>
-              <View style={styles.flex}><Text variant="bodyStrong" numberOfLines={1}>{match.participantA} vs {match.participantB}</Text><Text variant="caption" tone="muted">{match.matchFormat} · {match.status} · {match.currentSequence} EVENTS</Text></View>
-              <Text variant="overline" style={{ color: presentation.accent }}>VIEW</Text>
-            </Pressable>
-        ))}
-        {!visibleMatches.length ? <Empty copy="No matching matches." /> : null}
-      </View>
-    </Screen>
-  );
+  const name = SPORT_CONFIGS[sportId].name;
+  const base = `/${presentation.routeSegment}`;
+  const params = useLocalSearchParams<{ q?: string; category?: string }>();
+  const category = categories.find(item => item === params.category);
+  const query = typeof params.q === 'string' ? params.q.slice(0, 120) : '';
+  const accountId = auth.session?.user.id;
+  const connectedSport = auth.profile?.connectedSports.find(item => item.code === presentation.catalogCode);
+  const competitionsFlag = useSportFeatureFlag('cloud_competitions', presentation.catalogCode, accountId);
+  const key = `${accountId}:${sportId}:${category}:${query}:${competitionsFlag.enabled}`;
+  const [attempt, setAttempt] = useState(0);
+  const [result, setResult] = useState<{ key: string; items: Result[]; error?: string }>();
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    if (!category) return;
+    const timer = setTimeout(() => {
+      const load = async (): Promise<Result[]> => {
+        if (category === 'Clubs') {
+          if (!accountId) return [];
+          const clubs = await sportRosterApi.discoverClubs(presentation.catalogCode, query);
+          return clubs.map(club => ({ id: club.id, title: club.name, detail: `${name} · Public club`, route: `${base}/club/${club.id}` }));
+        }
+        if (category === 'Competitions') {
+          if (!competitionsFlag.enabled) return [];
+          const competitions = await sportCompetitionApi.list(presentation.catalogCode);
+          return competitions.map(item => ({ id: item.id, title: item.name, detail: item.lifecycle.replaceAll('_', ' ').toLowerCase(), route: `${base}/competition/${item.id}?mode=view` }));
+        }
+        const [mine, publicMatches, upcoming] = await Promise.all([
+          accountId && connectedSport ? sportScoringApi.listMine({ accountId, sportId: connectedSport.id }) : Promise.resolve([]),
+          sportDiscoveryApi.discoverPage(undefined, 49),
+          sportDiscoveryApi.upcoming(30, presentation.catalogCode),
+        ]);
+        const matches = new Map<string, Result>();
+        mine.forEach(match => matches.set(match.id, { id: match.id, title: `${match.participantA} vs ${match.participantB}`, detail: `${match.status.toLowerCase()} · ${match.headlineScore || 'Waiting for the first rally'}`, route: `${base}/match/${match.id}/feed` }));
+        publicMatches.items.filter(item => item.sportCode === presentation.catalogCode).forEach(match => matches.set(match.scoringMatchId, { id: match.scoringMatchId, title: `${match.participantA} vs ${match.participantB}`, detail: `${match.competitionName} · ${match.headlineScore}`, route: `${base}/match/${match.scoringMatchId}/feed` }));
+        upcoming.forEach(match => matches.set(match.discoveryId, { id: match.discoveryId, title: `${match.participantA} vs ${match.participantB}`, detail: `${match.competitionName} · ${new Date(match.scheduledAt).toLocaleString()}`, route: `${base}/competition/${match.competitionId}?mode=view` }));
+        return [...matches.values()];
+      };
+      void load().then(items => {
+        if (active) setResult({ key, items });
+      }).catch(() => {
+        if (active) setResult({ key, items: [], error: 'These results couldn’t be loaded. Please try again.' });
+      });
+    }, query ? 250 : 0);
+    return () => { active = false; clearTimeout(timer); };
+    // Attempt reissues the focused search without changing its route filters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, base, category, competitionsFlag.enabled, connectedSport?.id, key, name, presentation.catalogCode, query, attempt]));
+  const current = result?.key === key ? result : undefined;
+  const items = current?.items.filter(item => `${item.title} ${item.detail}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [];
+  return <StagePage>
+    <StageIntro title="More ways to play." description="Browse this sport. Switch sports from the header." />
+    <StageList>
+      <StageRow title="Find a match" detail="Live action and recent results" symbol="↗" onPress={() => router.setParams({ category: 'Matches' })} />
+      <StageRow title="Find a competition" detail="Open entries and upcoming events" symbol="◇" onPress={() => router.setParams({ category: 'Competitions' })} />
+      <StageRow title="Find a club" detail="Teams and regular playing groups" symbol="+" onPress={() => router.setParams({ category: 'Clubs' })} />
+    </StageList>
+    {category ? <>
+      <StageField label={`Search ${name} ${category.toLowerCase()}`} value={query} onChangeText={q => router.setParams({ q })} placeholder="Search by name" maxLength={120} autoCapitalize="none" />
+      <StageText variant="eyebrow" muted>{category.toUpperCase()}</StageText>
+      {!current ? <StageNotice>Finding {category.toLowerCase()}…</StageNotice> : current.error ? <StageNotice retry={() => setAttempt(value => value + 1)}>{current.error}</StageNotice> : items.length ? <StageList>{items.map(item => <StageRow key={item.id} title={item.title} detail={item.detail} symbol="↗" onPress={() => router.push(item.route as Href)} />)}</StageList> : <StageNotice>{category === 'Competitions' && !competitionsFlag.enabled ? competitionsFlag.loading ? 'Checking competition availability…' : 'Competitions are not available yet.' : query ? 'No matching results. Try a different name.' : category === 'Clubs' ? 'No public clubs found. Open your clubs to create a group or review invitations.' : 'No matches here yet. Check back for new activity.'}</StageNotice>}
+      {category === 'Clubs' ? <><StageText variant="small" muted>Showing up to 50 public clubs. Narrow the name to find your group.</StageText><StageButton title="Open my clubs & invitations" onPress={() => router.push(`${base}/clubs` as Href)} /></> : null}
+    </> : null}
+    <StageButton title="Search across all sports" onPress={() => router.push({ pathname: '/explore', params: query ? { q: query } : {} })} />
+  </StagePage>;
 }
-
-function Empty({ copy }: { copy: string }) {
-  return <View style={styles.empty}><MaterialCommunityIcons name="magnify" size={25} color={colors.textDim} /><Text variant="caption" tone="muted">{copy}</Text></View>;
-}
-
-const styles = StyleSheet.create({
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
-  searchBox: { minHeight: 50, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  searchInput: { flex: 1, color: colors.text, fontFamily: 'Inter_500Medium', fontSize: 15 },
-  viewerNote: { padding: spacing.md, borderWidth: 1, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  sectionHeading: { marginTop: spacing.sm, flexDirection: 'row', justifyContent: 'space-between' },
-  resultCard: { minHeight: 72, padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  resultIcon: { width: 42, height: 42, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  empty: { padding: spacing.lg, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.md, alignItems: 'center', gap: spacing.sm },
-  pressed: { opacity: 0.72 },
-  flex: { flex: 1, minWidth: 0 },
-});

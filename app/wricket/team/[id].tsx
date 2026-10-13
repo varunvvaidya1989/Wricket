@@ -1,48 +1,41 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useAuth } from '@/components/providers/AuthProvider';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/wricket/ui/Button';
+import { Card } from '@/components/wricket/ui/Card';
 import { Screen } from '@/components/ui/Screen';
-import { Text } from '@/components/ui/Text';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { SportStageLoader } from '@/components/ui/SportStageLoader';
+import { Text } from '@/components/wricket/ui/Text';
+import { WricketHeader } from '@/components/wricket/ui/WricketHeader';
+import { TeamCrest } from '@/components/wricket/ui/DesignIcon';
+import { CricketMatchCard } from '@/components/wricket/ui/CricketMatchCard';
+import { StateNotice } from '@/components/wricket/ui/StateNotice';
+import { RosterManagementSheet } from '@/components/wricket/teams/RosterManagementSheet';
 import { getSupabaseClient } from '@/lib/supabase/client';
-import {
-  RegisteredPlayerSearchResult,
-  TeamInvitation,
-  TeamRosterMember,
-  TeamRole,
-  teamManagementApi,
-} from '@/lib/supabase/teamManagementApi';
-import { colors } from '@/lib/theme/colors';
+import { teamManagementApi, type TeamRosterMember } from '@/lib/supabase/teamManagementApi';
+import { liveMatchApi, type CloudLiveMatch } from '@/lib/supabase/liveMatchApi';
+import { rosterPermissions, playerInitials, rosterDescription } from '@/lib/wricket/presentation/teamManagement';
+import { colors } from '@/lib/wricket/presentation/design';
 import { radius, spacing } from '@/lib/theme/spacing';
-import {
-  TeamHeadToHeadItem,
-  TeamInsights,
-  TeamMatchHistoryItem,
-  teamInsightsApi,
-} from '@/lib/supabase/teamInsightsApi';
+import { TeamHeadToHeadItem, TeamInsights, TeamMatchHistoryItem, teamInsightsApi } from '@/lib/supabase/teamInsightsApi';
 
 interface ManagedTeam {
   name: string;
   shortName: string;
-  ownerId: string;
+  ownerId?: string;
+  organizerId?: string;
   colorHex: string;
   tournamentId?: string;
   logoUrl?: string;
+  location?: string;
+  format?: string;
 }
 
 type TeamDetailTab = 'squad' | 'stats' | 'history';
-
-const TEAM_DETAIL_TABS: { id: TeamDetailTab; label: string }[] = [
-  { id: 'squad', label: 'Squad' },
-  { id: 'stats', label: 'Stats' },
-  { id: 'history', label: 'History' },
-];
 
 export default function TeamManagementScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -50,381 +43,106 @@ export default function TeamManagementScreen() {
   const auth = useAuth();
   const [team, setTeam] = useState<ManagedTeam>();
   const [members, setMembers] = useState<TeamRosterMember[]>([]);
-  const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
-  const [email, setEmail] = useState('');
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<RegisteredPlayerSearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [savingPlayerId, setSavingPlayerId] = useState<string>();
-  const [creatingInvite, setCreatingInvite] = useState(false);
   const [insights, setInsights] = useState<TeamInsights>();
+  const [onField, setOnField] = useState<CloudLiveMatch | null>();
   const [updatingLogo, setUpdatingLogo] = useState(false);
   const [activeTab, setActiveTab] = useState<TeamDetailTab>('squad');
-  const isOwner = team?.ownerId === auth.session?.user.id;
-  const captain = members.find(member => member.role === 'CAPTAIN' && member.status === 'ACTIVE');
-  const isCaptain = captain?.accountId === auth.session?.user.id;
-  const roleToAdd: TeamRole | undefined = isOwner && !captain
-    ? 'CAPTAIN'
-    : isCaptain
-      ? 'PLAYER'
-      : undefined;
-
-  const load = useCallback(async () => {
-    if (!id) return;
-    const { data, error } = await getSupabaseClient().from('teams')
-      .select('name, short_name, color_hex, logo_url, tournament_id, entity_owner_id, tournaments(created_by)')
-      .eq('id', id)
-      .single();
-    if (error) throw error;
-    const tournament = Array.isArray(data.tournaments) ? data.tournaments[0] : data.tournaments;
-    setTeam({
-      name: data.name,
-      shortName: data.short_name,
-      ownerId: data.entity_owner_id ?? tournament?.created_by,
-      colorHex: data.color_hex,
-      tournamentId: data.tournament_id ?? undefined,
-      logoUrl: data.logo_url ?? undefined,
-    });
-    const [roster, teamInsights] = await Promise.all([
-      teamManagementApi.listRoster(id),
-      teamInsightsApi.get(id),
-    ]);
-    setMembers(roster);
-    setInsights(teamInsights);
-    if ((data.entity_owner_id ?? tournament?.created_by) === auth.session?.user.id) {
-      setInvitations(await teamManagementApi.listInvitations(id));
-    } else {
-      setInvitations([]);
-    }
-  }, [auth.session?.user.id, id]);
-
-  useFocusEffect(useCallback(() => {
-    void load().catch(showError);
-  }, [load]));
-
-  useEffect(() => {
-    if (!id || !roleToAdd || query.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-    const timer = setTimeout(() => {
-      setSearching(true);
-      teamManagementApi.searchRegisteredPlayers(id, query)
-        .then(setResults)
-        .catch(showError)
-        .finally(() => setSearching(false));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [id, query, roleToAdd]);
-
-  const activeInvitations = useMemo(
-    () => invitations.filter(invite =>
-      invite.role === 'CAPTAIN'
-      && !invite.revokedAt
-      && new Date(invite.expiresAt) > new Date(),
-    ),
-    [invitations],
-  );
+  const [managing, setManaging] = useState(false);
+  const [error, setError] = useState<string>();
+  const [insightsError, setInsightsError] = useState<string>();
+  const permissions = rosterPermissions(auth.session?.user.id, [team?.ownerId, team?.organizerId], members);
   const activeMembers = members.filter(member => member.status === 'ACTIVE');
 
-  const assign = async (player: RegisteredPlayerSearchResult) => {
-    if (!id || !roleToAdd || player.currentRole || (roleToAdd === 'CAPTAIN' && !player.accountId)) return;
-    setSavingPlayerId(player.playerId);
-    try {
-      await teamManagementApi.assignRegisteredPlayer(id, player.playerId, roleToAdd);
-      setQuery('');
-      setResults([]);
-      await load();
-    } catch (cause) {
-      showError(cause);
-    } finally {
-      setSavingPlayerId(undefined);
-    }
-  };
+  const load = useCallback(async () => {
+    if (!id) throw new Error('Team link is missing.');
+    const { data, error: teamError } = await getSupabaseClient().from('teams')
+      .select('name,short_name,color_hex,logo_url,tournament_id,entity_owner_id,tournaments(created_by,location,format)')
+      .eq('id', id).single();
+    if (teamError) throw teamError;
+    const tournament = Array.isArray(data.tournaments) ? data.tournaments[0] : data.tournaments;
+    const roster = await teamManagementApi.listRoster(id);
+    setTeam({ name: data.name, shortName: data.short_name, ownerId: data.entity_owner_id ?? undefined,
+      organizerId: tournament?.created_by, colorHex: data.color_hex, tournamentId: data.tournament_id ?? undefined,
+      logoUrl: data.logo_url ?? undefined, location: tournament?.location, format: tournament?.format });
+    setMembers(roster); setError(undefined);
+    const [stats, current] = await Promise.allSettled([teamInsightsApi.get(id), teamManagementApi.onFieldMatch(id)]);
+    setInsightsError(undefined);
+    if (stats.status === 'fulfilled') setInsights(stats.value);
+    else setInsightsError(stats.reason instanceof Error ? stats.reason.message : 'Could not load team stats');
+    if (current.status === 'fulfilled') setOnField(current.value);
+    else { setOnField(undefined); setInsightsError(current.reason instanceof Error ? current.reason.message : 'Could not load current match'); }
+  }, [id]);
 
-  const createCaptainInvite = async () => {
-    if (!id) return;
-    setCreatingInvite(true);
-    try {
-      const invite = await teamManagementApi.createInvitation({
-        teamId: id,
-        role: 'CAPTAIN',
-        invitedEmail: email,
-        maxUses: 1,
-        expiresInHours: 72,
-      });
-      await Share.share({
-        title: `Captain ${team?.name ?? 'team'}`,
-        message: `Captain invitation for ${team?.name ?? 'the team'}\n${invite.link}`,
-        url: invite.link,
-      });
-      setEmail('');
-      await load();
-    } catch (cause) {
-      showError(cause);
-    } finally {
-      setCreatingInvite(false);
-    }
-  };
+  useFocusEffect(useCallback(() => {
+    void load().catch(cause => setError(cause instanceof Error ? cause.message : 'Could not load team'));
+  }, [load]));
 
-  const removeMember = (member: TeamRosterMember) => {
-    if (!id) return;
-    Alert.alert(
-      member.role === 'CAPTAIN' ? 'Remove captain?' : 'Remove player?',
-      `${member.name} will be removed from this team only.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => teamManagementApi.removeTeamPlayer(id, member.playerId)
-            .then(load)
-            .catch(showError),
-        },
-      ],
-    );
-  };
-
-  const toggleKeeper = async (member: TeamRosterMember) => {
-    if (!id || (!isOwner && !isCaptain)) return;
-    try {
-      await teamManagementApi.setWicketKeeper(id, member.playerId, !member.isKeeper);
-      await load();
-    } catch (cause) {
-      showError(cause);
-    }
-  };
+  const currentMatchId = onField?.id;
+  useFocusEffect(useCallback(() => {
+    if (!currentMatchId) return;
+    return liveMatchApi.subscribe(currentMatchId,
+      () => { void load().catch(cause => setError(cause instanceof Error ? cause.message : 'Could not refresh team activity')); },
+      message => setInsightsError(message));
+  }, [currentMatchId, load]));
 
   const chooseTeamLogo = async () => {
-    if (!id || !auth.session || (!isOwner && !isCaptain)) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Photo permission needed', 'Allow photo access to choose a team logo.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.82,
-    });
-    if (result.canceled) return;
+    if (!id || !auth.session || !permissions.canManage || updatingLogo) return;
     setUpdatingLogo(true);
     try {
-      await teamManagementApi.updateLogo(id, result.assets[0].uri, auth.session.user.id);
-      await load();
-    } catch (cause) {
-      showError(cause);
-    } finally {
-      setUpdatingLogo(false);
-    }
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) throw new Error('Allow photo access to choose a team logo.');
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.82 });
+      if (!result.canceled) { await teamManagementApi.updateLogo(id, result.assets[0].uri, auth.session.user.id); await load(); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update team logo'); }
+    finally { setUpdatingLogo(false); }
   };
 
-  return (
-    <Screen scroll padded={false}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <AppHeader title="Team" back />
-      <View style={styles.content}>
-        <View style={styles.teamHeader}>
-          <View style={styles.hero}>
-            <Pressable
-              disabled={(!isOwner && !isCaptain) || updatingLogo}
-              accessibilityRole="button"
-              accessibilityLabel={(isOwner || isCaptain) ? 'Change team logo' : 'Team logo'}
-              onPress={() => void chooseTeamLogo()}
-              style={[styles.badge, { backgroundColor: team?.colorHex ?? colors.accent }]}
-            >
-              {team?.logoUrl ? <Image source={{ uri: team.logoUrl }} style={styles.teamLogo} /> : <Text variant="h2" style={{ color: colors.accentInk }}>{team?.shortName ?? 'TM'}</Text>}
-              {(isOwner || isCaptain) ? <View style={styles.logoEdit}><MaterialCommunityIcons name={updatingLogo ? 'progress-clock' : 'camera'} size={13} color={colors.accentInk} /></View> : null}
-            </Pressable>
-            <View style={{ flex: 1 }}>
-              <Text variant="h1">{team?.name ?? 'Team'}</Text>
-              <Text variant="caption" tone={insights?.stats.won ? 'accent' : 'muted'}>
-                {insights?.stats.played
-                  ? `${insights.stats.won}W – ${insights.stats.lost}L · ${insights.stats.played} matches`
-                  : team?.tournamentId ? 'Tournament team' : 'Reusable team entity'}
-              </Text>
-            </View>
-          </View>
-          <View accessibilityRole="tablist" style={styles.tabs}>
-            {TEAM_DETAIL_TABS.map(tab => (
-              <Pressable
-                key={tab.id}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: activeTab === tab.id }}
-                onPress={() => setActiveTab(tab.id)}
-                style={[styles.tab, activeTab === tab.id && styles.tabActive]}
-              >
-                <Text variant="bodyStrong" tone={activeTab === tab.id ? 'accent' : 'muted'}>
-                  {tab.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+  return <Screen padded={false}>
+    <Stack.Screen options={{ headerShown: false }} />
+    <WricketHeader title="Team" backTo="/wricket/my-wricket" />
+    {!team ? error ? <StateNotice error title="Team unavailable" detail={error} action={{ label: 'Try again', onPress: () => void load().catch(cause => setError(cause instanceof Error ? cause.message : 'Could not load team')) }} />
+      : <SportStageLoader message="Opening team" detail="Loading the current roster" /> : <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+      {error ? <StateNotice error title="Team update failed" detail={error} action={{ label: 'Retry team', onPress: () => void load().catch(cause => setError(cause instanceof Error ? cause.message : 'Could not refresh team')) }} /> : null}
+      <View style={{ gap: 20 }}>
+        <View style={styles.hero}>
+          <Pressable accessibilityRole="button" accessibilityLabel={permissions.canManage ? 'Change team logo' : 'Team logo'} disabled={!permissions.canManage || updatingLogo} onPress={() => void chooseTeamLogo()}>
+            {team.logoUrl ? <Image source={{ uri: team.logoUrl }} style={{ width: 33, height: 36, borderRadius: 5 }} /> : <TeamCrest name={team.name} />}
+          </Pressable>
+          <View style={{ flex: 1, minWidth: 0 }}><Text variant="overline" tone="muted">{[team.location, team.format ? team.format.replaceAll('_', ' ') + ' CRICKET' : 'CRICKET CLUB'].filter(Boolean).join(' · ')}</Text><Text variant="h1" style={{ marginTop: 8 }}>{team.name}</Text></View>
         </View>
-
-        {activeTab === 'stats' && <>
-          <View style={styles.statStrip}>
-            <RosterStat label="PLAYED" value={String(insights?.stats.played ?? 0)} />
-            <RosterStat label="WON" value={String(insights?.stats.won ?? 0)} />
-            <RosterStat label="WIN RATE" value={`${Math.round(insights?.stats.winRate ?? 0)}%`} />
-          </View>
-          <TeamStats insights={insights} playerCount={activeMembers.length} />
-          <HeadToHead
-            rows={insights?.headToHead ?? []}
-            onOpenTeam={teamId => router.push({ pathname: '/wricket/team/[id]', params: { id: teamId } })}
-          />
-        </>}
-
-        {activeTab === 'history' && (
-          <MatchHistory
-            matches={insights?.history ?? []}
-            onOpenMatch={matchId => router.push({
-              pathname: '/wricket/match/[id]/live',
-              params: { id: matchId, tab: 'summary' },
-            })}
-          />
-        )}
-
-        {activeTab === 'squad' && roleToAdd && (
-          <Card>
-            <Text variant="h3">{roleToAdd === 'CAPTAIN' ? 'Assign captain' : 'Add players'}</Text>
-            <Text variant="body" tone="muted" style={styles.helper}>
-              Search registered SportStage players. A player may represent multiple teams.
-            </Text>
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search player name"
-              placeholderTextColor={colors.textDim}
-              style={styles.input}
-            />
-            {searching && <Text variant="caption" tone="muted" style={styles.helper}>Searching…</Text>}
-            <View style={styles.searchResults}>
-              {results.map(player => {
-                const captainNeedsAccount = roleToAdd === 'CAPTAIN' && !player.accountId;
-                const disabled = Boolean(player.currentRole) || captainNeedsAccount || Boolean(savingPlayerId);
-                return (
-                <Pressable
-                  key={player.playerId}
-                  disabled={disabled}
-                  onPress={() => void assign(player)}
-                  style={styles.searchResult}
-                >
-                  <MaterialCommunityIcons name="account-circle-outline" size={30} color={colors.accent} />
-                  <View style={{ flex: 1 }}>
-                    <Text variant="bodyStrong">{player.name}</Text>
-                    <Text variant="caption" tone="muted">
-                      {player.currentRole
-                        ? `Already ${player.currentRole.toLowerCase()}`
-                        : captainNeedsAccount
-                          ? 'SportStage account required for captain'
-                          : `Add as ${roleToAdd.toLowerCase()}`}
-                    </Text>
-                  </View>
-                  {savingPlayerId === player.playerId
-                    ? <Text variant="caption" tone="muted">Adding…</Text>
-                    : <MaterialCommunityIcons name="plus-circle-outline" size={24} color={disabled ? colors.textDim : colors.accent} />}
-                </Pressable>
-                );
-              })}
-            </View>
-          </Card>
-        )}
-
-        {activeTab === 'squad' && isOwner && !captain && (
-          <Card>
-            <Text variant="h3">Invite captain</Text>
-            <Text variant="body" tone="muted" style={styles.helper}>
-              Use an invitation only when the captain cannot be found in player search.
-            </Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="Captain email (optional)"
-              placeholderTextColor={colors.textDim}
-              style={styles.input}
-            />
-            <Button
-              title="Share captain invite"
-              loading={creatingInvite}
-              onPress={() => void createCaptainInvite()}
-              fullWidth
-              style={{ marginTop: spacing.md }}
-            />
-          </Card>
-        )}
-
-        {activeTab === 'squad' && <View>
-          <Text variant="overline" tone="muted">ROSTER</Text>
-          <View style={styles.playerList}>
-            {activeMembers.length ? activeMembers.map((member, index) => (
-                <Pressable
-                  key={member.playerId}
-                  onPress={() => router.push({
-                    pathname: '/wricket/player/[id]',
-                    params: { id: member.playerId },
-                  })}
-                  style={styles.playerRow}
-                >
-                  <View style={styles.jerseyBadge}><Text variant="caption">{member.jerseyNo ?? index + 1}</Text></View>
-                  <View style={{ flex: 1 }}><Text variant="bodyStrong">{member.name}</Text>{member.role === 'CAPTAIN' ? <Text variant="caption" tone="accent">CAPTAIN</Text> : null}</View>
-                  {(isOwner || isCaptain) ? (
-                    <Pressable
-                      hitSlop={8}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: Boolean(member.isKeeper) }}
-                      onPress={event => { event.stopPropagation(); void toggleKeeper(member); }}
-                      style={[styles.keeperChip, member.isKeeper && styles.keeperChipActive]}
-                    >
-                      <MaterialCommunityIcons name="shield-account-outline" size={15} color={member.isKeeper ? colors.accentInk : colors.textMuted} />
-                      <Text variant="caption" style={{ color: member.isKeeper ? colors.accentInk : colors.textMuted }}>WK</Text>
-                    </Pressable>
-                  ) : <Text variant="caption" tone="muted">{rosterRole(member)}</Text>}
-                  <MaterialCommunityIcons name="chevron-right" size={20} color={colors.textDim} />
-                    {((isOwner && member.role === 'CAPTAIN') || (isCaptain && member.role === 'PLAYER')) && (
-                      <Pressable hitSlop={8} accessibilityLabel={`Remove ${member.name}`} onPress={event => { event.stopPropagation(); removeMember(member); }}><MaterialCommunityIcons name="close-circle-outline" size={20} color={colors.danger} /></Pressable>
-                    )}
-                </Pressable>
-              )) : <Text tone="muted">No captain or players have been added.</Text>}
-          </View>
-        </View>}
-
-        {activeTab === 'squad' && isOwner && activeInvitations.length > 0 && (
-          <View>
-            <Text variant="overline" tone="muted">ACTIVE CAPTAIN INVITATIONS</Text>
-            <View style={styles.roster}>
-              {activeInvitations.map(invite => (
-                <Card key={invite.id}>
-                  <View style={styles.member}>
-                    <MaterialCommunityIcons name="link-variant" size={22} color={colors.accent} />
-                    <View style={{ flex: 1 }}>
-                      <Text variant="bodyStrong">Captain invitation</Text>
-                      <Text variant="caption" tone="muted">{invite.invitedEmail ?? 'Shareable link'}</Text>
-                    </View>
-                    <Button title="Revoke" size="sm" variant="ghost" onPress={() => {
-                      teamManagementApi.revokeInvitation(invite.id).then(load).catch(showError);
-                    }} />
-                  </View>
-                </Card>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {activeTab === 'squad' && !roleToAdd && !isOwner && !isCaptain && (
-          <Text variant="body" tone="muted">Only the team owner or captain can manage this roster.</Text>
-        )}
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text variant="overline" tone="muted" style={styles.membership}>{permissions.owner ? 'YOUR TEAM' : permissions.isCaptain ? 'TEAM CAPTAIN' : auth.session?.user.id && members.some(member => member.accountId === auth.session?.user.id) ? 'YOUR TEAM' : 'TEAM ROSTER'}</Text>
+          {permissions.canManage ? <Button title="Manage roster" size="sm" variant="ghost" onPress={() => setManaging(true)} /> : null}
+        </View>
+        {updatingLogo ? <Text variant="caption" tone="muted">Updating team logo…</Text> : null}
       </View>
-    </Screen>
-  );
+      {activeTab === 'squad' ? <>
+        <View style={{ gap: 13 }}><Text variant="overline" tone="muted">ON THE FIELD</Text>
+          {onField ? <CricketMatchCard match={onField} onPress={() => router.push({ pathname: '/wricket/match/[id]/live', params: { id: onField.id } })} />
+            : <Card><Text variant="bodyStrong">{onField === undefined ? insightsError ? 'Current match unavailable' : 'Loading team activity…' : 'No match on the field yet.'}</Text><Text variant="caption" tone="muted" style={{ marginTop: 8 }}>Live and upcoming fixtures appear here when this team has a match.</Text></Card>}
+        </View>
+        <View style={{ gap: 13 }}><Text variant="overline" tone="muted">{'PLAYING ROSTER · ' + activeMembers.length}</Text>
+          <Card style={{ paddingVertical: 0, paddingHorizontal: 16 }}>
+            {activeMembers.length ? activeMembers.map((member, index) => <Pressable key={member.playerId} accessibilityRole="button" accessibilityLabel={'View player ' + member.name} onPress={() => router.push({ pathname: '/wricket/player/[id]', params: { id: member.playerId } })} style={[styles.playerRow, index === activeMembers.length - 1 && { borderBottomWidth: 0 }]}>
+              <View style={styles.jerseyBadge}><Text variant="caption" style={{ fontSize: 9, color: '#d7f3cd' }}>{playerInitials(member.name)}</Text></View><View style={{ flex: 1, minWidth: 0 }}><Text variant="bodyStrong">{member.name}</Text><Text variant="caption" tone="muted" style={{ marginTop: 3 }}>{rosterDescription(member)}</Text></View>
+            </Pressable>) : <View style={{ paddingVertical: 18, gap: 8 }}><Text variant="bodyStrong">Build your playing roster.</Text><Text variant="caption" tone="muted">{permissions.owner ? 'Assign a captain first. The captain can then add registered players.' : 'The team owner assigns a captain, who adds the players.'}</Text>{permissions.canManage ? <Button title="Open roster management" variant="secondary" onPress={() => setManaging(true)} /> : null}</View>}
+          </Card>
+        </View>
+      </> : activeTab === 'stats' ? insights ? <>
+        {insights.stats.played > 0 ? <View style={styles.statStrip}><RosterStat label="PLAYED" value={String(insights.stats.played)} /><RosterStat label="WON" value={String(insights.stats.won)} /><RosterStat label="WIN RATE" value={Math.round(insights.stats.winRate) + '%'} /></View> : null}
+        <TeamStats insights={insights} playerCount={activeMembers.length} /><HeadToHead rows={insights.headToHead} onOpenTeam={teamId => router.push({ pathname: '/wricket/team/[id]', params: { id: teamId } })} />
+      </> : <Text tone="muted">Team stats unavailable. Try refreshing this team.</Text> : insights ? <MatchHistory matches={insights.history} onOpenMatch={matchId => router.push({ pathname: '/wricket/match/[id]/live', params: { id: matchId, tab: 'summary' } })} /> : <Text tone="muted">Team history unavailable. Try refreshing this team.</Text>}
+      {insightsError ? <StateNotice error title="Team activity unavailable" detail={insightsError} action={{ label: 'Retry activity', onPress: () => void load().catch(cause => setError(cause instanceof Error ? cause.message : 'Could not refresh team')) }} /> : null}
+      <View style={{ flexDirection: 'row', gap: 8 }}>{(['squad', 'stats', 'history'] as const).map(value => <Button key={value} title={value === 'squad' ? 'Squad' : value === 'stats' ? 'Stats' : 'History'} variant={activeTab === value ? 'secondary' : 'ghost'} style={{ flex: 1 }} onPress={() => setActiveTab(value)} />)}</View>
+      {permissions.canManage && id ? <RosterManagementSheet key={id} visible={managing} teamId={id} teamName={team.name} accountId={auth.session?.user.id} ownerIds={[team.ownerId, team.organizerId]} members={members} onClose={() => setManaging(false)} onChanged={load} /> : null}
+    </ScrollView>}
+  </Screen>;
 }
 
 
 function TeamStats({ insights, playerCount }: { insights?: TeamInsights; playerCount: number }) {
   const stats = insights?.stats;
+  if (!stats?.played) return <Card><Text variant="h3">Team stats start with your first result.</Text><Text variant="caption" tone="muted" style={styles.helper}>Completed matches build the team record across tournament entries and friendly matches.</Text></Card>;
   return <Card>
     <Text variant="h3">Team stats</Text>
     <Text variant="caption" tone="muted" style={styles.helper}>Across every tournament entry and friendly match.</Text>
@@ -519,20 +237,11 @@ function RosterStat({ label, value, detail }: { label: string; value: string; de
   return <Card style={styles.statCard}><Text variant="overline" tone="dim">{label}</Text><Text variant={detail ? 'bodyStrong' : 'h2'} numberOfLines={1}>{value}</Text>{detail ? <Text variant="caption" tone="accent">{detail}</Text> : null}</Card>;
 }
 
-function rosterRole(member: TeamRosterMember): string {
-  if (member.isKeeper || member.playerRole === 'WK') return 'WK';
-  if (member.playerRole === 'AR') return 'ALL';
-  return member.playerRole ?? 'ROLE NOT SET';
-}
-
-function showError(cause: unknown) {
-  Alert.alert('Team update failed', cause instanceof Error ? cause.message : 'Please try again.');
-}
-
 const styles = StyleSheet.create({
-  content: { gap: spacing.xl, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xxxl },
+  content: { gap: 25, paddingHorizontal: 18, paddingTop: 19, paddingBottom: spacing.xxxl },
+  membership: { borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 4, fontSize: 8, letterSpacing: 0 },
   teamHeader: { gap: spacing.md },
-  hero: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  hero: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   badge: {
     width: 46,
     height: 46,
@@ -570,7 +279,7 @@ const styles = StyleSheet.create({
   roster: { gap: spacing.sm, marginTop: spacing.sm },
   playerList: { marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   playerRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  jerseyBadge: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  jerseyBadge: { width: 33, height: 33, borderRadius: 17, backgroundColor: '#34472f', borderWidth: 1, borderColor: '#65755d', alignItems: 'center', justifyContent: 'center' },
   keeperChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceElevated },
   keeperChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   metricGrid: { marginTop: spacing.md, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

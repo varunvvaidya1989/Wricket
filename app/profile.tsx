@@ -1,106 +1,56 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-
+import { Image, View } from 'react-native';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { SportIcon } from '@/components/sports/SportIcon';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { Card } from '@/components/ui/Card';
-import { Screen } from '@/components/ui/Screen';
-import { SportStageLoader } from '@/components/ui/SportStageLoader';
-import { Text } from '@/components/ui/Text';
+import { StageButton, StageIntro, StageList, StageNotice, StagePage, StageRow, StageText, stageColors as colors } from '@/components/sports/platform/StageUI';
 import { useGlobalProfile } from '@/hooks/useGlobalProfile';
-import { SportSummary } from '@/lib/supabase/globalProfileApi';
 import { sportResultsApi, type MySportStatistic } from '@/lib/supabase/sportResultsApi';
-import { colors } from '@/lib/theme/colors';
-import { radius, spacing } from '@/lib/theme/spacing';
+import { sportLetters } from '@/lib/sports/platform/connectedExperience';
 
 export default function GlobalProfileScreen() {
   const auth = useAuth();
   const router = useRouter();
-  const { data, loading, error, reload } = useGlobalProfile(auth.session?.user.id);
+  const params = useLocalSearchParams<{ view?: string }>();
+  const preview = params.view === 'public';
+  const accountId = auth.session?.user.id;
+  const { data, loading, error, reload } = useGlobalProfile(accountId);
   const [cloudStats, setCloudStats] = useState<MySportStatistic[]>([]);
-
+  const [statsError, setStatsError] = useState<string>();
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsAttempt, setStatsAttempt] = useState(0);
   useEffect(() => {
-    if (!auth.session) { setCloudStats([]); return; }
-    void sportResultsApi.listMine().then(setCloudStats).catch(() => setCloudStats([]));
-  }, [auth.session]);
-
-  return <Screen padded={false}>
-    <AppHeader title="Global Profile" eyebrow="SPORTSTAGE" back right={<Pressable accessibilityRole="button" accessibilityLabel="Account settings" onPress={() => router.push('/account')} style={styles.headerAction}><MaterialCommunityIcons name="cog-outline" size={22} color={colors.text} /></Pressable>} />
-    {loading && !data ? <SportStageLoader variant="section" message="Building your sports profile" detail="Combining matches, teams, and career stats" /> : !auth.session ? <View style={styles.center}><MaterialCommunityIcons name="account-lock-outline" size={34} color={colors.textDim} /><Text variant="h3">Sign in to view your profile</Text></View> : error && !data ? <View style={styles.center}><MaterialCommunityIcons name="cloud-alert-outline" size={34} color={colors.textDim} /><Text variant="h3">Profile unavailable</Text><Text tone="muted" style={styles.centerText}>{error}</Text><Pressable onPress={() => void reload()} style={styles.retry}><Text variant="caption" style={{ color: colors.accentInk }}>TRY AGAIN</Text></Pressable></View> : data ? <ScrollView refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} />} contentContainerStyle={styles.content}>
-      <View style={styles.identity}>
-        {data.profile.avatarUrl ? <Image source={{ uri: data.profile.avatarUrl }} style={styles.avatarImage} /> : <View style={styles.avatar}><Text variant="h1" tone="accent">{initials(data.profile.displayName)}</Text></View>}
-        <View style={styles.identityCopy}><Text variant="h2" numberOfLines={1}>{data.profile.displayName}</Text><Text variant="caption" tone="muted">SportStage member</Text></View>
-        {data.profile.primarySport ? <View style={styles.primaryChip}><MaterialCommunityIcons name="star" size={13} color={colors.accent} /><Text variant="overline" tone="accent">{data.profile.primarySport.name}</Text></View> : null}
+    let active = true;
+    setCloudStats([]); setStatsError(undefined); setStatsLoading(true);
+    if (!accountId) { setStatsLoading(false); return; }
+    void sportResultsApi.listMine().then(result => { if (active) setCloudStats(result); })
+      .catch(cause => { if (active) setStatsError(cause instanceof Error ? cause.message : 'Could not load match records.'); })
+      .finally(() => { if (active) setStatsLoading(false); });
+    return () => { active = false; };
+  }, [accountId, statsAttempt]);
+  return <StagePage focused title={preview ? 'Public profile preview' : 'Your profile'}>
+    {!data && loading ? <StageNotice>Loading your profile…</StageNotice> : null}
+    {error ? <StageNotice retry={() => void reload()}>{error}</StageNotice> : null}
+    {data ? <>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        {data.profile.avatarUrl ? <Image accessible={false} source={{ uri: data.profile.avatarUrl }} style={{ width: 70, height: 70, borderRadius: 22 }} /> : <View style={{ width: 70, height: 70, borderRadius: 22, backgroundColor: '#2c4226', borderWidth: 1, borderColor: '#536d44', justifyContent: 'center', alignItems: 'center' }}><StageText aria-hidden variant="title" style={{ fontSize: 24, color: colors.accent }}>{initials(data.profile.displayName)}</StageText></View>}
+        <View style={{ flex: 1, minWidth: 0, gap: 5 }}><StageText variant="title" style={{ fontSize: 25, lineHeight: 30 }}>{data.profile.displayName}</StageText><StageText variant="small" muted>{data.sports.map(summary => summary.sport.name).join(' · ') || 'SportStage member'}</StageText></View>
       </View>
-
-      <View style={styles.activityStrip}>
-        <ActivityValue value={data.activeSports} label="SPORTS" />
-        <ActivityValue value={data.totalMatches} label="MATCHES" />
-        <ActivityValue value={data.achievements} label="MILESTONES" />
-      </View>
-      {data.partial ? <View style={styles.partial}><MaterialCommunityIcons name="sync-alert" size={17} color={colors.textMuted} /><Text variant="caption" tone="muted" style={styles.flex}>Some activity is still syncing. Your sport access is unaffected.</Text></View> : null}
-
-      <View style={styles.sectionHeader}><Text variant="overline" tone="muted">CONNECTED SPORTS</Text><Pressable onPress={() => router.push('/account')}><Text variant="caption" tone="accent">MANAGE</Text></Pressable></View>
-      {data.sports.length ? data.sports.map(summary => <SportSummaryCard key={summary.sport.id} summary={summary} onOpen={route => router.push(route as never)} />) : <View style={styles.empty}><MaterialCommunityIcons name="trophy-outline" size={26} color={colors.textDim} /><Text variant="h3">No sports connected</Text><Text tone="muted" style={styles.centerText}>Choose the sports you follow or play to build your SportStage profile.</Text><Pressable onPress={() => router.push('/account')} style={styles.retry}><Text variant="caption" style={{ color: colors.accentInk }}>CHOOSE SPORTS</Text></Pressable></View>}
-
-      <View style={styles.sectionHeader}><Text variant="overline" tone="muted">CROSS-SPORT MATCH RECORD</Text><Text variant="caption" tone="dim">CLOUD RESULTS</Text></View>
-      {cloudStats.length ? <View style={styles.cloudStats}>{cloudStats.map((stat) => <View key={stat.sportCode} style={styles.cloudStatRow}><SportIcon code={stat.sportCode} size={20} color={colors.accent} /><Text variant="bodyStrong" style={styles.flex}>{stat.sportCode.replaceAll('_', ' ')}</Text><CloudValue value={stat.matchesPlayed} label="PLAYED" /><CloudValue value={stat.wins} label="WON" /><CloudValue value={stat.losses} label="LOST" /></View>)}</View> : <View style={styles.emptyRecord}><Text variant="caption" tone="dim">Completed cloud matches across your connected sports will build this record.</Text></View>}
-
-      <View style={styles.accountSection}><Text variant="overline" tone="muted">ACCOUNT</Text><Pressable onPress={() => router.push('/account')} style={styles.accountRow}><MaterialCommunityIcons name="shield-account-outline" size={21} color={colors.textMuted} /><View style={styles.flex}><Text variant="bodyStrong">Account and privacy</Text><Text variant="caption" tone="dim">Identity, security and data controls</Text></View><MaterialCommunityIcons name="chevron-right" size={21} color={colors.textDim} /></Pressable></View>
-    </ScrollView> : null}
-  </Screen>;
+      {preview ? <><StageIntro eyebrow="PUBLIC IDENTITY" title="How players see you." description="Your name and photo identify you to other players. Email and mobile stay in your private account settings." /><StageNotice>This is a preview of your identity. Public sport cards are shared only through each sport’s visibility settings.</StageNotice><StageButton title="Edit identity" onPress={() => router.push('/account?section=identity')} /></> : <>
+      <StageButton title="View public profile" onPress={() => router.push('/profile?view=public')} />
+      <StageText variant="eyebrow" muted>YOUR SPORTS</StageText>
+      {data.partial ? <StageNotice retry={() => void reload()}>Some cricket activity is unavailable. Your sport access is unaffected.</StageNotice> : null}
+      {statsError ? <StageNotice retry={() => setStatsAttempt(value => value + 1)}>{statsError}</StageNotice> : null}
+      <StageList>{data.sports.map(summary => {
+        const stat = cloudStats.find(item => item.sportCode === summary.sport.code);
+        const detail = !summary.available ? 'Profile reserved · activates at launch' : summary.headlineStats.length ? summary.headlineStats.map(item => `${item.value} ${item.label.toLowerCase()}`).join(' · ') : stat ? `${stat.matchesPlayed} played · ${stat.wins} won · ${stat.losses} lost` : statsLoading ? 'Loading match records…' : statsError || (summary.sport.code === 'CRICKET' && data.partial) ? 'Match records unavailable' : 'No recorded activity yet.';
+        return <StageRow key={summary.sport.code} symbol={sportLetters[summary.sport.code]} title={summary.sport.name} detail={detail} onPress={() => summary.available ? router.push((summary.sport.code === 'CRICKET' ? '/wricket/my-wricket' : summary.sport.appRoute ?? '/apps') as never) : router.push('/account?section=sports')} />;
+      })}</StageList>
+      {!data.sports.length ? <StageNotice>No sports connected. Choose your sports in Account & privacy.</StageNotice> : null}
+      <StageText variant="eyebrow" muted>YOUR ACCOUNT</StageText>
+      <StageList><StageRow symbol="↗" title="Account & privacy" detail="Identity, connected sports and security" onPress={() => router.push('/account')} /><StageRow symbol="↗" title="Notifications" detail="Invitations and match updates" onPress={() => router.push('/notifications')} /><StageRow symbol="?" title="Help with a task" detail="How to use SportStage" onPress={() => router.push('/manual')} /></StageList>
+      </>}
+    </> : null}
+  </StagePage>;
 }
-
-function SportSummaryCard({ summary, onOpen }: { summary: SportSummary; onOpen: (route: string) => void }) {
-  const route = summary.sport.code === 'CRICKET' ? '/wricket/my-wricket' : summary.sport.appRoute;
-  const canOpen = summary.available && Boolean(route);
-  return <Card onPress={canOpen ? () => onOpen(route!) : undefined} style={!summary.available ? styles.unavailableCard : undefined}>
-    <View style={styles.sportHeader}><View style={styles.sportIcon}><SportIcon code={summary.sport.code} size={24} color={summary.available ? colors.accent : colors.textDim} /></View><View style={styles.flex}><View style={styles.sportTitle}><Text variant="h3">{summary.sport.name}</Text>{summary.sport.isPrimary ? <Text variant="overline" tone="accent">PRIMARY</Text> : null}</View><Text variant="caption" tone="muted">{summary.sport.accessStatus === 'COMING_SOON' ? 'Profile reserved · activates at launch' : summary.available ? 'Sport profile active' : 'Profile unavailable'}</Text></View>{canOpen ? <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textDim} /> : null}</View>
-    {summary.headlineStats.length ? <View style={styles.sportStats}>{summary.headlineStats.map(item => <View key={item.label} style={styles.sportStat}><Text variant="h2">{item.value}</Text><Text variant="overline" tone="dim">{item.label}</Text></View>)}</View> : <Text variant="caption" tone="dim" style={styles.noActivity}>{summary.available ? 'No recorded activity yet.' : 'Your profile will activate when this sport launches.'}</Text>}
-  </Card>;
-}
-
-function ActivityValue({ value, label }: { value: number; label: string }) {
-  return <View style={styles.activityValue}><Text variant="h2">{value}</Text><Text variant="overline" tone="dim">{label}</Text></View>;
-}
-
-function CloudValue({ value, label }: { value: number; label: string }) {
-  return <View style={styles.cloudValue}><Text variant="bodyStrong">{value}</Text><Text variant="overline" tone="dim">{label}</Text></View>;
-}
-
 function initials(name: string) { return name.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'S'; }
 
-const styles = StyleSheet.create({
-  headerAction: { width: 40, height: 40, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl, gap: spacing.md },
-  center: { flex: 1, minHeight: 320, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingHorizontal: spacing.xl },
-  centerText: { textAlign: 'center', lineHeight: 21 },
-  identity: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.lg },
-  identityCopy: { flex: 1, minWidth: 0 },
-  avatar: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.accentMuted, alignItems: 'center', justifyContent: 'center' },
-  avatarImage: { width: 62, height: 62, borderRadius: 31 },
-  primaryChip: { maxWidth: 110, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: radius.pill, backgroundColor: colors.accentMuted, paddingHorizontal: spacing.sm, paddingVertical: 6 },
-  activityStrip: { flexDirection: 'row', borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, paddingVertical: spacing.lg },
-  activityValue: { flex: 1, alignItems: 'center', gap: 3 },
-  partial: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, backgroundColor: colors.surfaceElevated, borderRadius: radius.md },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
-  sportHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  sportIcon: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center' },
-  sportTitle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  sportStats: { flexDirection: 'row', marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  sportStat: { flex: 1, alignItems: 'center', gap: 2 },
-  unavailableCard: { opacity: 0.72 },
-  noActivity: { marginTop: spacing.md },
-  cloudStats: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surface, overflow: 'hidden' },
-  cloudStatRow: { minHeight: 64, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  cloudValue: { width: 46, alignItems: 'center', gap: 2 },
-  emptyRecord: { padding: spacing.md, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.md },
-  empty: { alignItems: 'center', gap: spacing.sm, padding: spacing.xl, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: radius.lg },
-  retry: { marginTop: spacing.sm, backgroundColor: colors.accent, borderRadius: radius.pill, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  accountSection: { marginTop: spacing.lg, gap: spacing.sm },
-  accountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border },
-  flex: { flex: 1 },
-});
