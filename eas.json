@@ -61,7 +61,7 @@
   "submit": {
     "production": {
       "android": {
-        "track": "alpha",
+        "track": "SportStage - internal ",
         "releaseStatus": "completed"
       }
     }

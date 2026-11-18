@@ -10,7 +10,9 @@ const host = app.android.intentFilters?.flatMap(filter => filter.data ?? []).fin
 if (!host) throw new Error('No Android app-link host configured in app.json.');
 const origin = `https://${host}`;
 const marketingOrigin = 'https://www.sportstageapp.com';
+const dependencies = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')).dependencies;
 const adPlugin = app.plugins.find(plugin => Array.isArray(plugin) && plugin[0] === 'react-native-google-mobile-ads');
+const adsIncluded = Boolean(adPlugin || dependencies['react-native-google-mobile-ads']);
 const publisherId = adPlugin?.[1]?.androidAppId?.match(/ca-app-(pub-\d+)~/)?.[1];
 
 async function check(id, url, validate) {
@@ -33,8 +35,10 @@ const checks = await Promise.all([
     ? 'No matching public Google Play link found in the page HTML. Verify the download CTA.' : undefined),
   check('privacy-page', `${marketingOrigin}/privacy`, body => !/privacy/i.test(body) || /window\.location\.href\s*=\s*["']\/lander/.test(body)
     ? 'Expected privacy content missing.' : undefined),
-  check('app-ads-apex', `${origin}/app-ads.txt`, validateAds),
-  check('app-ads-www', `${marketingOrigin}/app-ads.txt`, validateAds),
+  ...(adsIncluded ? [
+    check('app-ads-apex', `${origin}/app-ads.txt`, validateAds),
+    check('app-ads-www', `${marketingOrigin}/app-ads.txt`, validateAds),
+  ] : [{ id: 'advertising', status: 'NOT_APPLICABLE', detail: 'Advertising SDK is removed for the ad-free candidate. Verify the final Android manifest separately.' }]),
   check('android-app-links', `${origin}/.well-known/assetlinks.json`, body => {
     try {
       const links = JSON.parse(body);
@@ -60,13 +64,13 @@ function validateAds(body) {
 const report = {
   checkedAt: new Date().toISOString(),
   scope: 'Public HTTP and repository configuration only; this is not store, privacy, security, or monetization approval.',
-  app: { name: app.name, version: app.version, packageName },
+  app: { name: app.name, version: app.version, packageName, adsIncluded },
   submission: eas.submit?.production?.android,
   checks,
   manualGates: [
     'Run npm run build:check and retain the evidence for the release revision.',
     'Verify production AAB target API, device tests, Play pre-launch report, and testing-track eligibility.',
-    'Confirm AdMob account/payment verification, linked store, app-ads verification, and app readiness approval.',
+    adsIncluded ? 'Confirm AdMob account/payment verification, linked store, app-ads verification, and app readiness approval.' : 'Verify the next Android AAB contains no advertising SDK or advertising-ID permission.',
     'Verify Data safety, privacy/consent, age-audience treatment, and account deletion on a test account.',
     'Confirm backend security, backup/restore, multi-device scoring, and production monitoring.',
     'Verify acquisition attribution and activation/retention metrics before buying traffic.',
@@ -84,4 +88,4 @@ if (outputIndex !== -1) {
 for (const item of checks) console.log(`${item.status.padEnd(7)} ${item.id}: ${item.detail}`);
 console.log(`Submission configuration: ${report.submission?.track ?? 'unset'} / ${report.submission?.releaseStatus ?? 'unset'}`);
 console.log('Manual gates remain required even when every public check passes.');
-process.exitCode = checks.some(item => item.status !== 'PASS') ? 1 : 0;
+process.exitCode = checks.some(item => !['PASS', 'NOT_APPLICABLE'].includes(item.status)) ? 1 : 0;

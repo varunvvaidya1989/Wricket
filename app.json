@@ -75,14 +75,6 @@
         }
       ],
       "expo-sqlite",
-      [
-        "react-native-google-mobile-ads",
-        {
-          "androidAppId": "ca-app-pub-1107614471405385~7780496634",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
-          "delayAppMeasurementInit": true
-        }
-      ],
       "@react-native-community/datetimepicker",
       [
         "expo-image-picker",

@@ -3,9 +3,12 @@ import * as Linking from 'expo-linking';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { deleteMyAccount } from '@/lib/supabase/accountDeletion';
 import { CloudProfile, getCloudProfile, saveCloudProfile } from '@/lib/supabase/profiles';
-import { safeAuthReturnTo } from '@/lib/auth/returnTo';
+import { safeAuthReturnFromUrl, safeAuthReturnTo } from '@/lib/auth/returnTo';
+import { clearInitialRecoveryReturnTo, getInitialRecoveryReturnTo } from '@/lib/auth/recoveryIntent';
 import { resetDb } from '@/lib/wricket/db/client';
+import { requestPhoneOtp, verifyPhoneOtp } from '@/lib/auth/phoneOtp';
 
 interface AuthContextValue {
   session: Session | null;
@@ -14,7 +17,11 @@ interface AuthContextValue {
   error: string | null;
   authLinkError: { code: string; message: string; returnTo?: string } | null;
   clearAuthLinkError(): void;
+  recoveryReturnTo: string | undefined;
+  clearRecoveryReturnTo(): void;
   signIn(email: string, password: string): Promise<void>;
+  requestPhoneOtp(phone: string): Promise<void>;
+  verifyPhoneOtp(phone: string, code: string): Promise<void>;
   signUp(email: string, password: string, draft?: { displayName: string; sportCodes: string[]; primarySportCode: string; phoneE164: string }, returnTo?: string): Promise<boolean>;
   signOutCurrentDevice(): Promise<void>;
   saveProfile(displayName: string): Promise<void>;
@@ -35,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<CloudProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recoveryReturnTo, setRecoveryReturnTo] = useState(getInitialRecoveryReturnTo);
   const [error, setError] = useState<string | null>(null);
   const [authLinkError, setAuthLinkError] = useState<{ code: string; message: string; returnTo?: string } | null>(null);
 
@@ -70,10 +78,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const createSessionFromUrl = async (url: string) => {
       const parsed = Linking.parse(url);
       const fragment = url.includes('#') ? new URLSearchParams(url.split('#')[1]) : null;
+      const callbackReturnTo = safeAuthReturnFromUrl(url) ?? getInitialRecoveryReturnTo();
+      if (callbackReturnTo && (parsed.path === 'reset-password' || fragment?.get('type') === 'recovery')) {
+        setRecoveryReturnTo(callbackReturnTo);
+      }
       const errorDescription = parsed.queryParams?.error_description ?? fragment?.get('error_description');
       const errorCode = parsed.queryParams?.error_code ?? fragment?.get('error_code');
       if (errorDescription) {
-        setAuthLinkError({ code: String(errorCode ?? 'auth_link_invalid'), message: String(errorDescription), returnTo: safeAuthReturnTo(parsed.queryParams?.returnTo) });
+        setAuthLinkError({ code: String(errorCode ?? 'auth_link_invalid'), message: String(errorDescription), returnTo: callbackReturnTo });
         return;
       }
       const code = parsed.queryParams?.code;
@@ -98,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuthLinkError({
           code: typeof authCause.code === 'string' ? authCause.code : 'auth_link_invalid',
           message: typeof authCause.message === 'string' ? authCause.message : 'Could not open authentication link',
-          returnTo: safeAuthReturnTo(Linking.parse(url).queryParams?.returnTo),
+          returnTo: safeAuthReturnFromUrl(url) ?? getInitialRecoveryReturnTo(),
         });
       });
     };
@@ -126,10 +138,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error,
     authLinkError,
     clearAuthLinkError() { setAuthLinkError(null); },
+    recoveryReturnTo,
+    clearRecoveryReturnTo() { clearInitialRecoveryReturnTo(); setRecoveryReturnTo(undefined); },
     async signIn(email, password) {
       const { error } = await getSupabaseClient().auth.signInWithPassword({ email: email.trim(), password });
       if (error) throw error;
     },
+    async requestPhoneOtp(phone) { await requestPhoneOtp(getSupabaseClient(), phone); },
+    async verifyPhoneOtp(phone, code) { await verifyPhoneOtp(getSupabaseClient(), phone, code); },
     async signUp(email, password, draft, returnTo) {
       const { data, error } = await getSupabaseClient().auth.signUp({
         email: email.trim(),
@@ -152,6 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async signOutCurrentDevice() {
       const { error } = await getSupabaseClient().auth.signOut({ scope: 'local' });
       if (error) throw error;
+      clearInitialRecoveryReturnTo(); setRecoveryReturnTo(undefined);
     },
     async saveProfile(displayName) {
       if (!session) throw new Error('Sign in before creating a profile');
@@ -212,14 +229,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     async deleteAccount(confirmation) {
       const client = getSupabaseClient();
-      const { error: deleteError } = await client.rpc('delete_my_sportstage_account', { p_confirmation: confirmation });
-      if (deleteError) throw deleteError;
+      await deleteMyAccount(client, confirmation);
       await resetDb();
       await client.auth.signOut({ scope: 'local' });
+      clearInitialRecoveryReturnTo(); setRecoveryReturnTo(undefined);
       setSession(null);
       setProfile(null);
     },
-  }), [authLinkError, error, loading, profile, session]);
+  }), [authLinkError, error, loading, profile, recoveryReturnTo, session]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

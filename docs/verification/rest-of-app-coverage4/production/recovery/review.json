@@ -1,0 +1,154 @@
+{
+  "origin": "https://sportstageapp.expo.app",
+  "label": "production",
+  "checks": [
+    "Controlled email request sends one command under rapid activation, locks its email while pending, associates validation errors and retains the selected match destination; no email delivery claimed",
+    "Signup sport and primary-sport toggle buttons expose selected state and activate with keyboard Space; only one primary sport is selected",
+    "Controlled unconfirmed sign-in opens a usable verification/resend handoff; rapid sign-in and resend activation each send one command, password is cleared and return destination retained. No email was sent",
+    "Actual password change, field-specific errors, one failed command under rapid activation, retained input/retry and saved receipt; old password no longer signs in",
+    "Real hosted recovery token restored in a fresh browser; 320px field errors and successful password reset resume the intended Badminton setup. Token was generated administratively; inbox delivery remains deferred",
+    "Actual web account deletion with an avatar: Storage failure preserves account and retry; successful retry removes file and login and returns to sign-in"
+  ],
+  "pageErrors": [],
+  "emailDelivery": "DEFERRED_BY_USER",
+  "bundleSHA256": "e92779e3d3e899af6d58aa78c2622ba4b6e7d61631fc973e1dee5d2d0f1de65c",
+  "accessibility": [
+    {
+      "name": "recovery-email-error",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "recovery-requested",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sport-preferences-keyboard",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "unconfirmed-email-recovery",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "password-field-errors",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "password-retry",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "password-saved",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "reset-password-error-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "account-deletion-retry-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "status": "PASS",
+  "fixtureRemoved": true
+}

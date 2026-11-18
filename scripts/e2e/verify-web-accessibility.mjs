@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -20,7 +21,10 @@ const browser = await chromium.launch({ channel: 'chrome' });
 const context = await browser.newContext({ viewport: { width: 390, height: 900 }, reducedMotion: 'reduce' });
 const page = await context.newPage();
 page.setDefaultTimeout(60000); page.setDefaultNavigationTimeout(120000);
-page.on('pageerror', error => report.pageErrors.push(error.message));
+page.on('pageerror', error => {
+  report.pageErrors.push(error.message);
+  console.info('Page error context:', new URL(page.url()).pathname, error.stack);
+});
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function visit(path) {
   if (label !== 'local-export') await pause(10000);
@@ -54,7 +58,7 @@ async function review(name, ready) {
 try {
   await visit('/live');
   await expect(page.getByText('Back to your game.', { exact: true })).toBeVisible();
-  const script = await page.locator('script[src]').evaluateAll(es => es.map(e => new URL(e.src).pathname).find(path => path.includes('/_expo/static/js/web/entry-')));
+  const script = await page.locator('script[src]').evaluateAll(es => es.map(e => new URL(e.src).pathname).find(path => /\/_expo\/static\/js\/web\/(?:entry|index)-[a-f0-9]+\.js$/.test(path)));
   const remote = Buffer.from(await (await fetch(origin + script)).arrayBuffer());
   assert.deepEqual(remote, await readFile(`${exportDir}/client${script}`));
   report.bundleSHA256 = createHash('sha256').update(remote).digest('hex');

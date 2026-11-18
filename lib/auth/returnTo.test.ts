@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { safeAuthReturnTo } from './returnTo';
+import { safeAuthReturnFromUrl, safeAuthReturnTo } from './returnTo';
+
+describe('safe authentication callback destination', () => {
+  it('keeps the selected setup separate from a recovery token fragment', () => {
+    expect(safeAuthReturnFromUrl('https://sportstageapp.expo.app/reset-password?returnTo=%2Fbadminton%2Fmatch%2Fnew#access_token=test&refresh_token=test&type=recovery')).toBe('/badminton/match/new');
+  });
+  it('preserves an allowed invitation on native callback URLs', () => {
+    const target = '/wricket/team/join?token=' + 'a'.repeat(48);
+    expect(safeAuthReturnFromUrl(`sportstage:///reset-password?returnTo=${encodeURIComponent(target)}#type=recovery`)).toBe(target);
+  });
+  it.each([null, 'invalid-url', 'https://sportstageapp.expo.app/reset-password?returnTo=https%3A%2F%2Fexample.com', 'https://sportstageapp.expo.app/reset-password?returnTo=%2F%2Fexample.com'])('rejects an invalid callback destination: %s', url => {
+    expect(safeAuthReturnFromUrl(url)).toBeUndefined();
+  });
+});
 
 describe('safeAuthReturnTo', () => {
   it.each(['wricket', 'badminton', 'tennis', 'padel', 'table-tennis', 'pickleball'])('retains only the exact %s setup destination', sport => {

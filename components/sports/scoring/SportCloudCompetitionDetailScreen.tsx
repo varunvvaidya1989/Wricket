@@ -614,7 +614,7 @@ export function SportCloudCompetitionDetailScreen({ sportId }: { sportId: Scorin
       {tab === 'schedule' ? <>
         {workspace && competition.lifecycle === 'REGISTRATION_OPEN' ? <><StageNotice>Lock registration before scheduling fixtures.</StageNotice><StageButton title="Review registration lifecycle" onPress={() => setTab('publish')} /></> : null}
         <View style={styles.scheduleHeading}>
-          <View style={styles.flex}><Text variant="h3">Match schedule</Text><Text variant="caption" tone="muted">{detail.fixtures.length} fixture{detail.fixtures.length === 1 ? '' : 's'} · Open a match to score it, or manage attendance and lineups from its card.</Text></View>
+          <View style={styles.flex}><Text variant="h2">Match schedule</Text><Text variant="caption" tone="muted">{detail.fixtures.length} fixture{detail.fixtures.length === 1 ? '' : 's'} · Open a match to score it, or manage attendance and lineups from its card.</Text></View>
           <View style={styles.actions}>
             <SmallAction label="GUIDE" onPress={() => router.push('/manual')} accent={presentation.accent} />
             {detail.canManage && workspace && ['DRAFT', 'REGISTRATION_LOCKED', 'PUBLISHED', 'LIVE'].includes(competition.lifecycle) ? <SmallAction label="ADD FIXTURE" onPress={() => setScheduleOpen(true)} accent={presentation.accent} /> : null}

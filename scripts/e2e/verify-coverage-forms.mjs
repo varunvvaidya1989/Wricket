@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -59,7 +60,7 @@ async function capture(name, title) {
 }
 try {
   await visit('/live');
-  const script = await page.locator('script[src]').evaluateAll(elements => elements.map(element => new URL(element.src).pathname).find(path => path.includes('/_expo/static/js/web/entry-')));
+  const script = await page.locator('script[src]').evaluateAll(elements => elements.map(element => new URL(element.src).pathname).find(path => /\/_expo\/static\/js\/web\/(?:entry|index)-[a-f0-9]+\.js$/.test(path)));
   const remote = Buffer.from(await (await fetch(`${origin}${script}`)).arrayBuffer());
   assert.deepEqual(remote, await readFile(`${exportDir}/client${script}`));
   report.bundleSHA256 = createHash('sha256').update(remote).digest('hex');

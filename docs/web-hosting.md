@@ -6,6 +6,14 @@ Hosting subdomain is `sportstageapp`; omit `--dev-domain` when deploying.
 
 ## Latest verified deployment
 
+Coverage 4 production: **b3r7em2cob** (deployed 2026-10-13; final acceptance 2026-10-14). Preview and production each passed 39 account/recovery and root/scoring accessibility states with zero page errors/violations and fixture cleanup. Actual password recovery returns to setup; avatar/account deletion retries safely. Hosted migration 20261013142242 is applied. Build gate: 939 tests / 163 files, 119 routes. Live bundle SHA-256: `e92779e3d3e899af6d58aa78c2622ba4b6e7d61631fc973e1dee5d2d0f1de65c`. Rollback: **cmby29do6t**. Email delivery and native release gates remain deferred. [Review](verification/REST-OF-APP-COVERAGE4.md).
+
+## Previous accessibility deployment
+
+Coverage 3 production: **cmby29do6t** (2026-10-13). Preview and production each passed 57 accessibility states, keyboard scoring, responsive forms and organiser offline/retry with zero page errors and fixture cleanup. Live bundle SHA-256: `f568ffc1f1323bc97ae70f2f69bded14fab53d704788d78b8613cd00beb77c73`. Build gate: 916 tests / 159 files, 119 routes. Rollback: **hky6k7mpox**. [Review](verification/REST-OF-APP-COVERAGE3.md).
+
+## Previous forms deployment
+
 Coverage 2 production: **hky6k7mpox** (2026-10-13). Forms/help/identity and destructive-data review acceptance passed on preview and production at 320, 390 and 1280 widths with zero browser errors and fixture cleanup. Final hosted bundle matches the export byte for byte: `a4bb30024966418a32f13bb285207b40d4cb27d9a6429e527446651fd3113175`. Full gate: 906 tests / 157 files, 119 routes. Rollback: **pdb79xgsdb**. [Review](verification/REST-OF-APP-COVERAGE2.md).
 
 ## Previous archive deployment

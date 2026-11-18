@@ -90,8 +90,10 @@ export default function RootLayout() {
                 <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
                 <Stack.Screen name="reset-password" options={{ headerShown: false }} />
                 <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+                <Stack.Screen name="profile-details" options={{ headerShown: false }} />
                 <Stack.Screen name="account" options={{ headerShown: false }} />
                 <Stack.Screen name="manual" options={{ headerShown: false }} />
+                <Stack.Screen name="support" options={{ headerShown: false }} />
                 <Stack.Screen name="profile" options={{ headerShown: false }} />
                 <Stack.Screen name="live" options={{ headerShown: false }} />
                 <Stack.Screen name="feed" options={{ headerShown: false }} />

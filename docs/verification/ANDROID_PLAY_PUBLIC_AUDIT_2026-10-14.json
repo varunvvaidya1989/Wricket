@@ -1,0 +1,79 @@
+{
+  "checkedAt": "2026-10-14T04:07:59.053Z",
+  "scope": "Public HTTP and repository configuration only; this is not store, privacy, security, or monetization approval.",
+  "app": {
+    "name": "SportStage",
+    "version": "2.0.0",
+    "packageName": "com.vcreativestudio.sportstage"
+  },
+  "submission": {
+    "track": "alpha",
+    "releaseStatus": "completed"
+  },
+  "checks": [
+    {
+      "id": "app-link-domain",
+      "url": "https://sportstageapp.com",
+      "httpStatus": 200,
+      "status": "REVIEW",
+      "detail": "Returns a JavaScript /lander placeholder, not the SportStage destination."
+    },
+    {
+      "id": "marketing-home",
+      "url": "https://www.sportstageapp.com",
+      "httpStatus": 200,
+      "status": "PASS",
+      "detail": "Expected public content found."
+    },
+    {
+      "id": "download-destination",
+      "url": "https://www.sportstageapp.com",
+      "httpStatus": 200,
+      "status": "REVIEW",
+      "detail": "No matching public Google Play link found in the page HTML. Verify the download CTA."
+    },
+    {
+      "id": "privacy-page",
+      "url": "https://www.sportstageapp.com/privacy",
+      "httpStatus": 200,
+      "status": "PASS",
+      "detail": "Expected public content found."
+    },
+    {
+      "id": "app-ads-apex",
+      "url": "https://sportstageapp.com/app-ads.txt",
+      "httpStatus": 200,
+      "status": "REVIEW",
+      "detail": "Expected Google DIRECT publisher record not found. Confirm the exact record in AdMob."
+    },
+    {
+      "id": "app-ads-www",
+      "url": "https://www.sportstageapp.com/app-ads.txt",
+      "httpStatus": 404,
+      "status": "REVIEW",
+      "detail": "HTTP 404; verify availability and access restrictions."
+    },
+    {
+      "id": "android-app-links",
+      "url": "https://sportstageapp.com/.well-known/assetlinks.json",
+      "httpStatus": 200,
+      "status": "REVIEW",
+      "detail": "Response is not valid assetlinks JSON."
+    },
+    {
+      "id": "play-listing-india",
+      "url": "https://play.google.com/store/apps/details?id=com.vcreativestudio.sportstage&hl=en&gl=IN",
+      "httpStatus": 404,
+      "status": "REVIEW",
+      "detail": "HTTP 404; verify availability and access restrictions."
+    }
+  ],
+  "manualGates": [
+    "Run npm run build:check and retain the evidence for the release revision.",
+    "Verify production AAB target API, device tests, Play pre-launch report, and testing-track eligibility.",
+    "Confirm AdMob account/payment verification, linked store, app-ads verification, and app readiness approval.",
+    "Verify Data safety, privacy/consent, age-audience treatment, and account deletion on a test account.",
+    "Confirm backend security, backup/restore, multi-device scoring, and production monitoring.",
+    "Verify acquisition attribution and activation/retention metrics before buying traffic."
+  ]
+}

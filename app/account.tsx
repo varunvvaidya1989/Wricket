@@ -19,6 +19,7 @@ import { LegacyPlayerCandidate, legacyPlayerLinkApi } from '@/lib/supabase/legac
 
 import { normalizeE164Phone } from '@/lib/auth/phone';
 import { safeAuthReturnTo } from '@/lib/auth/returnTo';
+import { accountEmailUpdate } from '@/lib/auth/accountEmail';
 import { sportHome, stageSports } from '@/lib/sports/platform/connectedExperience';
 
 const cricketRoles: { value: CricketRole; label: string }[] = [
@@ -158,7 +159,9 @@ export default function AccountScreen() {
       return setAccountError(`Select ${requestedSport.name} to continue to your selected task.`);
     }
     if (displayName.trim().length < 2) return setAccountError('Enter a display name with at least two characters.');
-    if (!email.trim()) return setAccountError('Enter your account email.');
+    let updatedEmail: string | undefined;
+    try { updatedEmail = accountEmailUpdate(auth.session?.user.email, email); }
+    catch (cause) { return setAccountError(cause instanceof Error ? cause.message : 'Check your email address.'); }
     if (!selectedSportCodes.length || !selectedSportCodes.includes(primarySportCode)) {
       return setAccountError('Choose at least one sport and mark a selected sport as primary.');
     }
@@ -176,8 +179,8 @@ export default function AccountScreen() {
       if (selectedSportCodes.includes('CRICKET') && auth.session && !claimPending) {
         await playerProfileApi.saveMine(auth.session.user.id, { displayName, role, battingHand, bowlingStyle });
       }
-      if (email.trim().toLowerCase() !== auth.session?.user.email?.toLowerCase()) {
-        await auth.updateEmail(email);
+      if (updatedEmail) {
+        await auth.updateEmail(updatedEmail);
         Alert.alert('Confirm your email', 'Check your inbox to finish changing your email address.');
       }
       await auth.refreshProfile();
@@ -225,9 +228,10 @@ export default function AccountScreen() {
 
   if (section === 'data' && dataReview) return <StagePage focused title={dataReview === 'delete' ? 'Delete account' : 'Clear device data'} eyebrow="ACCOUNT" footer={<StageButton danger={dataReview === 'delete'} title={dataReview === 'delete' ? 'Permanently delete account' : 'Confirm clear device data'} loading={Boolean(destructiveAction)} disabled={saving || (dataReview === 'delete' && deleteConfirmation !== 'DELETE')} onPress={() => void (dataReview === 'delete' ? deleteAccount() : clearDeviceData())} />} onBack={() => { if (!destructiveBusy.current) { setDataReview(undefined); setAccountError(undefined); setDeleteConfirmation(''); } }}>
     <StageIntro eyebrow="REVIEW BEFORE CONTINUING" title={dataReview === 'delete' ? 'Delete your account?' : 'Clear this device?'} description={dataReview === 'delete' ? 'This permanently removes your login and account-owned records. It cannot be undone.' : 'This removes downloaded matches, tournaments and offline scoring data. Your account and cloud records are kept.'} />
-    <StageNotice danger={dataReview === 'delete'}>{dataReview === 'delete' ? 'Review this carefully. Historical account-owned tournaments, matches and profiles will be removed.' : 'Sync queued scoring before clearing this device. Any remaining unsynced local data will be lost.'}</StageNotice>
+    <StageNotice danger={dataReview === 'delete'}>{dataReview === 'delete' ? 'Account-owned cricket tournaments and files will be removed. Shared sport records require ownership and history checks before deletion can proceed.' : 'Sync queued scoring before clearing this device. Any remaining unsynced local data will be lost.'}</StageNotice>
     {accountError ? <StageNotice>{accountError}</StageNotice> : null}
     {dataReview === 'delete' ? <StageField label="Type DELETE to confirm" value={deleteConfirmation} onChangeText={setDeleteConfirmation} autoCapitalize="characters" autoCorrect={false} /> : null}
+    {dataReview === 'delete' ? <StageButton title="Ask support to delete my account" disabled={Boolean(destructiveAction)} onPress={() => router.push('/support?topic=account-deletion')} /> : null}
 
     <StageButton title="Keep my data" disabled={Boolean(destructiveAction)} onPress={() => { setDataReview(undefined); setAccountError(undefined); setDeleteConfirmation(''); }} />
   </StagePage>;
@@ -236,12 +240,14 @@ export default function AccountScreen() {
     <StageIntro eyebrow="YOUR ACCOUNT" title="You’re in control." description="Keep your account details separate from your public playing record." />
     {accountError ? <StageNotice retry={() => setLoadAttempt(value => value + 1)}>{accountError}</StageNotice> : null}
     <StageList>
+      <StageRow symbol="+" title="Personal details" detail="Contact details, age, location, sports and photo" onPress={() => router.push('/profile-details' as Href)} />
       <StageRow symbol={initials(auth.profile?.displayName ?? '')} title="Edit identity" detail="Display name and private contact details" onPress={() => router.push('/account?section=identity')} />
       <StageRow symbol="+" title="Connected sports" detail={auth.profile?.connectedSports.filter(sport => sport.accessStatus !== 'SUSPENDED').map(sport => sport.name).join(' · ') || 'Choose the sports you play'} onPress={() => router.push('/account?section=sports')} />
-      <StageRow symbol="↗" title="Password & security" detail="Change your sign-in password" onPress={() => router.push('/change-password')} />
+      {auth.session?.user.email ? <StageRow symbol="↗" title="Password & security" detail="Change your sign-in password" onPress={() => router.push('/change-password')} /> : null}
       <StageRow symbol="↗" title="Link a cricket record" detail="Review your historical player identity" onPress={() => router.push('/account?section=cricket')} />
       <StageRow symbol="↗" title="Connected apps" detail="AuctionYodha player connections" onPress={() => router.push('/account?section=apps')} />
       <StageRow symbol="≡" title="Account data" detail="Device storage and account deletion" onPress={() => router.push('/account?section=data')} />
+      <StageRow symbol="?" title="Privacy & support" detail="Privacy policy, contact and deletion requests" onPress={() => router.push('/support')} />
     </StageList>
     <StageButton title="Sign out" loading={saving} onPress={() => { setSaving(true); void auth.signOutCurrentDevice().then(() => router.replace('/live')).catch(cause => setAccountError(authErrorMessage(cause, 'Could not sign out.'))).finally(() => setSaving(false)); }} />
   </StagePage>;
@@ -291,7 +297,8 @@ export default function AccountScreen() {
         />
       </View>
       <StageField label="Display name · public" accessibilityLabel="Display name" value={displayName} onChangeText={setDisplayName} placeholder="Display name" />
-      <StageField label="Email address · private" accessibilityLabel="Email address" value={email} onChangeText={setEmail} placeholder="Email" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+      <StageField label={auth.session?.user.email ? 'Email address · private' : 'Email address · optional, private'} accessibilityLabel="Email address" value={email} onChangeText={setEmail} placeholder="Email" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+      {auth.session?.user.phone ? <StageNotice>Your sign-in phone is +{auth.session.user.phone.replace(/^\+/, '')}. Editing contact information below does not change it.</StageNotice> : null}
       <StageText variant="small" muted style={styles.mobileLabel}>Mobile number</StageText>
       <TextInput
         value={mobileNumber}
@@ -326,7 +333,7 @@ export default function AccountScreen() {
     {section === 'sports' ? <View style={styles.section}>
       <StageText variant="eyebrow" muted>YOUR SPORTS</StageText>
       <StageText variant="small" muted>Select every sport you follow or play. Your primary sport controls the default SportStage experience.</StageText>
-      <StageSportPreferences sports={sports} selectedCodes={selectedSportCodes} primaryCode={primarySportCode} onToggle={code => toggleSport(code, selectedSportCodes, primarySportCode, setSelectedSportCodes, setPrimarySportCode)} onPrimary={setPrimarySportCode} />
+      <StageSportPreferences disabled={saving} sports={sports} selectedCodes={selectedSportCodes} primaryCode={primarySportCode} onToggle={code => toggleSport(code, selectedSportCodes, primarySportCode, setSelectedSportCodes, setPrimarySportCode)} onPrimary={setPrimarySportCode} />
     </View> : null}
     {section === 'cricket' && selectedSportCodes.includes('CRICKET') ? <StageLegacyRecord /> : null}
     {section === 'cricket' && !selectedSportCodes.includes('CRICKET') ? <StageNotice>Connect Cricket in Your sports before creating or linking a cricket record.</StageNotice> : null}
@@ -339,7 +346,7 @@ export default function AccountScreen() {
       <StageButton title="Clear device data" onPress={() => { setAccountError(undefined); setDataReview('clear'); }} disabled={!loaded || loadFailed || saving || Boolean(destructiveAction)} />
       <View style={styles.dangerDivider} />
       <StageText variant="rowTitle" style={styles.dangerText}>Permanently delete account</StageText>
-      <StageText variant="small" muted>Deletes your SportStage login, owned tournaments, matches, live scores, profile links and account data. This cannot be undone.</StageText>
+      <StageText variant="small" muted>Removes your login, owned cricket tournaments and account files. Shared sport ownership or history must be reviewed first. This cannot be undone.</StageText>
       <StageButton danger title="Review account deletion" onPress={() => { setAccountError(undefined); setDeleteConfirmation(''); setDataReview('delete'); }} disabled={!loaded || loadFailed || saving || Boolean(destructiveAction)} />
     </View> : null}
   </StagePage>;

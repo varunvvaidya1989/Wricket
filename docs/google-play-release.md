@@ -1,5 +1,7 @@
 # Google Play release handoff
 
+> Current release planning (14 October 2026): use the [Android production-access and release plan](ANDROID_GOOGLE_PLAY_RELEASE_PLAN_2026-10-14.md). The production-access request was rejected for needing more testing. The version and internal/draft assumptions below are historical; current app configuration is 2.0.0. The production submit profile now targets the existing custom closed track `SportStage - internal ` with status completed; the API identifier intentionally includes a trailing space. Version code 11 was successfully submitted on 14 October 2026; see the [build and submission record](verification/ANDROID_PRODUCTION_BUILD_2026-10-14.md).
+
 ## App identity
 
 - Store name: SportStage

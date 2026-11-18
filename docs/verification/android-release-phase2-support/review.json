@@ -1,0 +1,164 @@
+{
+  "origin": "http://127.0.0.1:4191",
+  "checks": [
+    "Public support/deletion pages at 320/390/1280 with fixed email draft and privacy links; no messages sent; unknown topics cannot alter recipients",
+    "Real signed-in account deletion review reaches public support without deleting account or sending email"
+  ],
+  "pageErrors": [],
+  "mailboxDelivery": "DEFERRED_BY_USER",
+  "accessibility": [
+    {
+      "name": "guest-support-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-usgzl9 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "guest-deletion-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-usgzl9 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "guest-support-390",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-usgzl9 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "guest-deletion-390",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-usgzl9 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "guest-support-1280",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-usgzl9 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "guest-deletion-1280",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-usgzl9 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "unsupported-topic",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-usgzl9 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sign-in-support-handoff",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1p0dtai.r-1d2f490.r-u8s1d:nth-child(3) > .r-13awgt0.css-g5y9jx > .r-13awgt0.css-g5y9jx > .r-1qnxhra.r-13awgt0.css-g5y9jx > .r-1iirq3q.r-qklmqi.r-1kihuf0 > .r-usgzl9.r-peo1c[aria-label=\"Back\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "account-deletion-review-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "signed-in-deletion-handoff",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1p0dtai.r-1d2f490.r-zchlnj:nth-child(3) > .r-13awgt0.css-g5y9jx > .r-13awgt0.css-g5y9jx > .r-1qnxhra.r-13awgt0.css-g5y9jx > .r-1iirq3q.r-qklmqi.r-1ssbvtb > .r-usgzl9.r-peo1c[aria-label=\"Back\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "bundleSHA256": "cabed54c9f9a122dd13f89822beba4fd58077fc245c8cfa9baf558735eb5967f",
+  "status": "PASS",
+  "fixtureRemoved": true
+}

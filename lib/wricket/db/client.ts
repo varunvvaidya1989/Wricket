@@ -64,6 +64,7 @@ export async function resetDb(): Promise<void> {
     DROP TABLE IF EXISTS score_adjustments;
     DROP TABLE IF EXISTS batter_retirements;
     DROP TABLE IF EXISTS scoring_sessions;
+    DROP TABLE IF EXISTS scoring_event_outbox;
     DROP TABLE IF EXISTS sync_outbox;
     DROP TABLE IF EXISTS innings;
     DROP TABLE IF EXISTS match_xis;

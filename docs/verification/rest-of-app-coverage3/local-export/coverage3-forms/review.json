@@ -1,0 +1,364 @@
+{
+  "origin": "http://127.0.0.1:4180",
+  "label": "local-export",
+  "widths": [
+    320,
+    390,
+    1280
+  ],
+  "checks": [
+    "Task-based help and scoring guide at three widths; 29px Space Grotesk headings; direct guide refresh, real match-launch destination, empty search",
+    "Standalone record-link screen retains identity boundary and recoverable lookup errors without claiming a record",
+    "Competition creation dialog uses 13px Inter Regular and closes without saving",
+    "Controlled deletion failure remains visible and rapid-repeat confirm sends one request; real deletion is reserved for compatibility acceptance",
+    "Device clearing and deletion have explicit cancellable review; typed DELETE gate, reset after cancel, no deletion RPC on review/cancel and account survives"
+  ],
+  "pageErrors": [],
+  "bundleSHA256": "e425e5c15f9dc224797177704c333b8b1da73e40dcbebb4f3c495df90ff87cdf",
+  "accessibility": [
+    {
+      "name": "help-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(5) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(5) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(5) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "help-390",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(5) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(5) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(5) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "help-1280",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(3) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(5) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(5) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(5) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1867qdf.r-at53w4.r-bytnoe:nth-child(5) > .r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "scoring-guide-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "scoring-guide-390",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "scoring-guide-1280",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "help-no-results",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "record-link",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "record-link-error",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "create-competition",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(5) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1a8msfu > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1d9yedq > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Choose 16:9 banner image\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1cmwbt1.r-18u37iz.css-g5y9jx:nth-child(8) > .r-peo1c:nth-child(1) > .css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1cmwbt1.r-18u37iz.css-g5y9jx:nth-child(8) > .r-peo1c.r-bytnoe > .css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1cmwbt1.css-g5y9jx:nth-child(9) > .css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "clear-data-review",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "delete-review-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "delete-review-390",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "delete-review-1280",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "delete-failure",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "status": "PASS",
+  "fixtureRemoved": true
+}

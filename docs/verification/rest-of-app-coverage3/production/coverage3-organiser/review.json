@@ -1,0 +1,363 @@
+{
+  "origin": "https://sportstageapp.expo.app",
+  "label": "production",
+  "widths": [
+    320,
+    390,
+    1280
+  ],
+  "checks": [
+    "Actual production configuration, isolation headers, guest roots at three widths, hosted JavaScript exactly matches export",
+    "Real password sign-in returns to competition; authorised workspace and six task links refresh on hosted backend",
+    "Actual browser offline lifecycle submission keeps the review and draft state; reconnect/retry persists the intended change",
+    "Independent hosted guest receives an explicit sign-in destination and cannot open organiser tools; existing authenticated detail policy is retained"
+  ],
+  "pageErrors": [],
+  "bundleSHA256": "f568ffc1f1323bc97ae70f2f69bded14fab53d704788d78b8613cd00beb77c73",
+  "accessibility": [
+    {
+      "name": "home-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-580adz > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Table Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Pickleball\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "home-390",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-580adz > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Table Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Pickleball\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "home-1280",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-580adz > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "workspace-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(5) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(5) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(6) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "workspace-390",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(5) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(5) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(6) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "workspace-1280",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(5) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(5) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(6) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "entrants",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-9aw3ui > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "schedule",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"GUIDE\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"ADD FIXTURE\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "officials",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "resources",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1wtj0ep.r-1cmwbt1.r-18u37iz:nth-child(2) > .r-9aw3ui.r-1ii58gl.r-is05cd > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1wtj0ep.r-1cmwbt1.r-18u37iz:nth-child(3) > .r-9aw3ui.r-1ii58gl.r-is05cd > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1wtj0ep.r-1cmwbt1.r-18u37iz:nth-child(4) > .r-9aw3ui.r-1ii58gl.r-is05cd > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "publish",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "advanced",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Points rules, Version 1\"] > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-1b43r93"
+            ],
+            [
+              "button[aria-label=\"Points rules, Version 1\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-1b43r93"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "status": "PASS",
+  "fixtureRemoved": true
+}

@@ -1,0 +1,12 @@
+{
+  "target": "local",
+  "checks": [
+    "NULL confirmation and anonymous callers denied; manifest contains only caller-scoped files",
+    "Restrictive ownership blocks deletion before any file removal; identity and avatar remain available",
+    "A participant in another account’s real racket match cannot delete shared history; the match and avatar remain intact",
+    "A retained, unexpired JWT cannot recreate Storage files after deletion",
+    "Real Storage API removal and transactional account deletion remove avatar, profile, Auth identity and owned cricket tournament; other account and file survive"
+  ],
+  "fixtureRemoved": true,
+  "status": "PASS"
+}

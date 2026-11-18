@@ -1,0 +1,31 @@
+# Hosted recovery and account-data review
+
+Started: 2026-10-13. Final acceptance: 2026-10-14. Status: VALIDATED web scope; deployed to production as b3r7em2cob. Source baseline 8e47357 plus uncommitted changes. Email delivery and native acceptance are deferred.
+
+Recovery and password screens associate validation with each field, retain input on failure, lock editable fields while a request is pending and prevent simultaneous requests. Unconfirmed sign-in now opens the existing verification/resend handoff. Passwords are cleared when that handoff opens. The approved dark palette, Space Grotesk headings, Inter fields and persistent footer remain unchanged.
+
+Migration `20261013142242_repair_account_deletion_storage_flow.sql` is applied to the authorised hosted project and recorded in its migration history. Only that migration was pending; older history matched the repository. The CLI reported an optional pg-delta catalog/certificate warning after applying it; database postconditions and history were checked separately. No history repair was performed.
+
+Deletion preflight requires a live profile and typed DELETE, and checks actual restrictive references to profiles and sport profiles before returning caller-scoped media paths. The client removes files through Storage API in bounded batches. The transaction checks that all matching media is gone before deleting owned cricket tournaments, authored posts, assignments and the Auth identity. Shared sport ownership/history and linked sponsor media block automatic deletion with actionable copy. Their history is retained; this phase does not introduce historical anonymization or automatic ownership transfer. A restrictive Storage policy prevents a retained JWT from recreating files after its profile is deleted.
+
+Review: private privileged functions have an empty search path, public gateways use invoker security, caller identity comes from auth.uid(), and the manifest accepts no target account ID. No service key is shipped in the app. Storage tables are queried as metadata only; production removal uses Storage API. Anonymous callers, NULL confirmation, another account's files, shared match history and a retained JWT are tested. Local and hosted API acceptance passed with disposable accounts/resources removed. Security advisors reported zero error-level findings before and after hosted rollout.
+
+The local test stack had an older avatar-cleanup function than hosted production. It was aligned with the already-applied repository migration before API acceptance; failed test fixtures were removed through Storage API. Initial browser fixtures also needed the SDK's legacy error-code field and an allowed authentication return path; those test errors were corrected without widening app redirects.
+
+The full build passed 939 tests in 163 files, lint, strict types, environment/architecture checks and 119 exported routes. Preview and production each passed 39 full-page accessibility states (9 account/recovery plus 30 root/scoring states), with zero axe violations and page errors and scoped fixture cleanup.
+
+Email delivery is explicitly deferred by the user. Controlled request/verification responses test UI states without sending messages. Real recovery tokens are generated administratively and consumed against hosted Auth; this verifies token restoration and navigation, not inbox delivery. Android hardware, native assistive technology, signed upgrade/rollback and pilot sign-off remain deferred release gates.
+
+References: [Supabase Storage schema](https://supabase.com/docs/guides/storage/schema/design), [Auth user deletion](https://supabase.com/docs/reference/javascript/auth-admin-deleteuser). No Storage protection bypass is used.
+
+Review corrections: cold web recovery lost its destination when Router normalized the callback before the screen mounted. A custom Expo entry captures only the allowlisted destination before importing Router; no tokens or raw callback URLs are retained. The recovery journey now resumes Badminton setup. Actual account deletion also exposed an omitted scoring-event queue in local SQLite cleanup; it is dropped before its referenced innings/matches. This prevents a successful hosted deletion being followed by a failed cache reset. The test cleanup now tolerates an already-deleted fixture without masking the original failure. Keyboard sport preferences use buttons with pressed state and retain a single primary choice.
+
+Further review: after cache cleanup succeeded, the account route and access gate raced between sign-in and Live. The account access gate now uses the same sign-in destination. SQLite regression tests exercise repeated empty resets and a populated scoring queue with real foreign keys enabled.
+
+Final local recovery acceptance and preview b3r7em2cob passed nine full-page accessibility scans, keyboard selection, real password change/reset, destination retention and avatar deletion with failed removal/retry. Zero page errors/axe violations; scoped fixtures were removed. Both serve SHA-256 e92779e3d3e899af6d58aa78c2622ba4b6e7d61631fc973e1dee5d2d0f1de65c. Preview root/scoring regression and production acceptance passed.
+
+Release evidence: [sanitized reports and screenshots](rest-of-app-coverage4/). Production and preview b3r7em2cob serve SHA-256 `e92779e3d3e899af6d58aa78c2622ba4b6e7d61631fc973e1dee5d2d0f1de65c`, matching the frozen reviewed export byte for byte. Rollback: cmby29do6t. Visual review compared the approved reset/deletion exports with real 320px screens: dark palette, Space Grotesk headings, Inter fields, notices and fixed action footer, without horizontal overflow.
+
+Rejected runs: an initial preview root run reported two uncaught network errors; the diagnostic repeat passed without suppressing errors. The first production check received an older bundle during alias propagation. Read-only Hosting inspection confirmed the correct target; fresh requests then served the reviewed bundle, and acceptance was rerun. An overnight suspended command produced no evidence and was restarted on October 14. Final browser fixtures were removed. These checks do not certify all 83 prototype states or native assistive technology.
+
+References: [Expo custom entry](https://docs.expo.dev/router/installation/), [Hosting cache behavior](https://docs.expo.dev/eas/hosting/reference/caching/).

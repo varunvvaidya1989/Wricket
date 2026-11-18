@@ -6,18 +6,18 @@ ledger, not a claim of pixel-identical browser/native acceptance for every state
 The user racket scoring PDF supersedes the original scoring prototype; cricket
 retains its separately approved revamp. Real data and permissions replace sample
 names, counts and results. Native review and hosted email delivery are separate
-gates. Coverage 2 is validated and deployed as hky6k7mpox; accessibility acceptance is in progress.
+gates. Coverage 3 is validated and deployed as cmby29do6t: 57 representative full-page states passed automated accessibility and production acceptance. Manual/native assistive-technology review remains open. Email delivery is deferred by the user. Coverage 4 is web-validated on production b3r7em2cob: 39 representative states, real hosted callback/password change and avatar/account deletion with failure/retry. Shared sport ownership/history requires review before automatic deletion.
 
 | Design state | Implementation | Review evidence / limit |
 | --- | --- | --- |
-| welcome - A useful first visit | app/auth.tsx | UX2; delivery gate remains open |
-| signin - Sign in, then carry on | app/auth.tsx | UX2; delivery gate remains open |
-| signup - Create your account | app/auth.tsx | UX2; delivery gate remains open |
-| verify - A clear verification handoff | app/auth.tsx | UX2; delivery gate remains open |
+| welcome - A useful first visit | app/auth.tsx | UX2; Coverage4 verification handoff validated; email delivery deferred |
+| signin - Sign in, then carry on | app/auth.tsx | UX2; Coverage4 verification handoff validated; email delivery deferred |
+| signup - Create your account | app/auth.tsx | UX2; Coverage4 verification handoff validated; email delivery deferred |
+| verify - A clear verification handoff | app/auth.tsx | UX2; Coverage4 verification handoff validated; email delivery deferred |
 | preferences - Pick sports, skip the clutter | app/onboarding.tsx | UX2 |
-| forgot - Recover without losing context | app/forgot-password.tsx | UX2; hosted delivery pending |
-| check-email - Reset request acknowledged | app/forgot-password.tsx | UX2; hosted delivery pending |
-| reset - Finish password recovery | app/reset-password.tsx | UX2 local recovery; hosted callback pending |
+| forgot - Recover without losing context | app/forgot-password.tsx | Coverage4 controlled request/validation/retry; email delivery deferred |
+| check-email - Reset request acknowledged | app/forgot-password.tsx | Coverage4 controlled request/validation/retry; email delivery deferred |
+| reset - Finish password recovery | app/reset-password.tsx | Coverage4 real hosted callback and setup return validated; email delivery deferred |
 | auth-error - Expired link, visible recovery | app/auth-link-error.tsx | UX2 |
 | hub - A home across sports | components/sports/platform/SportStageHomeScreen.tsx | UX1 |
 | switcher - Switch sports with context | app/switch-sport.tsx | UX1 |
@@ -78,18 +78,18 @@ gates. Coverage 2 is validated and deployed as hky6k7mpox; accessibility accepta
 | archive-detail - A read-only historical record | components/sports/scoring/SportLegacyCompetitionArchiveScreen.tsx | Coverage1 export/preview/production acceptance |
 | profile - Your identity across sports | app/profile.tsx | UX2 |
 | public-profile - What other people see | app/player/[id].tsx | UX2; private contact excluded |
-| account - Settings grouped by intent | app/account.tsx | UX2; Coverage2 confirmations in progress; actual deletion compatibility pending |
-| edit-profile - Identity with privacy cues | app/account.tsx | UX2; Coverage2 confirmations in progress; actual deletion compatibility pending |
+| account - Settings grouped by intent | app/account.tsx | UX2; Coverage4 deletion/retry validated; shared-history guard retained |
+| edit-profile - Identity with privacy cues | app/account.tsx | UX2; Coverage4 deletion/retry validated; shared-history guard retained |
 | link-record - Claim a record, don’t merge blindly | components/sports/platform/StageLegacyRecord.tsx | UX2; Coverage2 standalone route alignment |
-| connected-apps - An explicit external-app boundary | app/account.tsx | UX2; Coverage2 confirmations in progress; actual deletion compatibility pending |
+| connected-apps - An explicit external-app boundary | app/account.tsx | UX2; Coverage4 deletion/retry validated; shared-history guard retained |
 | notifications - Notifications lead to the task | app/notifications.tsx | UX2 |
-| help - Help follows the task | app/manual.tsx | Coverage2 in progress |
-| help-score - A short guide with an exit | app/manual.tsx | Coverage2 in progress |
-| data-controls - Data actions with consequences | app/account.tsx | UX2; Coverage2 confirmations in progress; actual deletion compatibility pending |
-| delete-account - A final deliberate confirmation | app/account.tsx | UX2; Coverage2 confirmations in progress; actual deletion compatibility pending |
-| empty - A first-use state with a next step | components/sports/platform/StageUI.tsx | Shared notices across UX1-4; recovery/accessibility audit pending |
-| loading - Loading without invented content | components/sports/platform/StageUI.tsx | Shared notices across UX1-4; recovery/accessibility audit pending |
-| load-error - Retry exactly where you are | components/sports/platform/StageUI.tsx | Shared notices across UX1-4; recovery/accessibility audit pending |
-| offline - Connectivity is not match lifecycle | components/sports/platform/StageUI.tsx | Shared notices across UX1-4; recovery/accessibility audit pending |
+| help - Help follows the task | app/manual.tsx | Coverage2 export/preview/production validated |
+| help-score - A short guide with an exit | app/manual.tsx | Coverage2 export/preview/production validated |
+| data-controls - Data actions with consequences | app/account.tsx | UX2; Coverage4 deletion/retry validated; shared-history guard retained |
+| delete-account - A final deliberate confirmation | app/account.tsx | UX2; Coverage4 deletion/retry validated; shared-history guard retained |
+| empty - A first-use state with a next step | components/sports/platform/StageUI.tsx | Shared notices across UX1-4; Coverage3/4 representative web acceptance; manual/native review separate |
+| loading - Loading without invented content | components/sports/platform/StageUI.tsx | Shared notices across UX1-4; Coverage3/4 representative web acceptance; manual/native review separate |
+| load-error - Retry exactly where you are | components/sports/platform/StageUI.tsx | Shared notices across UX1-4; Coverage3/4 representative web acceptance; manual/native review separate |
+| offline - Connectivity is not match lifecycle | components/sports/platform/StageUI.tsx | Shared notices across UX1-4; Coverage3/4 representative web acceptance; manual/native review separate |
 | access-lost - Scoring access changed | components/sports/scoring/SportCloudLiveScoreScreen.tsx | UX3; user scoring PDF supersedes prototype for racket sports |
 | invite-expired - An expired invitation is recoverable | app/wricket/team/join.tsx | UX2 acceptance |

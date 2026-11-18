@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View } from 'react-native';
 
@@ -11,6 +11,7 @@ import { safeAuthReturnTo } from '@/lib/auth/returnTo';
 import { StageButton, StageField, StageIntro, StageNotice, StagePage, StageStateArt, StageText } from '@/components/sports/platform/StageUI';
 import { authReturnDescription } from '@/lib/auth/authExperience';
 import { SignupField, validateSignup } from '@/lib/auth/signupValidation';
+import { PhoneOtpSignIn } from '@/components/auth/PhoneOtpSignIn';
 
 export default function AuthScreen() {
   const auth = useAuth();
@@ -18,6 +19,7 @@ export default function AuthScreen() {
   const params = useLocalSearchParams<{ returnTo?: string }>();
   const returnTo = safeAuthReturnTo(params.returnTo);
   const [creating, setCreating] = useState(false);
+  const [phoneSignIn, setPhoneSignIn] = useState(false);
   const [passwordSignIn, setPasswordSignIn] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,6 +35,7 @@ export default function AuthScreen() {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [formError, setFormError] = useState<string>();
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<SignupField, string>>>({});
+  const submitting = useRef(false);
 
   const clearValidationField = (field: SignupField) => {
     setFieldErrors(current => current[field] ? { ...current, [field]: undefined } : current);
@@ -42,6 +45,7 @@ export default function AuthScreen() {
   useEffect(() => { void sportstageAccountApi.listSports().then(setSports).catch(() => undefined); }, []);
 
   const submit = async () => {
+    if (submitting.current) return;
     const phoneE164 = normalizePhoneParts(countryCode, phoneNumber);
     const validationErrors: Partial<Record<SignupField, string>> = creating
       ? validateSignup({ displayName, email, phoneE164, password, confirmPassword, selectedSportCodes, primarySportCode })
@@ -54,6 +58,7 @@ export default function AuthScreen() {
       setFormError('Check the highlighted fields and try again.');
       return;
     }
+    submitting.current = true;
     setSaving(true);
     setFormError(undefined);
     try {
@@ -61,29 +66,36 @@ export default function AuthScreen() {
         const signedIn = await auth.signUp(email, password, { displayName, sportCodes: selectedSportCodes, primarySportCode, phoneE164: phoneE164! }, returnTo);
         if (!signedIn) {
           setAwaitingVerification(true);
-
+          setPassword(''); setConfirmPassword('');
         }
       } else await auth.signIn(email, password);
     } catch (cause) {
       const message = authErrorMessage(cause, creating ? 'Could not create your account. Please try again.' : 'Could not sign in. Please try again.');
       setFormError(message);
-
-    } finally { setSaving(false); }
+      if (!creating && typeof cause === 'object' && cause !== null && 'code' in cause && cause.code === 'email_not_confirmed') {
+        setAwaitingVerification(true); setPassword(''); setConfirmPassword('');
+      }
+    } finally { submitting.current = false; setSaving(false); }
   };
 
   const resendVerification = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
     setSaving(true);
+    setFormError(undefined);
     try {
       await auth.resendSignupConfirmation(email, returnTo);
       setFormError('A new verification link was sent. Check your inbox and spam folder.');
     } catch (cause) {
       setFormError(authErrorMessage(cause, 'Wait a moment and try again.'));
-    } finally { setSaving(false); }
+    } finally { submitting.current = false; setSaving(false); }
   };
 
   const sendMagicLink = async () => {
+    if (submitting.current) return;
     if (!email.trim()) { setFieldErrors({ email: 'Email is required.' }); return; }
     if (!isValidEmail(email)) { setFieldErrors({ email: 'Enter a valid email address.' }); return; }
+    submitting.current = true;
     setSaving(true);
     setFormError(undefined);
     try {
@@ -93,10 +105,11 @@ export default function AuthScreen() {
       const message = authErrorMessage(cause, 'Could not send a sign-in link. Please try again.');
       setFormError(message);
 
-    } finally { setSaving(false); }
+    } finally { submitting.current = false; setSaving(false); }
   };
 
   const task = authReturnDescription(returnTo);
+  if (phoneSignIn) return <PhoneOtpSignIn task={task} onBack={() => setPhoneSignIn(false)} />;
   const submitButton = <StageButton primary title={creating ? 'Create account' : passwordSignIn ? 'Sign in & continue' : 'Email me a sign-in link'} accessibilityLabel={creating ? 'Create account' : passwordSignIn ? 'Sign in' : 'Email me a sign-in link'} loading={saving} onPress={() => void (creating || passwordSignIn ? submit() : sendMagicLink())} />;
 
   if (magicLinkSent || awaitingVerification) return <StagePage focused title="Check email" footer={<StageButton primary title="Back to sign in" disabled={saving} onPress={() => { setMagicLinkSent(false); setAwaitingVerification(false); setCreating(false); setFormError(undefined); }} />}>
@@ -111,15 +124,17 @@ export default function AuthScreen() {
   return <StagePage focused title={creating ? 'Create account' : 'Sign in'} footer={submitButton}>
     <StageIntro eyebrow={creating ? 'FIRST, YOUR ACCOUNT' : 'YOUR SPORTSTAGE ACCOUNT'} title={creating ? 'Let’s get you in.' : 'Welcome back.'} description={creating ? 'Your display name appears on your player profile.' : passwordSignIn ? `Sign in to ${task.toLowerCase()}.` : 'Enter your account email for a one-time sign-in link.'} />
     {returnTo ? <StageNotice>After sign-in → {task}</StageNotice> : null}
-    {creating ? <StageField label="Display name" value={displayName} onChangeText={value => { setDisplayName(value); clearValidationField('displayName'); }} placeholder="Your player name" error={fieldErrors.displayName} /> : null}
-    <StageField label="Email address" value={email} onChangeText={value => { setEmail(value); clearValidationField('email'); }} placeholder="Email" keyboardType="email-address" autoComplete="email" autoCapitalize="none" autoCorrect={false} error={fieldErrors.email} />
-    {creating ? <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ width: 80 }}><StageField label="Country code" value={countryCode} onChangeText={value => { setCountryCode(value); clearValidationField('phone'); }} keyboardType="phone-pad" maxLength={5} /></View><View style={{ flex: 1 }}><StageField label="Phone number" value={phoneNumber} onChangeText={value => { setPhoneNumber(value); clearValidationField('phone'); }} placeholder="Mobile number" keyboardType="phone-pad" maxLength={18} error={fieldErrors.phone} /></View></View> : null}
-    {creating || passwordSignIn ? <StageField label="Password" value={password} onChangeText={value => { setPassword(value); clearValidationField('password'); }} placeholder="Password" secureTextEntry autoCapitalize="none" autoComplete={creating ? 'new-password' : 'current-password'} error={fieldErrors.password} /> : null}
-    {creating ? <StageField label="Confirm password" value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearValidationField('confirmPassword'); }} placeholder="Confirm password" secureTextEntry autoCapitalize="none" autoComplete="new-password" error={fieldErrors.confirmPassword} /> : null}
-    {creating ? <View style={{ gap: 10 }}><StageText variant="eyebrow" muted>YOUR SPORTS</StageText><StageText muted>Choose your sports and a primary sport. You can change these from your account.</StageText><StageSportPreferences sports={sports} selectedCodes={selectedSportCodes} primaryCode={primarySportCode} onToggle={code => toggleSport(code, selectedSportCodes, primarySportCode, setSelectedSportCodes, setPrimarySportCode)} onPrimary={setPrimarySportCode} />{fieldErrors.sports ? <StageNotice>{fieldErrors.sports}</StageNotice> : null}</View> : null}
+    {creating ? <StageField editable={!saving} label="Display name" value={displayName} onChangeText={value => { setDisplayName(value); clearValidationField('displayName'); }} placeholder="Your player name" error={fieldErrors.displayName} /> : null}
+    <StageField editable={!saving} label="Email address" value={email} onChangeText={value => { setEmail(value); clearValidationField('email'); }} placeholder="Email" keyboardType="email-address" autoComplete="email" autoCapitalize="none" autoCorrect={false} error={fieldErrors.email} />
+    {creating ? <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ width: 80 }}><StageField editable={!saving} label="Country code" value={countryCode} onChangeText={value => { setCountryCode(value); clearValidationField('phone'); }} keyboardType="phone-pad" maxLength={5} /></View><View style={{ flex: 1 }}><StageField editable={!saving} label="Phone number" value={phoneNumber} onChangeText={value => { setPhoneNumber(value); clearValidationField('phone'); }} placeholder="Mobile number" keyboardType="phone-pad" maxLength={18} error={fieldErrors.phone} /></View></View> : null}
+    {creating || passwordSignIn ? <StageField editable={!saving} label="Password" value={password} onChangeText={value => { setPassword(value); clearValidationField('password'); }} placeholder="Password" secureTextEntry autoCapitalize="none" autoComplete={creating ? 'new-password' : 'current-password'} error={fieldErrors.password} /> : null}
+    {creating ? <StageField editable={!saving} label="Confirm password" value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearValidationField('confirmPassword'); }} placeholder="Confirm password" secureTextEntry autoCapitalize="none" autoComplete="new-password" error={fieldErrors.confirmPassword} /> : null}
+    {creating ? <View style={{ gap: 10 }}><StageText variant="eyebrow" muted>YOUR SPORTS</StageText><StageText muted>Choose your sports and a primary sport. You can change these from your account.</StageText><StageSportPreferences disabled={saving} sports={sports} selectedCodes={selectedSportCodes} primaryCode={primarySportCode} onToggle={code => toggleSport(code, selectedSportCodes, primarySportCode, setSelectedSportCodes, setPrimarySportCode)} onPrimary={setPrimarySportCode} />{fieldErrors.sports ? <StageNotice>{fieldErrors.sports}</StageNotice> : null}</View> : null}
     {formError ? <StageNotice>{formError}</StageNotice> : null}
     {!creating && passwordSignIn ? <StageButton title="Forgot password?" disabled={saving} onPress={() => router.push({ pathname: '/forgot-password', params: returnTo ? { returnTo } : {} })} /> : null}
     <StageButton title={creating ? 'I already have an account' : 'Create a SportStage account'} disabled={saving} onPress={() => { setCreating(value => !value); setPasswordSignIn(true); setFormError(undefined); setFieldErrors({}); }} />
+    <StageButton title="Use phone SMS code" disabled={saving} onPress={() => { setFormError(undefined); setPhoneSignIn(true); }} />
+    <StageButton title="Privacy & support" disabled={saving} onPress={() => router.push('/support')} />
     {!creating ? <StageButton title={passwordSignIn ? 'Use one-time email link' : 'Sign in with password'} disabled={saving} onPress={() => { setPasswordSignIn(value => !value); setFormError(undefined); setFieldErrors({}); }} /> : null}
     <StageButton title="Back to live scores" disabled={saving} onPress={() => router.replace('/live')} />
   </StagePage>;

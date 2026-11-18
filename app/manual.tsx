@@ -146,6 +146,7 @@ export default function SportStageManualScreen() {
   return <StagePage focused title="Help">
     <StageIntro eyebrow="A LITTLE GUIDANCE" title="What are you trying to do?" description="Choose a task to see the next steps." />
     <StageField label="Search help" value={query} onChangeText={setQuery} placeholder="Scoring, teams, competitions..." />
+    <StageButton title="Contact SportStage" onPress={() => router.push('/support')} />
     {!query.trim() ? <StageList><StageRow title="Score a match" detail="Choose sport, setup, score" symbol="↗" onPress={() => open('scoring')} /><StageRow title="Join my team" detail="Invitations, rosters and eligibility" symbol="+" onPress={() => open('join-team')} /><StageRow title="Run a competition" detail="Entries, schedule and officials" symbol="◇" onPress={() => open('competition')} /><StageRow title="Recover my account" detail="Get a fresh password reset link" symbol="↻" onPress={() => open('recovery')} /></StageList> : null}
     <StageText variant="eyebrow" muted>{query.trim() ? 'SEARCH RESULTS' : 'MORE GUIDANCE'}</StageText>
     {visible.length ? <StageList>{visible.filter(guide => query.trim() || !['scoring','join-team','competition','recovery'].includes(guide.id)).map(guide => <StageRow key={guide.id} title={guide.title} detail={guide.summary} onPress={() => open(guide.id)} />)}</StageList> : <StageNotice>No guide found. Try scoring, teams or competitions.</StageNotice>}

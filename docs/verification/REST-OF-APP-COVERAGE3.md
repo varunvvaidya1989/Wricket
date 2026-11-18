@@ -1,6 +1,6 @@
 # Web accessibility and recovery review
 
-Date: 2026-10-13. Status: IN PROGRESS; production remains Coverage 2 (hky6k7mpox) until preview acceptance.
+Date: 2026-10-13. Status: VALIDATED - deployed cmby29do6t.
 
 Shared pages now provide document titles, a main landmark and meaningful headings. Top-level navigation uses named navigation buttons instead of incomplete tab semantics. Organiser forms have persistent visible labels; image-only controls have accessible names and 44px targets. Dialogs are named, eligibility toggle buttons expose their selected state, and invalid fields reference their error messages. Decorative avatars do not repeat surrounding names. The loading animation respects reduced motion and launch status is announced.
 
@@ -8,4 +8,6 @@ Validation uses the complete-page default axe rule set with no exclusions or dis
 
 Existing responsive form checks and the organiser workflow include failure/retry and actual offline/reconnect lifecycle submission. Live racket keyboard scoring uses a scoped test match. Cricket gesture verification remains paused. Android hardware and signed upgrade checks remain unavailable; actual hosted email delivery and account deletion compatibility belong to Coverage 4.
 
-References: [Playwright accessibility testing](https://playwright.dev/docs/accessibility-testing). Final acceptance evidence and deployment will be recorded after review.
+References: [Playwright accessibility testing](https://playwright.dev/docs/accessibility-testing). Preview and production each passed 57 complete-page scans with zero violations and page errors, keyboard scoring, modal focus/Escape, field errors, responsive/zoom review and actual organiser offline/reconnect. All fixtures were removed. Production cmby29do6t; SHA-256 f568ffc1f1323bc97ae70f2f69bded14fab53d704788d78b8613cd00beb77c73 matches the frozen export byte for byte. Rollback hky6k7mpox. Evidence: rest-of-app-coverage3/. Manual review confirmed the shared dark palette, display/body fonts and score-card hierarchy; icon-font contrast cases remain listed for manual review. This does not certify all 83 states or native assistive technology.
+
+Review corrections: the organiser schedule heading skipped from level 1 to level 3. It now uses level 2 with the same 17px Space Grotesk presentation. Preview 090lbkxgxx was rejected before promotion. The corrected full build passed 916 tests in 159 files, lint, strict types, project checks and 119 exported routes. Corrected local organiser acceptance passed all six destinations, offline submission/reconnect and guest permissions with no axe violations or page errors. A browser network interruption rejected the initial core run of corrected preview cmby29do6t; final acceptance runs are sequential.

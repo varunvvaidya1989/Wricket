@@ -444,3 +444,10 @@ enabled = true
 # The handler checks a dedicated server-only Cron bearer token before any database access.
 verify_jwt = false
 entrypoint = "./functions/cricket-mvp-worker/index.mjs"
+
+[functions.send-sms-twofactor]
+enabled = true
+# Supabase Auth signs the raw request using Standard Webhooks. A user JWT is
+# neither required nor accepted as a substitute for that signature.
+verify_jwt = false
+entrypoint = "./functions/send-sms-twofactor/index.mjs"

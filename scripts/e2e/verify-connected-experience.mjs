@@ -125,7 +125,7 @@ try {
   await page.getByRole('button', { name: 'Set up Badminton', exact: true }).click();
   await page.waitForURL(url => url.pathname === '/account');
   assert.equal(new URL(page.url()).searchParams.get('returnTo'), '/badminton/match/new');
-  await page.getByRole('checkbox', { name: 'Badminton', exact: true }).click();
+  await page.getByRole('button', { name: 'Badminton', exact: true }).click();
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page.waitForURL(url => url.pathname === '/badminton/match/new');
   report.checks.push('Unconnected sport carries chosen setup through account save and profile refresh');

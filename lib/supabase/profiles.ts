@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import { isSportReleased } from '@/lib/sports/platform/sportRelease';
 
 import { getSupabaseClient } from './client';
+import { accountDetailsApi } from './accountDetailsApi';
 
 export interface CloudSport {
   id: string;
@@ -21,6 +22,7 @@ export interface CloudProfile {
   onboardingStatus: 'PROFILE_REQUIRED' | 'SPORT_REQUIRED' | 'COMPLETED';
   primarySport?: CloudSport;
   connectedSports: CloudSport[];
+  detailsComplete?: boolean;
 }
 
 export async function getCloudProfile(userId: string): Promise<CloudProfile | null> {
@@ -31,6 +33,7 @@ export async function getCloudProfile(userId: string): Promise<CloudProfile | nu
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
+  const accountDetails = await accountDetailsApi.getMine(userId);
   const { data: relationships, error: relationshipError } = await getSupabaseClient()
     .from('account_sports')
     .select('sport_id, access_status, is_primary')
@@ -55,7 +58,7 @@ export async function getCloudProfile(userId: string): Promise<CloudProfile | nu
     };
   });
   const primarySport = connectedSports.find(sport => sport.id === data.primary_sport_id || sport.isPrimary);
-  return { id: data.id, displayName: data.display_name, avatarUrl: data.avatar_url, onboardingStatus: data.onboarding_status, primarySport, connectedSports };
+  return { id: data.id, displayName: data.display_name, avatarUrl: data.avatar_url, onboardingStatus: data.onboarding_status, primarySport, connectedSports, detailsComplete: Boolean(accountDetails?.completed_at) };
 }
 
 export async function saveCloudProfile(user: User, displayName: string): Promise<CloudProfile> {

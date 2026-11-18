@@ -1,0 +1,868 @@
+{
+  "origin": "https://sportstageapp.expo.app",
+  "label": "production",
+  "checks": [
+    "Keyboard Enter activates sport switching; meaningful page titles and landmarks; no horizontal overflow",
+    "Invalid email is programmatically associated with its error; signup at 320px and 200 percent zoom",
+    "Signed-in profile/security/notifications/setup; labelled club/team dialogs, eligibility toggle Space, focus trap and Escape cancellation",
+    "Representative live racket scorer: keyboard Enter records one point, accessible score and match-control states; cricket gesture verification remains paused"
+  ],
+  "pageErrors": [],
+  "bundleSHA256": "f568ffc1f1323bc97ae70f2f69bded14fab53d704788d78b8613cd00beb77c73",
+  "accessibility": [
+    {
+      "name": "home",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-580adz > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Table Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Pickleball\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "keyboard-switcher",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".css-g5y9jx:nth-child(2) > .r-150rngu.r-eqz5dr.r-1wbh5a2 > .r-1pnwn9g.r-whuqzp.r-1sv84sj > .r-1w6e6rj.r-uaa2di.r-18u37iz > .r-15y939m.r-1ylenci[aria-label=\"Open Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".css-g5y9jx:nth-child(2) > .r-150rngu.r-eqz5dr.r-1wbh5a2 > .r-1pnwn9g.r-whuqzp.r-1sv84sj > .r-1w6e6rj.r-uaa2di.r-18u37iz > .r-15y939m.r-1ylenci[aria-label=\"Open Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".css-g5y9jx:nth-child(2) > .r-150rngu.r-eqz5dr.r-1wbh5a2 > .r-1pnwn9g.r-whuqzp.r-1sv84sj > .r-1w6e6rj.r-uaa2di.r-18u37iz > .r-15y939m.r-1ylenci[aria-label=\"Open Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".css-g5y9jx:nth-child(2) > .r-150rngu.r-eqz5dr.r-1wbh5a2 > .r-1pnwn9g.r-whuqzp.r-1sv84sj > .r-1w6e6rj.r-uaa2di.r-18u37iz > .r-15y939m.r-1ylenci[aria-label=\"Open Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".css-g5y9jx:nth-child(2) > .r-150rngu.r-eqz5dr.r-1wbh5a2 > .r-1pnwn9g.r-whuqzp.r-1sv84sj > .r-1w6e6rj.r-uaa2di.r-18u37iz > .r-15y939m.r-1ylenci[aria-label=\"Open Table Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".css-g5y9jx:nth-child(2) > .r-150rngu.r-eqz5dr.r-1wbh5a2 > .r-1pnwn9g.r-whuqzp.r-1sv84sj > .r-1w6e6rj.r-uaa2di.r-18u37iz > .r-15y939m.r-1ylenci[aria-label=\"Open Pickleball\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "explore",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-580adz > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-nsbfu8:nth-child(9) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-nsbfu8:nth-child(10) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-nsbfu8:nth-child(11) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-nsbfu8:nth-child(12) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-nsbfu8:nth-child(13) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-nsbfu8:nth-child(14) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-nsbfu8:nth-child(15) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-nsbfu8:nth-child(16) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-nsbfu8:nth-child(17) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-nsbfu8:nth-child(18) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "start-match",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Set up Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Set up Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Set up Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Set up Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Set up Table Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Set up Pickleball\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "auth",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "forgot-password",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "auth-link-error",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".css-g5y9jx:nth-child(1) > .r-vsb09d.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "badminton",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-580adz > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1r8g8re.r-1acpoxo.r-1kkyxyj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1r8g8re.r-1acpoxo.r-1kkyxyj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1r8g8re.r-1acpoxo.r-1kkyxyj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1r8g8re.r-1acpoxo.r-1kkyxyj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Table Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1r8g8re.r-1acpoxo.r-1kkyxyj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Pickleball\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1r8g8re.r-1acpoxo.r-1kkyxyj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "tennis",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-580adz > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Table Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Pickleball\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "padel",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-580adz > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Table Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Pickleball\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "table-tennis",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-580adz > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Table Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Pickleball\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pickleball",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-580adz > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Cricket\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Badminton\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Padel\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Table Tennis\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Open Pickleball\"] > .r-o001a9.r-12hfu9v.r-633pao > .r-1x60ltq.r-1r8g8re.r-1acpoxo > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sign-in-validation",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "signup",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "signup-320",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "signup-zoom200",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "-profile",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "-account-section-security",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Connected sports, Badminton\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(4) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(5) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(6) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-npwnxv.r-97wtk3"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(6) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "-notifications",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-bytnoe > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".css-g5y9jx:nth-child(2) > .css-g5y9jx:nth-child(1) > .r-vsb09d.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "-badminton-match-new",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-12hfu9v.r-1x60ltq.r-1r8g8re > .r-fblfjv.r-1b43r93.r-npwnxv"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1s367qj.r-1iefiy2.r-1iirq3q:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "club-invitation",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-102gzdx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-9aw3ui.r-is05cd[aria-label=\"Invite player\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-o4qtl5.r-edyy15.r-at53w4:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Create reusable team\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-o4qtl5.r-edyy15.r-at53w4:nth-child(5) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Close\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "club-team-creation",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-102gzdx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Invite player\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-o4qtl5.r-edyy15.r-at53w4:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-9aw3ui.r-is05cd[aria-label=\"Create reusable team\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-o4qtl5.r-edyy15.r-at53w4:nth-child(5) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Close\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "team",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-102gzdx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-xyw6el.r-bytnoe.r-at53w4 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1ps3wis.r-peo1c.r-1loqt21 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "team-eligibility",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1q9bdsx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-102gzdx > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-xyw6el.r-bytnoe.r-at53w4 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1w6e6rj > .r-1ps3wis.r-peo1c.r-1loqt21 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Close\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"SINGLES\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"DOUBLES\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "racket-score",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1ugchlj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-8s8fr5 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1elv5g6 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Point details\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Match controls\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "racket-score-after-point",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1ugchlj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-8s8fr5 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1elv5g6 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Undo last rally\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Point details\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Match controls\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "racket-game-details",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1ugchlj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-8s8fr5 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1elv5g6 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Undo last rally\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Point details\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Match controls\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "racket-match-controls",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1ugchlj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-8s8fr5 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1elv5g6 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Undo last rally\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Point details\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-peo1c.r-1q9bdsx[aria-label=\"Match controls\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1iirq3q.r-qklmqi.r-1s367qj:nth-child(1) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1iirq3q.r-qklmqi.r-1s367qj:nth-child(2) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1iirq3q.r-qklmqi.r-1s367qj:nth-child(3) > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "racket-point-settings",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1ugchlj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-8s8fr5 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1elv5g6 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Undo last rally\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Point details\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Match controls\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".css-g5y9jx:nth-child(1) > .r-vsb09d.r-npwnxv.r-1enofrn"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "racket-point-details",
+      "violations": [],
+      "needsManualReview": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "targets": [
+            [
+              ".r-1ugchlj > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-8s8fr5 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".r-1elv5g6 > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Undo last rally\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Point details\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              "button[aria-label=\"Match controls\"] > .r-lrvibr.css-146c3p1[dir=\"auto\"]"
+            ],
+            [
+              ".css-g5y9jx:nth-child(1) > .r-npwnxv.r-1enofrn.r-vsb09d"
+            ],
+            [
+              ".r-10x49cs.r-ud0q2t.r-fxxt2n:nth-child(7)"
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "status": "PASS",
+  "fixtureRemoved": true
+}

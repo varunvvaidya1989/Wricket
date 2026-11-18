@@ -25,3 +25,9 @@ export function safeAuthReturnTo(value: unknown): string | undefined {
     return undefined;
   }
 }
+
+export function safeAuthReturnFromUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  try { return safeAuthReturnTo(new URL(value).searchParams.get('returnTo')); }
+  catch { return undefined; }
+}

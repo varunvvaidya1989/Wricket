@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { safeAuthReturnTo } from '@/lib/auth/returnTo';
 import { canResumeOfflineScoring, isOfflineError } from '@/lib/auth/offlineScoring';
 import { isSportReleased } from '@/lib/sports/platform/sportRelease';
+import { sportHome } from '@/lib/sports/platform/connectedExperience';
 import { useAuth } from './AuthProvider';
 
 const appSportByRoot: Readonly<Record<string, string>> = {
@@ -29,6 +30,9 @@ export function RootAccessGate({ children }: { children: React.ReactNode }) {
   const authReturnTo = safeAuthReturnTo(returnTo) ?? competitionReturn ?? (isTeamInvitation ? safeAuthReturnTo(`/wricket/team/join?token=${token ?? ''}`) : isTournamentInvitation ? safeAuthReturnTo(`/wricket/tournament/join?token=${token ?? ''}`) : undefined);
 
   useEffect(() => {
+    // Public support contains no account data and must remain available when
+    // sign-in, onboarding or an expired authentication link prevents access.
+    if (root === 'support') return;
     if (auth.loading) return;
     if (auth.authLinkError) {
       if (root !== 'auth-link-error') router.replace({ pathname: '/auth-link-error', params: (auth.authLinkError?.returnTo ?? authReturnTo) ? { returnTo: (auth.authLinkError?.returnTo ?? authReturnTo)! } : {} });
@@ -36,10 +40,10 @@ export function RootAccessGate({ children }: { children: React.ReactNode }) {
     }
     const publicAuthRoute = isSportCompetition || isTeamInvitation || isTournamentInvitation || root === 'live' || root === 'explore' || root === 'start-match' || root === 'switch-sport' || root === 'player' || root === 'match' || root === 'tournament' || root === 'auth' || root === 'auth-link-error' || root === 'forgot-password' || root === 'reset-password';
     if (!auth.session) {
-      if (!publicAuthRoute) router.replace('/live');
+      if (!publicAuthRoute) router.replace(root === 'account' ? '/auth' : '/live');
       return;
     }
-    const onboardingComplete = auth.profile?.onboardingStatus === 'COMPLETED' && Boolean(auth.profile.primarySport);
+    const onboardingComplete = auth.profile?.onboardingStatus === 'COMPLETED' && Boolean(auth.profile.primarySport) && auth.profile.detailsComplete !== false;
     if (!onboardingComplete) {
       if (Platform.OS !== 'web' && isOfflineError(auth.error) && root === 'wricket') {
         let cancelled = false;
@@ -52,11 +56,15 @@ export function RootAccessGate({ children }: { children: React.ReactNode }) {
       if (root !== 'onboarding') router.replace({ pathname: '/onboarding', params: authReturnTo ? { returnTo: authReturnTo } : {} });
       return;
     }
+    if (root === 'onboarding') {
+      router.replace((sportHome(auth.profile!.primarySport!.code) ?? '/live') as Href);
+      return;
+    }
     if (authReturnTo && !root) {
       router.replace(authReturnTo as Href);
       return;
     }
-    if (root === 'auth' || root === 'auth-link-error' || root === 'forgot-password' || root === 'onboarding') {
+    if (root === 'auth' || root === 'auth-link-error' || root === 'forgot-password') {
       router.replace((authReturnTo ?? '/') as Href);
       return;
     }

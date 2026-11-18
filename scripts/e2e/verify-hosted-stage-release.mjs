@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -54,7 +55,7 @@ try {
   await expect(page.getByText('Back to your game.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Switch sport', exact: true }).click({ trial: true });
   assert.equal(await page.evaluate(() => crossOriginIsolated), true);
-  const script = await page.locator('script[src]').evaluateAll(elements => elements.map(element => new URL(element.src).pathname).find(path => path.includes('/_expo/static/js/web/entry-')));
+  const script = await page.locator('script[src]').evaluateAll(elements => elements.map(element => new URL(element.src).pathname).find(path => /\/_expo\/static\/js\/web\/(?:entry|index)-[a-f0-9]+\.js$/.test(path)));
   assert.ok(script);
   const remote = Buffer.from(await (await fetch(`${origin}${script}`)).arrayBuffer());
   const local = await readFile(`${exportDir}/client${script}`);

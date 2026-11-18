@@ -75,7 +75,7 @@ try {
     await expect(page).toHaveURL(/auth\?returnTo=/);
     await page.getByRole('button', { name: 'Create a SportStage account', exact: true }).click();
     await expect(page.getByText('Let’s get you in.', { exact: true }).filter({ visible: true })).toBeVisible();
-    await expect(page.getByRole('checkbox')).toHaveCount(6);
+    await expect(page.getByRole('button', { name: /^(Cricket|Badminton|Tennis|Padel|Table Tennis|Pickleball)$/ })).toHaveCount(6);
     await capture(page, `signup-${width}`);
     await page.getByRole('button', { name: 'Create account', exact: true }).click();
     await expect(page.getByText('Check the highlighted fields and try again.', { exact: true }).filter({ visible: true })).toBeVisible();
@@ -101,7 +101,7 @@ try {
   await checked(stack.admin.auth.admin.updateUserById(userId, { user_metadata: { e2e_run_id: run } }));
   if (new URL(page.url()).pathname === '/onboarding') {
     await expect(page.getByText('What do you play?', { exact: true }).filter({ visible: true })).toBeVisible();
-    await expect(page.getByRole('checkbox')).toHaveCount(6);
+    await expect(page.getByRole('button', { name: /^(Cricket|Badminton|Tennis|Padel|Table Tennis|Pickleball)$/ })).toHaveCount(6);
     await capture(page, 'onboarding-390');
     await page.getByRole('button', { name: 'Save & continue', exact: true }).click();
   }
@@ -128,7 +128,7 @@ try {
     await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
     await capture(page, `edit-identity-${width}`);
     await page.goto(`${base}/account?section=sports`, { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('checkbox')).toHaveCount(6);
+    await expect(page.getByRole('button', { name: /^(Cricket|Badminton|Tennis|Padel|Table Tennis|Pickleball)$/ })).toHaveCount(6);
     await capture(page, `connected-sports-${width}`);
   }
   await page.setViewportSize({ width: 390, height: 900 });
