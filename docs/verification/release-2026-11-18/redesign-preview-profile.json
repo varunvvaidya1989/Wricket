@@ -1,0 +1,59 @@
+{
+  "recordedAt": "2026-11-18T14:02:08.489Z",
+  "origin": "https://sportstageapp--kr8x4nx5rx.expo.app",
+  "run": "be8b88cb-927f-4e4b-bc8f-dbc835f042d6",
+  "cases": [
+    {
+      "width": 320,
+      "primary": "CRICKET",
+      "requiredOnly": true,
+      "linkedLocations": true,
+      "optionalPhoto": false,
+      "retryAfterFailure": false,
+      "privateReadDenied": true,
+      "completionSurvivesRefresh": true,
+      "primarySportLanding": true,
+      "axeViolations": 0
+    },
+    {
+      "width": 390,
+      "primary": "CRICKET",
+      "requiredOnly": false,
+      "linkedLocations": true,
+      "optionalPhoto": false,
+      "retryAfterFailure": true,
+      "privateReadDenied": true,
+      "completionSurvivesRefresh": true,
+      "primarySportLanding": true,
+      "axeViolations": 0
+    },
+    {
+      "width": 1280,
+      "primary": "TENNIS",
+      "requiredOnly": false,
+      "linkedLocations": true,
+      "optionalPhoto": true,
+      "retryAfterFailure": false,
+      "privateReadDenied": true,
+      "completionSurvivesRefresh": true,
+      "primarySportLanding": true,
+      "axeViolations": 0
+    }
+  ],
+  "errors": [],
+  "cleanup": [
+    {
+      "account": 320,
+      "removed": true
+    },
+    {
+      "account": 390,
+      "removed": true
+    },
+    {
+      "account": 1280,
+      "removed": true
+    }
+  ],
+  "status": "PASS"
+}

@@ -6,6 +6,10 @@ Hosting subdomain is `sportstageapp`; omit `--dev-domain` when deploying.
 
 ## Latest verified deployment
 
+18 November 2026, sign-in design follow-up: **kr8x4nx5rx** is live from source `410ebc8`. Compact Email/Phone selection, one primary action, larger fields, password visibility and dark autofill replace the former button stack. Full gate: 976 tests / 170 files, 121 routes. Local, preview and production auth checks passed at 320/390/1280 widths with the primary action above the fold and zero browser errors/accessibility violations. Preview also passed actual hosted sign-in/profile completion and fixture cleanup. Live bundle matches the export: SHA-256 `eb0a35e12dfc4e652e9693561e45bc6a33a048496c7332742348a8dcc3e3d9c5`. Rollback: **flc783c3w7**. [Release record](release/RELEASE_2026-11-18.md). Android was cancelled at the user's request and has not been submitted.
+
+## Earlier November deployment
+
 18 November 2026: **flc783c3w7** is live. Source `bc13c33`; full gate passed 976 tests / 170 files and 121 routes. Preview and production passed phone/desktop first-time profile completion, selected-sport routing, private-data isolation, upload/retry and home/auth/support accessibility checks with zero browser errors/violations and fixture cleanup. Live bundle SHA-256: `e8138447a7b446427ef2f85718e4c654651c12876f0c498f7656682dddb8902d`. Rollback: **b3r7em2cob**. [Release record](release/RELEASE_2026-11-18.md). SMS carrier delivery remains unresolved.
 
 ## Previous verified deployment

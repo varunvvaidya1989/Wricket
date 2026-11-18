@@ -1,0 +1,50 @@
+{
+  "origin": "https://sportstageapp--kr8x4nx5rx.expo.app",
+  "checks": [
+    {
+      "width": 320,
+      "height": 740,
+      "primaryActionAboveFold": true,
+      "passwordVisibility": true,
+      "keyboardSubmit": true,
+      "emailValidation": true,
+      "failedLogin": true,
+      "emailLink": true,
+      "signupValidation": true,
+      "phoneSwitching": true,
+      "passwordRecoveryReturn": true,
+      "axeViolations": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "primaryActionAboveFold": true,
+      "passwordVisibility": true,
+      "keyboardSubmit": true,
+      "emailValidation": true,
+      "failedLogin": true,
+      "emailLink": true,
+      "signupValidation": true,
+      "phoneSwitching": true,
+      "passwordRecoveryReturn": true,
+      "axeViolations": 0
+    },
+    {
+      "width": 1280,
+      "height": 900,
+      "primaryActionAboveFold": true,
+      "passwordVisibility": true,
+      "keyboardSubmit": true,
+      "emailValidation": true,
+      "failedLogin": true,
+      "emailLink": true,
+      "signupValidation": true,
+      "phoneSwitching": true,
+      "passwordRecoveryReturn": true,
+      "axeViolations": 0
+    }
+  ],
+  "errors": [],
+  "authenticationWrites": "MOCKED",
+  "status": "PASS"
+}

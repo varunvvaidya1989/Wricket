@@ -1,0 +1,22 @@
+{
+  "status": "PASS",
+  "origin": "https://sportstageapp.expo.app",
+  "checks": [
+    {
+      "path": "/",
+      "script": "/_expo/static/js/web/index-8f6ee11f78faee9d5fed4d3a25f0b3da.js",
+      "sha256": "eb0a35e12dfc4e652e9693561e45bc6a33a048496c7332742348a8dcc3e3d9c5",
+      "axeViolations": 0
+    },
+    {
+      "path": "/auth",
+      "axeViolations": 0
+    },
+    {
+      "path": "/support",
+      "axeViolations": 0
+    }
+  ],
+  "pageErrors": [],
+  "crossOriginIsolated": true
+}
