@@ -6,6 +6,10 @@ Hosting subdomain is `sportstageapp`; omit `--dev-domain` when deploying.
 
 ## Latest verified deployment
 
+18 November 2026: **flc783c3w7** is live. Source `bc13c33`; full gate passed 976 tests / 170 files and 121 routes. Preview and production passed phone/desktop first-time profile completion, selected-sport routing, private-data isolation, upload/retry and home/auth/support accessibility checks with zero browser errors/violations and fixture cleanup. Live bundle SHA-256: `e8138447a7b446427ef2f85718e4c654651c12876f0c498f7656682dddb8902d`. Rollback: **b3r7em2cob**. [Release record](release/RELEASE_2026-11-18.md). SMS carrier delivery remains unresolved.
+
+## Previous verified deployment
+
 Coverage 4 production: **b3r7em2cob** (deployed 2026-10-13; final acceptance 2026-10-14). Preview and production each passed 39 account/recovery and root/scoring accessibility states with zero page errors/violations and fixture cleanup. Actual password recovery returns to setup; avatar/account deletion retries safely. Hosted migration 20261013142242 is applied. Build gate: 939 tests / 163 files, 119 routes. Live bundle SHA-256: `e92779e3d3e899af6d58aa78c2622ba4b6e7d61631fc973e1dee5d2d0f1de65c`. Rollback: **cmby29do6t**. Email delivery and native release gates remain deferred. [Review](verification/REST-OF-APP-COVERAGE4.md).
 
 ## Previous accessibility deployment

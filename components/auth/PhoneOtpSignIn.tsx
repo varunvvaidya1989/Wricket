@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { StageButton, StageField, StageIntro, StageNotice, StagePage } from '@/components/sports/platform/StageUI';
+import { StageField, StageNotice, StageText } from '@/components/sports/platform/StageUI';
+import { AuthLayout, AuthLink, AuthMethods, AuthPrimaryButton, authInputStyle } from './AuthLayout';
 import { normalizePhoneParts } from '@/lib/auth/phone';
 import { PHONE_OTP_RESEND_SECONDS, phoneOtpNumber } from '@/lib/auth/phoneOtp';
 import { authErrorMessage } from '@/lib/supabase/authErrors';
@@ -50,17 +51,22 @@ export function PhoneOtpSignIn({ task, onBack }: { task: string; onBack: () => v
     finally { pending.current = false; setBusy(false); }
   };
 
-  return <StagePage focused title="Phone sign-in" footer={<StageButton primary title={sentPhone ? 'Verify & continue' : seconds ? `Try again in ${seconds}s` : 'Send SMS code'} disabled={!sentPhone && seconds > 0} loading={busy} onPress={() => void (sentPhone ? verify() : send())} />}>
-    <StageIntro eyebrow="PHONE SIGN-IN" title={sentPhone ? 'Enter your SMS code.' : 'Sign in with your phone.'} description={sentPhone ? `We requested a code for ${sentPhone}. Enter it to continue to ${task.toLowerCase()}.` : 'Use your Indian mobile number to sign in or create an account. No password is needed.'} />
+  return <AuthLayout title={sentPhone ? 'Enter your SMS code.' : 'Welcome back.'} description={sentPhone ? `We requested a code for ${sentPhone}. Enter it to continue to ${task.toLowerCase()}.` : 'Sign in or join with your mobile number.'} onBack={onBack}>
+    {!sentPhone ? <AuthMethods phone onEmail={onBack} onPhone={() => undefined} disabled={busy} /> : null}
     {sentPhone ? <>
-      <StageField label="SMS code" value={code} onChangeText={value => { setCode(value.replace(/\D/g, '').slice(0, 6)); setCodeError(undefined); setError(undefined); }} keyboardType="number-pad" autoComplete={Platform.OS === 'web' ? 'one-time-code' : 'sms-otp'} textContentType="oneTimeCode" maxLength={6} editable={!busy} error={codeError} />
-      <StageButton title={seconds ? `Resend code in ${seconds}s` : 'Resend SMS code'} disabled={busy || seconds > 0} onPress={() => void send()} />
-      <StageButton title="Use a different phone number" disabled={busy} onPress={() => { setSentPhone(undefined); setCode(''); setError(undefined); setCodeError(undefined); }} />
+      <StageField style={{ ...authInputStyle, fontSize: 24, letterSpacing: 8, textAlign: 'center' }} label="SMS code" value={code} onChangeText={value => { setCode(value.replace(/\D/g, '').slice(0, 6)); setCodeError(undefined); setError(undefined); }} keyboardType="number-pad" autoComplete={Platform.OS === 'web' ? 'one-time-code' : 'sms-otp'} textContentType="oneTimeCode" maxLength={6} editable={!busy} error={codeError} onSubmitEditing={() => void verify()} returnKeyType="go" />
     </> : <View style={{ gap: 12 }}>
-      <StageField label="Indian mobile number (+91)" value={number} onChangeText={value => { setNumber(value); setPhoneError(undefined); setError(undefined); }} placeholder="10-digit mobile number" keyboardType="phone-pad" autoComplete="tel-national" editable={!busy} maxLength={15} error={phoneError} />
-      <StageNotice>Already use an email account? Use email sign-in to access its existing teams and matches. A phone number saved as contact information does not automatically link that account.</StageNotice>
+      <StageField style={authInputStyle} label="Indian mobile number (+91)" value={number} onChangeText={value => { setNumber(value); setPhoneError(undefined); setError(undefined); }} placeholder="10-digit mobile number" keyboardType="phone-pad" autoComplete="tel-national" editable={!busy} maxLength={15} error={phoneError} onSubmitEditing={() => void send()} returnKeyType="go" />
+      <StageText muted style={{ fontSize: 12, lineHeight: 19 }}>We’ll send a six-digit code. No password needed.</StageText>
     </View>}
     {error ? <StageNotice danger>{error}</StageNotice> : null}
-    <StageButton title="Use email instead" disabled={busy} onPress={onBack} />
-  </StagePage>;
+    <AuthPrimaryButton title={sentPhone ? 'Verify & continue' : seconds ? `Try again in ${seconds}s` : 'Send SMS code'} disabled={!sentPhone && seconds > 0} loading={busy} onPress={() => void (sentPhone ? verify() : send())} />
+    {sentPhone ? <>
+      <AuthLink title={seconds ? `Resend code in ${seconds}s` : 'Resend SMS code'} disabled={busy || seconds > 0} onPress={() => void send()} />
+      <AuthLink title="Use a different phone number" disabled={busy} onPress={() => { setSentPhone(undefined); setCode(''); setError(undefined); setCodeError(undefined); }} />
+      <AuthLink title="Use email instead" disabled={busy} onPress={onBack} />
+    </> : <View style={{ borderTopWidth: 1, borderTopColor: '#29392d', paddingTop: 18, gap: 4 }}>
+      <StageText muted style={{ fontSize: 12, lineHeight: 19 }}>Already have an email account? Use email to keep your existing teams and matches.</StageText>
+    </View>}
+  </AuthLayout>;
 }

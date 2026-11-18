@@ -34,7 +34,7 @@ try {
     });
     await page.goto('http://127.0.0.1:4173/auth?returnTo=%2Fwricket%2Fmatch%2Fnew', { waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: 'Use phone SMS code', exact: true }).click();
-    await expect(page.getByText('Sign in with your phone.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Sign in or join with your mobile number.', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Send SMS code', exact: true }).click();
     await expect(page.getByText('Enter a valid 10-digit Indian mobile number.', { exact: true })).toBeVisible();
     assert.equal(sends, 0);

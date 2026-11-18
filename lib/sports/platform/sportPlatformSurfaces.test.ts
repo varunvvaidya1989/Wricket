@@ -14,6 +14,7 @@ const competitionScreen = read('../../../components/sports/scoring/SportCloudCom
 const profileScreen = read('../../../app/profile.tsx');
 const playerCard = read('../../../app/player/[id].tsx');
 const authScreen = read('../../../app/auth.tsx');
+const authLayout = read('../../../components/auth/AuthLayout.tsx');
 const authProvider = read('../../../components/providers/AuthProvider.tsx');
 const discoveryApi = read('../../../lib/supabase/sportDiscoveryApi.ts');
 const cricketFeed = read('../../../app/wricket/match/[id]/live.tsx');
@@ -121,8 +122,9 @@ describe('complete sport platform surfaces', () => {
   });
 
   it('supports returning from login and waits for the profile before exposing a session', () => {
-    expect(authScreen).toContain('Back to live scores');
-    expect(authScreen).toContain("router.replace('/live')");
+    expect(authScreen).toContain('<AuthLayout');
+    expect(authLayout).toContain('Explore live scores');
+    expect(authLayout).toContain("router.replace('/live')");
     expect(authProvider.indexOf('setProfile(nextProfile)')).toBeLessThan(authProvider.indexOf('setSession(nextSession)'));
   });
 

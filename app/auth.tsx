@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { useAuth } from '@/components/providers/AuthProvider';
 import { SportOption, sportstageAccountApi } from '@/lib/supabase/sportstageAccountApi';
@@ -12,6 +13,7 @@ import { StageButton, StageField, StageIntro, StageNotice, StagePage, StageState
 import { authReturnDescription } from '@/lib/auth/authExperience';
 import { SignupField, validateSignup } from '@/lib/auth/signupValidation';
 import { PhoneOtpSignIn } from '@/components/auth/PhoneOtpSignIn';
+import { AuthLayout, AuthLink, AuthMethods, AuthPrimaryButton, authInputStyle } from '@/components/auth/AuthLayout';
 
 export default function AuthScreen() {
   const auth = useAuth();
@@ -23,6 +25,7 @@ export default function AuthScreen() {
   const [passwordSignIn, setPasswordSignIn] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [countryCode, setCountryCode] = useState('+91');
@@ -110,7 +113,7 @@ export default function AuthScreen() {
 
   const task = authReturnDescription(returnTo);
   if (phoneSignIn) return <PhoneOtpSignIn task={task} onBack={() => setPhoneSignIn(false)} />;
-  const submitButton = <StageButton primary title={creating ? 'Create account' : passwordSignIn ? 'Sign in & continue' : 'Email me a sign-in link'} accessibilityLabel={creating ? 'Create account' : passwordSignIn ? 'Sign in' : 'Email me a sign-in link'} loading={saving} onPress={() => void (creating || passwordSignIn ? submit() : sendMagicLink())} />;
+  const submitButton = <AuthPrimaryButton title={creating ? 'Create account' : passwordSignIn ? 'Sign in' : 'Email me a sign-in link'} accessibilityLabel={creating ? 'Create account' : passwordSignIn ? 'Sign in' : 'Email me a sign-in link'} loading={saving} onPress={() => void (creating || passwordSignIn ? submit() : sendMagicLink())} />;
 
   if (magicLinkSent || awaitingVerification) return <StagePage focused title="Check email" footer={<StageButton primary title="Back to sign in" disabled={saving} onPress={() => { setMagicLinkSent(false); setAwaitingVerification(false); setCreating(false); setFormError(undefined); }} />}>
     <StageStateArt symbol="↗" />
@@ -121,23 +124,26 @@ export default function AuthScreen() {
     <StageButton title="Use a different email" disabled={saving} onPress={() => { setMagicLinkSent(false); setAwaitingVerification(false); setFormError(undefined); }} />
   </StagePage>;
 
-  return <StagePage focused title={creating ? 'Create account' : 'Sign in'} footer={submitButton}>
-    <StageIntro eyebrow={creating ? 'FIRST, YOUR ACCOUNT' : 'YOUR SPORTSTAGE ACCOUNT'} title={creating ? 'Let’s get you in.' : 'Welcome back.'} description={creating ? 'Your display name appears on your player profile.' : passwordSignIn ? `Sign in to ${task.toLowerCase()}.` : 'Enter your account email for a one-time sign-in link.'} />
-    {returnTo ? <StageNotice>After sign-in → {task}</StageNotice> : null}
+  return <AuthLayout title={creating ? 'Join the game.' : 'Welcome back.'} description={creating ? 'One account for your teams, tournaments and sports.' : !passwordSignIn ? 'We’ll email you a one-time link. No password needed.' : returnTo && returnTo !== '/account' ? `Sign in to continue to ${task.toLowerCase()}.` : 'Your teams. Your tournaments. Your SportStage.'}>
+    {!creating ? <AuthMethods onEmail={() => undefined} onPhone={() => { setFormError(undefined); setPhoneSignIn(true); }} disabled={saving} /> : null}
     {creating ? <StageField editable={!saving} label="Display name" value={displayName} onChangeText={value => { setDisplayName(value); clearValidationField('displayName'); }} placeholder="Your player name" error={fieldErrors.displayName} /> : null}
-    <StageField editable={!saving} label="Email address" value={email} onChangeText={value => { setEmail(value); clearValidationField('email'); }} placeholder="Email" keyboardType="email-address" autoComplete="email" autoCapitalize="none" autoCorrect={false} error={fieldErrors.email} />
+    <StageField style={authInputStyle} editable={!saving} label="Email address" value={email} onChangeText={value => { setEmail(value); clearValidationField('email'); }} placeholder="you@example.com" keyboardType="email-address" autoComplete="email" autoCapitalize="none" autoCorrect={false} error={fieldErrors.email} />
     {creating ? <View style={{ flexDirection: 'row', gap: 10 }}><View style={{ width: 80 }}><StageField editable={!saving} label="Country code" value={countryCode} onChangeText={value => { setCountryCode(value); clearValidationField('phone'); }} keyboardType="phone-pad" maxLength={5} /></View><View style={{ flex: 1 }}><StageField editable={!saving} label="Phone number" value={phoneNumber} onChangeText={value => { setPhoneNumber(value); clearValidationField('phone'); }} placeholder="Mobile number" keyboardType="phone-pad" maxLength={18} error={fieldErrors.phone} /></View></View> : null}
-    {creating || passwordSignIn ? <StageField editable={!saving} label="Password" value={password} onChangeText={value => { setPassword(value); clearValidationField('password'); }} placeholder="Password" secureTextEntry autoCapitalize="none" autoComplete={creating ? 'new-password' : 'current-password'} error={fieldErrors.password} /> : null}
+    {creating || passwordSignIn ? <View style={{ position: 'relative' }}>
+      <StageField style={{ ...authInputStyle, paddingRight: 52 }} editable={!saving} label="Password" value={password} onChangeText={value => { setPassword(value); clearValidationField('password'); }} placeholder="Password" secureTextEntry={!showPassword} autoCapitalize="none" autoComplete={creating ? 'new-password' : 'current-password'} error={fieldErrors.password} onSubmitEditing={() => { if (!creating) void submit(); }} returnKeyType={creating ? 'next' : 'go'} />
+      {!creating ? <View style={{ position: 'absolute', right: 0, top: -12 }}><AuthLink title="Forgot password?" disabled={saving} onPress={() => router.push({ pathname: '/forgot-password', params: returnTo ? { returnTo } : {} })} /></View> : null}
+      <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} accessibilityState={{ disabled: saving }} disabled={saving} onPress={() => setShowPassword(value => !value)} style={{ position: 'absolute', right: 4, top: 33, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}><MaterialCommunityIcons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#a8b5aa" /></Pressable>
+    </View> : null}
     {creating ? <StageField editable={!saving} label="Confirm password" value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearValidationField('confirmPassword'); }} placeholder="Confirm password" secureTextEntry autoCapitalize="none" autoComplete="new-password" error={fieldErrors.confirmPassword} /> : null}
     {creating ? <View style={{ gap: 10 }}><StageText variant="eyebrow" muted>YOUR SPORTS</StageText><StageText muted>Choose your sports and a primary sport. You can change these from your account.</StageText><StageSportPreferences disabled={saving} sports={sports} selectedCodes={selectedSportCodes} primaryCode={primarySportCode} onToggle={code => toggleSport(code, selectedSportCodes, primarySportCode, setSelectedSportCodes, setPrimarySportCode)} onPrimary={setPrimarySportCode} />{fieldErrors.sports ? <StageNotice>{fieldErrors.sports}</StageNotice> : null}</View> : null}
     {formError ? <StageNotice>{formError}</StageNotice> : null}
-    {!creating && passwordSignIn ? <StageButton title="Forgot password?" disabled={saving} onPress={() => router.push({ pathname: '/forgot-password', params: returnTo ? { returnTo } : {} })} /> : null}
-    <StageButton title={creating ? 'I already have an account' : 'Create a SportStage account'} disabled={saving} onPress={() => { setCreating(value => !value); setPasswordSignIn(true); setFormError(undefined); setFieldErrors({}); }} />
-    <StageButton title="Use phone SMS code" disabled={saving} onPress={() => { setFormError(undefined); setPhoneSignIn(true); }} />
-    <StageButton title="Privacy & support" disabled={saving} onPress={() => router.push('/support')} />
-    {!creating ? <StageButton title={passwordSignIn ? 'Use one-time email link' : 'Sign in with password'} disabled={saving} onPress={() => { setPasswordSignIn(value => !value); setFormError(undefined); setFieldErrors({}); }} /> : null}
-    <StageButton title="Back to live scores" disabled={saving} onPress={() => router.replace('/live')} />
-  </StagePage>;
+    {submitButton}
+    {!creating ? <AuthLink title={passwordSignIn ? 'Use one-time email link' : 'Sign in with password'} muted disabled={saving} onPress={() => { setPasswordSignIn(value => !value); setFormError(undefined); setFieldErrors({}); }} /> : null}
+    <View style={{ borderTopWidth: 1, borderTopColor: '#29392d', paddingTop: 16, gap: 2, alignItems: 'center' }}>
+      <StageText muted style={{ fontSize: 13 }}>{creating ? 'Already part of SportStage?' : 'New to SportStage?'}</StageText>
+      <AuthLink title={creating ? 'I already have an account' : 'Create a SportStage account'} disabled={saving} onPress={() => { setCreating(value => !value); setPasswordSignIn(true); setShowPassword(false); setFormError(undefined); setFieldErrors({}); }} />
+    </View>
+  </AuthLayout>;
 }
 
 function isValidEmail(value: string): boolean {
